@@ -35,6 +35,15 @@ git submodule update --init --recursive
 
 Если сборка падает с «файл занят», закройте Samplit.exe и DAW с загруженным плагином: Windows не даёт перезаписать загруженную DLL.
 
+## Visual Studio
+
+1. File → Open → Folder… → папка репозитория. VS сам найдёт `CMakeLists.txt` и `CMakePresets.json`.
+2. В панели сверху выбрать конфигурацию **Debug** (сборка идёт в тот же `build\Debug`, что и у `toolsuild.ps1`).
+3. Рядом с зелёной стрелкой выбрать, что запускать: `Samplit.exe` (отдельное приложение) или `SamplitTests.exe` (тесты).
+4. F5 запускает с отладчиком, Ctrl+F5 без. Тесты также видны в Test → Test Explorer.
+
+Отладка плагина внутри Reaper: собрать Debug, открыть Reaper, в VS Debug → Attach to Process… → `reaper.exe`. Точки останова в `plugin/` сработают, когда Reaper вызовет код плагина.
+
 ## Тесты
 
 ```powershell
