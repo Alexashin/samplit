@@ -28,12 +28,21 @@ juce_add_plugin(Samplit
 
 target_sources(Samplit PRIVATE
     Brand.h
+    LookAndFeel.h
+    Sample.h
     PadEngine.h
     PadEngine.cpp
     PluginProcessor.h
     PluginProcessor.cpp
+    SampleBrowser.h
+    SampleBrowser.cpp
+    PadGrid.h
+    PadGrid.cpp
     PluginEditor.h
     PluginEditor.cpp)
+
+# Исходники в UTF-8: русские строки интерфейса
+target_compile_options(Samplit PRIVATE $<$<CXX_COMPILER_ID:MSVC>:/utf-8>)
 
 target_compile_definitions(Samplit PUBLIC
     JUCE_WEB_BROWSER=0
@@ -45,6 +54,7 @@ target_link_libraries(Samplit
     PRIVATE
         SamplitAssets
         juce::juce_audio_utils
+        juce::juce_audio_formats
         juce::juce_gui_basics
     PUBLIC
         juce::juce_recommended_config_flags

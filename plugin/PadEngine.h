@@ -1,41 +1,61 @@
 #pragma once
 
+#include "Sample.h"
+
 #include <array>
 #include <atomic>
-#include <cstdint>
 
 namespace samplit
 {
     constexpr int kNumPads = 8;
 
+    // Последний голос играет прослушивание из браузера и всегда идёт в Main
+    constexpr int kPreviewVoice = kNumPads;
+    constexpr int kNumVoices = kNumPads + 1;
+
     // Пэд N играет по MIDI-ноте kFirstPadNote + N. Нота 36 = C1 в нумерации, где 60 = C3
     constexpr int kFirstPadNote = 36;
 
-    // Движок пэдов. Вся работа в audio thread: без аллокаций, блокировок и ввода-вывода.
-    // Пока вместо сэмплов играет тестовый тон на каждом пэде, чтобы проверять маршрутизацию по выходам.
+    // Движок пэдов. noteOn, stop и render вызываются только из audio thread: без аллокаций и блокировок.
+    // Сэмплами движок не владеет: их держит процессор и не удаляет, пока isUsing() возвращает true.
     class PadEngine
     {
     public:
         void prepare (double sampleRate) noexcept;
 
-        void noteOn (int pad, float velocity) noexcept;
+        // Message thread: какой сэмпл играет голос при следующем noteOn. nullptr = пэд пуст
+        void setSample (int voice, const Sample* sample) noexcept { slots[(size_t) voice].store (sample); }
+        const Sample* getSample (int voice) const noexcept { return slots[(size_t) voice].load(); }
 
-        // Дорисовывает пэд в [startSample, endSample) блока в два канала. Не очищает буфер, а суммирует.
-        void render (int pad, float* left, float* right, int startSample, int endSample) noexcept;
+        // Message thread: сэмпл назначен на голос или ещё звучит
+        bool isUsing (const Sample* sample) const noexcept;
 
-        bool isActive (int pad) const noexcept { return voices[(size_t) pad].level > 0.0005f; }
+        void noteOn (int voice, float velocity) noexcept;
+
+        // Плавно глушит голос за несколько миллисекунд, без щелчка
+        void stop (int voice) noexcept;
+
+        // Дописывает голос в [startSample, endSample) блока в два канала. Суммирует, не очищает буфер.
+        void render (int voice, float* left, float* right, int startSample, int endSample) noexcept;
+
+        bool isActive (int voice) const noexcept { return voices[(size_t) voice].sample != nullptr; }
 
     private:
         struct Voice
         {
-            float phase = 0.0f;
-            float freq = 220.0f;
-            float level = 0.0f;
-            float velocity = 1.0f;
+            const Sample* sample = nullptr;
+            double position = 0.0;
+            double step = 1.0;
+            float gain = 0.0f;
+            int fadeLeft = -1;  // -1: не затухает
         };
 
-        std::array<Voice, kNumPads> voices;
-        float decayPerSample = 0.9999f;
+        void finish (int voice) noexcept;
+
+        std::array<std::atomic<const Sample*>, kNumVoices> slots {};
+        std::array<std::atomic<const Sample*>, kNumVoices> playing {};
+        std::array<Voice, kNumVoices> voices {};
         double sr = 44100.0;
+        int fadeLength = 220;
     };
 }

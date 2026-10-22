@@ -1,6 +1,9 @@
 #pragma once
 
+#include "LookAndFeel.h"
+#include "PadGrid.h"
 #include "PluginProcessor.h"
+#include "SampleBrowser.h"
 
 #include <juce_gui_basics/juce_gui_basics.h>
 
@@ -8,26 +11,25 @@
 
 namespace samplit
 {
+    // Окно плагина: браузер сэмплов слева, пэды справа. DragAndDropContainer нужен, чтобы тащить сэмпл из списка на пэд
     class SamplitEditor final : public juce::AudioProcessorEditor,
-                                private juce::Timer
+                                public juce::DragAndDropContainer
     {
     public:
         explicit SamplitEditor (SamplitProcessor&);
-        ~SamplitEditor() override = default;
+        ~SamplitEditor() override;
 
         void paint (juce::Graphics&) override;
         void resized() override;
-        void mouseDown (const juce::MouseEvent&) override;
 
     private:
-        void timerCallback() override;
-        juce::Rectangle<float> padBounds (int pad) const;
-        int padAt (juce::Point<float>) const;
-
         SamplitProcessor& processor;
+        SamplitLookAndFeel lookAndFeel;
         std::unique_ptr<juce::Drawable> logo;
-        juce::Rectangle<float> logoBounds, gridBounds;
-        uint32_t shownActive = 0, shownSeparate = 0;
+        juce::Rectangle<int> logoArea;
+
+        SampleBrowser browser;
+        PadGrid pads;
 
         JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (SamplitEditor)
     };

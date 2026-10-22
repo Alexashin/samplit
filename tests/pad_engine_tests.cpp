@@ -1,4 +1,5 @@
 #include "PadEngine.h"
+#include "test_helpers.h"
 
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
@@ -7,8 +8,8 @@
 #include <cmath>
 #include <vector>
 
-using samplit::PadEngine;
-using samplit::kNumPads;
+using namespace samplit;
+using samplit::test::makeSample;
 
 namespace
 {
@@ -28,103 +29,182 @@ namespace
         }
     };
 
-    PadEngine makeEngine()
+    // Сколько отсчётов голос звучит до конца сэмпла
+    int playedLength (PadEngine& engine, int voice, int maxSamples)
     {
-        PadEngine e;
-        e.prepare (kRate);
-        return e;
+        Block b (maxSamples);
+        engine.render (voice, b.left.data(), b.right.data(), 0, b.size());
+        int last = -1;
+        for (int i = 0; i < b.size(); ++i)
+            if (b.left[(size_t) i] != 0.0f)
+                last = i;
+        return last + 1;
     }
 }
 
-TEST_CASE ("pad is silent until it is triggered")
+TEST_CASE ("empty pad stays silent")
 {
-    auto engine = makeEngine();
-    Block b (512);
-
-    for (int pad = 0; pad < kNumPads; ++pad)
-    {
-        engine.render (pad, b.left.data(), b.right.data(), 0, b.size());
-        REQUIRE_FALSE (engine.isActive (pad));
-    }
-    REQUIRE (b.peak() == 0.0f);
-}
-
-TEST_CASE ("triggered pad produces sound in both channels")
-{
-    auto engine = makeEngine();
+    PadEngine engine;
+    engine.prepare (kRate);
     Block b (512);
 
     engine.noteOn (0, 1.0f);
     engine.render (0, b.left.data(), b.right.data(), 0, b.size());
 
-    REQUIRE (engine.isActive (0));
-    REQUIRE (b.peak() > 0.1f);
-    REQUIRE (b.left == b.right);
+    REQUIRE_FALSE (engine.isActive (0));
+    REQUIRE (b.peak() == 0.0f);
+}
+
+TEST_CASE ("pad plays the sample values at the same sample rate")
+{
+    PadEngine engine;
+    engine.prepare (kRate);
+    auto sample = makeSample (1000, kRate, 1, [] (int, int i) { return (float) i / 1000.0f; });
+    engine.setSample (2, sample.get());
+    Block b (100);
+
+    engine.noteOn (2, 1.0f);
+    engine.render (2, b.left.data(), b.right.data(), 0, b.size());
+
+    for (int i = 0; i < b.size(); ++i)
+        REQUIRE_THAT (b.left[(size_t) i], Catch::Matchers::WithinAbs ((float) i / 1000.0f, 1e-6));
+}
+
+TEST_CASE ("mono sample goes to both channels, stereo keeps its channels")
+{
+    PadEngine engine;
+    engine.prepare (kRate);
+    Block b (64);
+
+    SECTION ("mono")
+    {
+        auto mono = makeSample (1000, kRate, 1);
+        engine.setSample (0, mono.get());
+        engine.noteOn (0, 1.0f);
+        engine.render (0, b.left.data(), b.right.data(), 0, b.size());
+        REQUIRE (b.left == b.right);
+        REQUIRE (b.left[10] == 0.5f);
+    }
+    SECTION ("stereo")
+    {
+        auto stereo = makeSample (1000, kRate, 2, [] (int ch, int) { return ch == 0 ? 0.5f : -0.25f; });
+        engine.setSample (0, stereo.get());
+        engine.noteOn (0, 1.0f);
+        engine.render (0, b.left.data(), b.right.data(), 0, b.size());
+        REQUIRE (b.left[10] == 0.5f);
+        REQUIRE (b.right[10] == -0.25f);
+    }
 }
 
 TEST_CASE ("velocity scales the level")
 {
-    auto loud = makeEngine();
-    auto soft = makeEngine();
-    Block a (2048), b (2048);
+    PadEngine engine;
+    engine.prepare (kRate);
+    auto sample = makeSample (1000);
+    engine.setSample (1, sample.get());
+    Block b (64);
 
-    loud.noteOn (3, 1.0f);
-    soft.noteOn (3, 0.5f);
-    loud.render (3, a.left.data(), a.right.data(), 0, a.size());
-    soft.render (3, b.left.data(), b.right.data(), 0, b.size());
+    engine.noteOn (1, 0.5f);
+    engine.render (1, b.left.data(), b.right.data(), 0, b.size());
 
-    REQUIRE_THAT (b.peak(), Catch::Matchers::WithinRel (a.peak() * 0.5f, 0.01f));
+    REQUIRE_THAT (b.peak(), Catch::Matchers::WithinRel (0.25f, 1e-6f));
 }
 
-TEST_CASE ("pad fades out and becomes inactive")
+TEST_CASE ("voice stops at the end of the sample")
 {
-    auto engine = makeEngine();
-    Block b (4800);
+    PadEngine engine;
+    engine.prepare (kRate);
+    auto sample = makeSample (300);
+    engine.setSample (0, sample.get());
 
-    engine.noteOn (2, 1.0f);
-    for (int i = 0; i < 20; ++i)  // 2 секунды
-        engine.render (2, b.left.data(), b.right.data(), 0, b.size());
+    engine.noteOn (0, 1.0f);
+    const int length = playedLength (engine, 0, 1000);
 
-    REQUIRE_FALSE (engine.isActive (2));
+    REQUIRE (length >= 298);
+    REQUIRE (length <= 300);
+    REQUIRE_FALSE (engine.isActive (0));
 }
 
-TEST_CASE ("pads are independent")
+TEST_CASE ("sample at another rate keeps its duration")
 {
-    auto engine = makeEngine();
+    // 300 отсчётов на 24 кГц = 12,5 мс, на 48 кГц это ~600 отсчётов
+    PadEngine engine;
+    engine.prepare (kRate);
+    auto sample = makeSample (300, 24000.0);
+    engine.setSample (0, sample.get());
+
+    engine.noteOn (0, 1.0f);
+    const int length = playedLength (engine, 0, 2000);
+
+    REQUIRE (length >= 596);
+    REQUIRE (length <= 600);
+}
+
+TEST_CASE ("stop fades the voice out within 5 ms")
+{
+    PadEngine engine;
+    engine.prepare (kRate);
+    auto sample = makeSample (48000);
+    engine.setSample (0, sample.get());
     Block b (512);
 
-    engine.noteOn (1, 1.0f);
-    engine.render (4, b.left.data(), b.right.data(), 0, b.size());
+    engine.noteOn (0, 1.0f);
+    engine.render (0, b.left.data(), b.right.data(), 0, 64);
+    engine.stop (0);
+    engine.render (0, b.left.data(), b.right.data(), 64, b.size());
 
-    REQUIRE (engine.isActive (1));
-    REQUIRE_FALSE (engine.isActive (4));
-    REQUIRE (b.peak() == 0.0f);
+    REQUIRE_FALSE (engine.isActive (0));
+    REQUIRE (b.left[64] > b.left[150]);           // громкость падает
+    REQUIRE (b.left[64 + 241] == 0.0f);           // через 5 мс (240 отсчётов) тишина
 }
 
-TEST_CASE ("render adds to the buffer instead of overwriting it")
+TEST_CASE ("retrigger restarts the sample from the beginning")
 {
-    auto engine = makeEngine();
-    Block b (256);
-    std::fill (b.left.begin(), b.left.end(), 1.0f);
-    std::fill (b.right.begin(), b.right.end(), 1.0f);
+    PadEngine engine;
+    engine.prepare (kRate);
+    auto sample = makeSample (1000, kRate, 1, [] (int, int i) { return (float) i / 1000.0f; });
+    engine.setSample (0, sample.get());
+    Block a (100), b (10);
 
+    engine.noteOn (0, 1.0f);
+    engine.render (0, a.left.data(), a.right.data(), 0, a.size());
     engine.noteOn (0, 1.0f);
     engine.render (0, b.left.data(), b.right.data(), 0, b.size());
 
-    // Синус стартует с нуля, дальше значения отличаются от исходной единицы
-    REQUIRE (b.left[0] == 1.0f);
-    REQUIRE (std::any_of (b.left.begin(), b.left.end(), [] (float v) { return v != 1.0f; }));
+    REQUIRE (b.left[0] == 0.0f);
+    REQUIRE_THAT (b.left[5], Catch::Matchers::WithinAbs (0.005f, 1e-6));
 }
 
-TEST_CASE ("render respects the sample range")
+TEST_CASE ("isUsing tracks assigned and still playing samples")
 {
-    auto engine = makeEngine();
+    PadEngine engine;
+    engine.prepare (kRate);
+    auto sample = makeSample (48000);
+    engine.setSample (3, sample.get());
+    REQUIRE (engine.isUsing (sample.get()));
+
+    engine.noteOn (3, 1.0f);
+    engine.setSample (3, nullptr);
+    REQUIRE (engine.isUsing (sample.get()));  // снят с пэда, но ещё звучит
+
+    Block b (48000);
+    engine.render (3, b.left.data(), b.right.data(), 0, b.size());
+    REQUIRE_FALSE (engine.isUsing (sample.get()));
+}
+
+TEST_CASE ("render adds to the buffer and respects the range")
+{
+    PadEngine engine;
+    engine.prepare (kRate);
+    auto sample = makeSample (1000);
+    engine.setSample (0, sample.get());
     Block b (512);
+    std::fill (b.left.begin(), b.left.end(), 1.0f);
 
     engine.noteOn (0, 1.0f);
     engine.render (0, b.left.data(), b.right.data(), 200, 300);
 
-    REQUIRE (std::all_of (b.left.begin(), b.left.begin() + 200, [] (float v) { return v == 0.0f; }));
-    REQUIRE (std::all_of (b.left.begin() + 300, b.left.end(), [] (float v) { return v == 0.0f; }));
-    REQUIRE (std::any_of (b.left.begin() + 200, b.left.begin() + 300, [] (float v) { return v != 0.0f; }));
+    REQUIRE (b.left[199] == 1.0f);
+    REQUIRE (b.left[250] == 1.5f);
+    REQUIRE (b.left[300] == 1.0f);
 }

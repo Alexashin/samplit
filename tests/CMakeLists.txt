@@ -14,10 +14,13 @@ target_sources(SamplitTests PRIVATE
     ${CMAKE_SOURCE_DIR}/plugin/PadEngine.cpp
     ${CMAKE_SOURCE_DIR}/plugin/PluginProcessor.cpp
     editor_stub.cpp
+    juce_setup.cpp
+    test_helpers.h
     pad_engine_tests.cpp
     processor_tests.cpp)
 
 target_include_directories(SamplitTests PRIVATE ${CMAKE_SOURCE_DIR}/plugin)
+target_compile_options(SamplitTests PRIVATE $<$<CXX_COMPILER_ID:MSVC>:/utf-8>)
 
 target_compile_definitions(SamplitTests PRIVATE
     JucePlugin_Name="Samplit"
@@ -27,6 +30,7 @@ target_compile_definitions(SamplitTests PRIVATE
 target_link_libraries(SamplitTests
     PRIVATE
         Catch2::Catch2WithMain
+        juce::juce_audio_formats
         juce::juce_audio_processors
     PUBLIC
         juce::juce_recommended_config_flags
