@@ -28,7 +28,7 @@ __pycache__/
 *.ogg
 
 # локальное
-build-log.txt
+build-log*.txt
 .shots/
 .vs/
 out/
