@@ -1,0 +1,40 @@
+# OS / editors
+.DS_Store
+Thumbs.db
+desktop.ini
+.idea/
+.vscode/
+
+# env
+.env
+.env.*
+!.env.example
+
+# deps / builds
+node_modules/
+dist/
+build/
+.venv/
+venv/
+__pycache__/
+*.pyc
+
+# media (сэмплы не коммитить)
+*.wav
+*.mp3
+*.flac
+*.aif
+*.aiff
+*.ogg
+
+# локальное
+build-log.txt
+.claude/
+.cache/
+compile_commands.json
+CMakeUserPresets.json
+
+# наработки по стилю, не часть продукта
+brand/concepts/
+brand/round2/
+brand/type/specimen.*

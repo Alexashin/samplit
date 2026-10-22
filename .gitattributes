@@ -1,0 +1,13 @@
+# Текст нормализуется в LF в репозитории, на Windows отдаётся как CRLF
+* text=auto
+
+# PowerShell 5.1 читает скрипты без BOM как ANSI, поэтому BOM и CRLF сохраняем
+*.ps1 text eol=crlf
+
+*.sh text eol=lf
+
+*.png binary
+*.ico binary
+*.woff binary
+*.woff2 binary
+*.onnx binary
