@@ -208,3 +208,62 @@ TEST_CASE ("render adds to the buffer and respects the range")
     REQUIRE (b.left[250] == 1.5f);
     REQUIRE (b.left[300] == 1.0f);
 }
+
+TEST_CASE ("pad gain and pan shape the output")
+{
+    PadEngine engine;
+    engine.prepare (kRate);
+    auto sample = makeSample (1000);  // 0.5 в обоих каналах
+    engine.setSample (0, sample.get());
+    Block b (64);
+
+    SECTION ("gain multiplies the level")
+    {
+        engine.setParams (0, 0.5f, 0.0f, 0.0f);
+        engine.noteOn (0, 1.0f);
+        engine.render (0, b.left.data(), b.right.data(), 0, b.size());
+        REQUIRE (b.left[10] == 0.25f);
+        REQUIRE (b.right[10] == 0.25f);
+    }
+    SECTION ("hard left mutes the right channel and keeps the left")
+    {
+        engine.setParams (0, 1.0f, 0.0f, -1.0f);
+        engine.noteOn (0, 1.0f);
+        engine.render (0, b.left.data(), b.right.data(), 0, b.size());
+        REQUIRE (b.left[10] == 0.5f);
+        REQUIRE (b.right[10] == 0.0f);
+    }
+    SECTION ("half right lowers only the left channel")
+    {
+        engine.setParams (0, 1.0f, 0.0f, 0.5f);
+        engine.noteOn (0, 1.0f);
+        engine.render (0, b.left.data(), b.right.data(), 0, b.size());
+        REQUIRE (b.left[10] == 0.25f);
+        REQUIRE (b.right[10] == 0.5f);
+    }
+}
+
+TEST_CASE ("pitch shifts the playback speed")
+{
+    PadEngine engine;
+    engine.prepare (kRate);
+    auto sample = makeSample (600);
+    engine.setSample (0, sample.get());
+
+    SECTION ("+12 semitones plays twice as fast")
+    {
+        engine.setParams (0, 1.0f, 12.0f, 0.0f);
+        engine.noteOn (0, 1.0f);
+        const int length = playedLength (engine, 0, 2000);
+        REQUIRE (length >= 298);
+        REQUIRE (length <= 300);
+    }
+    SECTION ("-12 semitones plays twice as slow")
+    {
+        engine.setParams (0, 1.0f, -12.0f, 0.0f);
+        engine.noteOn (0, 1.0f);
+        const int length = playedLength (engine, 0, 2000);
+        REQUIRE (length >= 1196);
+        REQUIRE (length <= 1200);
+    }
+}

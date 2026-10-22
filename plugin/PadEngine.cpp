@@ -1,7 +1,22 @@
 #include "PadEngine.h"
 
+#include <cmath>
+
 namespace samplit
 {
+    PadEngine::PadEngine()
+    {
+        for (auto& g : gains)
+            g.store (1.0f);
+    }
+
+    void PadEngine::setParams (int voice, float gain, float pitchSemitones, float pan) noexcept
+    {
+        gains[(size_t) voice].store (gain);
+        pitches[(size_t) voice].store (pitchSemitones);
+        pans[(size_t) voice].store (juce::jlimit (-1.0f, 1.0f, pan));
+    }
+
     void PadEngine::prepare (double sampleRate) noexcept
     {
         sr = sampleRate;
@@ -31,7 +46,8 @@ namespace samplit
         playing[(size_t) voice].store (s);
         v.sample = s;
         v.position = 0.0;
-        v.step = s->sampleRate / sr;  // сэмпл 44.1 кГц на 48 кГц играет чуть медленнее, высота сохраняется
+        // Сэмпл 44.1 кГц на 48 кГц играет чуть медленнее, высота сохраняется. Сдвиг на 12 полутонов удваивает скорость
+        v.step = s->sampleRate / sr * std::exp2 (pitches[(size_t) voice].load() / 12.0);
         v.gain = velocity;
         v.fadeLeft = -1;
     }
@@ -61,6 +77,12 @@ namespace samplit
         const float* srcL = audio.getReadPointer (0);
         const float* srcR = audio.getReadPointer (audio.getNumChannels() > 1 ? 1 : 0);
 
+        // Панорама как баланс: центр не меняет уровень, крайнее положение глушит противоположный канал
+        const float padGain = gains[(size_t) voice].load();
+        const float pan = pans[(size_t) voice].load();
+        const float gainL = padGain * juce::jmin (1.0f, 1.0f - pan);
+        const float gainR = padGain * juce::jmin (1.0f, 1.0f + pan);
+
         for (int i = startSample; i < endSample; ++i)
         {
             const int idx = (int) v.position;
@@ -84,8 +106,8 @@ namespace samplit
 
             // Линейная интерполяция между соседними отсчётами
             const float frac = (float) (v.position - idx);
-            left[i] += (srcL[idx] + (srcL[idx + 1] - srcL[idx]) * frac) * gain;
-            right[i] += (srcR[idx] + (srcR[idx + 1] - srcR[idx]) * frac) * gain;
+            left[i] += (srcL[idx] + (srcL[idx + 1] - srcL[idx]) * frac) * gain * gainL;
+            right[i] += (srcR[idx] + (srcR[idx + 1] - srcR[idx]) * frac) * gain * gainR;
             v.position += v.step;
         }
     }

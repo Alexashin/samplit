@@ -24,6 +24,13 @@ namespace samplit
         // Первый пустой пэд или -1
         int firstFreePad() const;
 
+        // Выбранный пэд показывает свои настройки в панели под сеткой
+        int getSelectedPad() const noexcept { return selectedPad; }
+        std::function<void (int)> onSelect;
+
+        // Высота сетки с подсказкой при заданной ширине: пэды квадратные
+        static int preferredHeight (int width);
+
         bool isInterestedInDragSource (const SourceDetails&) override;
         void itemDragEnter (const SourceDetails& d) override { setHover (padAt (d.localPosition)); }
         void itemDragMove (const SourceDetails& d) override { setHover (padAt (d.localPosition)); }
@@ -47,6 +54,7 @@ namespace samplit
         SamplitProcessor& processor;
         uint32_t shownActive = 0, shownSeparate = 0;
         int hoverPad = -1;
+        int selectedPad = 0;
 
         JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (PadGrid)
     };

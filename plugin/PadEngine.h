@@ -21,7 +21,13 @@ namespace samplit
     class PadEngine
     {
     public:
+        PadEngine();
+
         void prepare (double sampleRate) noexcept;
+
+        // Message thread: громкость (множитель), сдвиг высоты в полутонах, панорама от −1 (лево) до 1 (право).
+        // Громкость и панорама применяются сразу, высота со следующего удара
+        void setParams (int voice, float gain, float pitchSemitones, float pan) noexcept;
 
         // Message thread: какой сэмпл играет голос при следующем noteOn. nullptr = пэд пуст
         void setSample (int voice, const Sample* sample) noexcept { slots[(size_t) voice].store (sample); }
@@ -55,6 +61,9 @@ namespace samplit
         std::array<std::atomic<const Sample*>, kNumVoices> slots {};
         std::array<std::atomic<const Sample*>, kNumVoices> playing {};
         std::array<Voice, kNumVoices> voices {};
+        std::array<std::atomic<float>, kNumVoices> gains {};
+        std::array<std::atomic<float>, kNumVoices> pitches {};
+        std::array<std::atomic<float>, kNumVoices> pans {};
         double sr = 44100.0;
         int fadeLength = 220;
     };

@@ -38,6 +38,8 @@ target_sources(Samplit PRIVATE
     SampleBrowser.cpp
     PadGrid.h
     PadGrid.cpp
+    PadSettings.h
+    PadSettings.cpp
     PluginEditor.h
     PluginEditor.cpp)
 

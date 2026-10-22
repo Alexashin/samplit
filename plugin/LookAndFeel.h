@@ -37,6 +37,42 @@ namespace samplit
             setColour (juce::PopupMenu::highlightedTextColourId, text);
         }
 
+        // Ручка: дорожка, дуга значения и точка. У двуполярных ручек (высота, панорама) дуга растёт от центра
+        void drawRotarySlider (juce::Graphics& g, int x, int y, int width, int height, float pos,
+                               float startAngle, float endAngle, juce::Slider& slider) override
+        {
+            const auto bounds = juce::Rectangle<int> (x, y, width, height).toFloat().reduced (6.0f);
+            const float radius = juce::jmin (bounds.getWidth(), bounds.getHeight()) * 0.5f;
+            const auto centre = bounds.getCentre();
+            const float thickness = juce::jmax (3.0f, radius * 0.16f);
+            const float arcRadius = radius - thickness * 0.5f;
+
+            const auto arc = [&] (float from, float to)
+            {
+                juce::Path p;
+                p.addCentredArc (centre.x, centre.y, arcRadius, arcRadius, 0.0f, from, to, true);
+                return p;
+            };
+            const juce::PathStrokeType stroke (thickness, juce::PathStrokeType::curved, juce::PathStrokeType::rounded);
+
+            g.setColour (slider.findColour (juce::Slider::rotarySliderOutlineColourId));
+            g.strokePath (arc (startAngle, endAngle), stroke);
+
+            const bool bipolar = slider.getMinimum() < 0.0 && slider.getMaximum() > 0.0
+                                 && std::abs (slider.getMinimum() + slider.getMaximum()) < 1e-6;
+            const float origin = bipolar ? (startAngle + endAngle) * 0.5f : startAngle;
+            const float value = startAngle + pos * (endAngle - startAngle);
+            if (std::abs (value - origin) > 0.001f)
+            {
+                g.setColour (slider.findColour (juce::Slider::rotarySliderFillColourId));
+                g.strokePath (arc (juce::jmin (origin, value), juce::jmax (origin, value)), stroke);
+            }
+
+            const juce::Point<float> dot (centre.x + arcRadius * std::sin (value), centre.y - arcRadius * std::cos (value));
+            g.setColour (slider.findColour (juce::Slider::thumbColourId));
+            g.fillEllipse (juce::Rectangle<float> (thickness * 1.6f, thickness * 1.6f).withCentre (dot));
+        }
+
         void drawButtonBackground (juce::Graphics& g, juce::Button& button, const juce::Colour& background,
                                    bool highlighted, bool down) override
         {

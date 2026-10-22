@@ -2,6 +2,7 @@
 
 #include "LookAndFeel.h"
 #include "PadGrid.h"
+#include "PadSettings.h"
 #include "PluginProcessor.h"
 #include "SampleBrowser.h"
 
@@ -30,6 +31,7 @@ namespace samplit
 
         SampleBrowser browser;
         PadGrid pads;
+        PadSettings settings;
 
         JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (SamplitEditor)
     };

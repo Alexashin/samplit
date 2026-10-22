@@ -1,6 +1,8 @@
 #include "PadGrid.h"
 #include "Brand.h"
 
+#include <cmath>
+
 namespace samplit
 {
     namespace
@@ -52,6 +54,12 @@ namespace samplit
         return -1;
     }
 
+    int PadGrid::preferredHeight (int width)
+    {
+        const float size = ((float) width - kGap * (kCols - 1)) / (float) kCols;
+        return (int) std::ceil (size * kRows + kGap * (kRows - 1) + kHintHeight);
+    }
+
     int PadGrid::firstFreePad() const
     {
         for (int i = 0; i < kNumPads; ++i)
@@ -86,6 +94,14 @@ namespace samplit
         const int pad = padAt (e.getPosition());
         if (pad < 0)
             return;
+
+        if (pad != selectedPad)
+        {
+            selectedPad = pad;
+            repaint();
+            if (onSelect)
+                onSelect (pad);
+        }
 
         if (! e.mods.isPopupMenu())
         {
@@ -171,6 +187,12 @@ namespace samplit
 
         g.setColour (lit ? brand::accent : brand::pad);
         g.fillRoundedRectangle (r, radius);
+
+        if (selectedPad == pad && hoverPad != pad)
+        {
+            g.setColour (lit ? brand::onAccent.withAlpha (0.5f) : brand::textMuted);
+            g.drawRoundedRectangle (r.reduced (1.0f), radius, 1.5f);
+        }
 
         if (hoverPad == pad)
         {

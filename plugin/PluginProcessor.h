@@ -12,6 +12,16 @@
 
 namespace samplit
 {
+    // Настройки пэда, которые видит пользователь
+    struct PadParams
+    {
+        float gainDb = 0.0f;   // −24…+6 дБ
+        float pitch = 0.0f;    // −12…+12 полутонов
+        float pan = 0.0f;      // −1 лево … 1 право
+
+        bool isDefault() const noexcept { return gainDb == 0.0f && pitch == 0.0f && pan == 0.0f; }
+    };
+
     class SamplitProcessor final : public juce::AudioProcessor,
                                    public juce::ChangeBroadcaster,
                                    private juce::Timer
@@ -61,6 +71,9 @@ namespace samplit
         void previewFile (const juce::File&);
         void stopPreview() noexcept { pendingStops.fetch_or (1u << kPreviewVoice); }
 
+        void setPadParams (int pad, PadParams);
+        PadParams getPadParams (int pad) const;
+
         juce::File getPadFile (int pad) const;
         bool isPadLoaded (int pad) const { return owned[(size_t) pad] != nullptr; }
         SamplePtr getPadSample (int pad) const { return owned[(size_t) pad]; }
@@ -99,6 +112,7 @@ namespace samplit
         // Файлы пэдов и папка браузера: читаются и из потока хоста при сохранении проекта
         mutable juce::CriticalSection stateLock;
         std::array<juce::File, kNumPads> padFiles;
+        std::array<PadParams, kNumPads> padParams {};
         juce::File lastFolder;
 
         std::array<std::atomic<uint32_t>, kNumVoices> loadGeneration {};

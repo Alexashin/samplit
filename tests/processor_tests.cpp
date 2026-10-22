@@ -318,3 +318,39 @@ TEST_CASE ("garbage state data is ignored")
 
     REQUIRE (p.getPadFile (0).getFileName() == "kick.wav");
 }
+
+TEST_CASE ("pad settings are clamped and survive save and load")
+{
+    juce::MemoryBlock saved;
+    {
+        SamplitProcessor a;
+        a.setPadParams (2, { -6.0f, 3.0f, -0.5f });
+        a.setPadParams (7, { 40.0f, -30.0f, 2.0f });  // за пределами: должно обрезаться
+        a.getStateInformation (saved);
+
+        REQUIRE (a.getPadParams (7).gainDb == 6.0f);
+        REQUIRE (a.getPadParams (7).pitch == -12.0f);
+        REQUIRE (a.getPadParams (7).pan == 1.0f);
+    }
+
+    SamplitProcessor b;
+    b.setPadParams (4, { -3.0f, 0.0f, 0.0f });  // в проекте не задан, должен сброситься
+    b.setStateInformation (saved.getData(), (int) saved.getSize());
+
+    REQUIRE (b.getPadParams (2).gainDb == -6.0f);
+    REQUIRE (b.getPadParams (2).pitch == 3.0f);
+    REQUIRE (b.getPadParams (2).pan == -0.5f);
+    REQUIRE (b.getPadParams (7).gainDb == 6.0f);
+    REQUIRE (b.getPadParams (4).isDefault());
+}
+
+TEST_CASE ("pad gain in dB reaches the output")
+{
+    Fixture a, b;
+    a.processor.setPadParams (0, { -6.0f, 0.0f, 0.0f });
+    auto quiet = a.play (0);
+    auto normal = b.play (0);
+
+    const float ratio = Fixture::peak (quiet, 0) / Fixture::peak (normal, 0);
+    REQUIRE (std::abs (ratio - 0.501f) < 0.01f);
+}

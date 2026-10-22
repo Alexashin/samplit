@@ -208,6 +208,25 @@ namespace samplit
         startLoad (kPreviewVoice, file, true);
     }
 
+    void SamplitProcessor::setPadParams (int pad, PadParams params)
+    {
+        params.gainDb = juce::jlimit (-24.0f, 6.0f, params.gainDb);
+        params.pitch = juce::jlimit (-12.0f, 12.0f, params.pitch);
+        params.pan = juce::jlimit (-1.0f, 1.0f, params.pan);
+        {
+            const juce::ScopedLock sl (stateLock);
+            padParams[(size_t) pad] = params;
+        }
+        engine.setParams (pad, juce::Decibels::decibelsToGain (params.gainDb, -100.0f), params.pitch, params.pan);
+        sendChangeMessage();
+    }
+
+    PadParams SamplitProcessor::getPadParams (int pad) const
+    {
+        const juce::ScopedLock sl (stateLock);
+        return padParams[(size_t) pad];
+    }
+
     juce::File SamplitProcessor::getPadFile (int pad) const
     {
         const juce::ScopedLock sl (stateLock);
@@ -237,11 +256,15 @@ namespace samplit
             state.setProperty ("folder", lastFolder.getFullPathName(), nullptr);
             for (int pad = 0; pad < kNumPads; ++pad)
             {
-                if (padFiles[(size_t) pad] == juce::File())
+                const auto& params = padParams[(size_t) pad];
+                if (padFiles[(size_t) pad] == juce::File() && params.isDefault())
                     continue;
                 juce::ValueTree p ("PAD");
                 p.setProperty ("index", pad, nullptr);
                 p.setProperty ("file", padFiles[(size_t) pad].getFullPathName(), nullptr);
+                p.setProperty ("gain", params.gainDb, nullptr);
+                p.setProperty ("pitch", params.pitch, nullptr);
+                p.setProperty ("pan", params.pan, nullptr);
                 state.appendChild (p, nullptr);
             }
         }
@@ -258,12 +281,17 @@ namespace samplit
 
         const auto state = juce::ValueTree::fromXml (*xml);
         std::array<juce::File, kNumPads> files;
+        std::array<PadParams, kNumPads> params {};
         for (const auto& p : state)
         {
             const int pad = p.getProperty ("index", -1);
+            if (pad < 0 || pad >= kNumPads)
+                continue;
             const juce::String path = p.getProperty ("file").toString();
-            if (pad >= 0 && pad < kNumPads && juce::File::isAbsolutePath (path))
+            if (juce::File::isAbsolutePath (path))
                 files[(size_t) pad] = juce::File (path);
+            params[(size_t) pad] = { (float) p.getProperty ("gain", 0.0), (float) p.getProperty ("pitch", 0.0),
+                                     (float) p.getProperty ("pan", 0.0) };
         }
 
         const juce::String folder = state.getProperty ("folder").toString();
@@ -271,12 +299,13 @@ namespace samplit
 
         // Хост может звать setState не из message thread, а пэды меняются только там
         std::weak_ptr<int> alive = lifeToken;
-        auto apply = [this, alive, files]
+        auto apply = [this, alive, files, params]
         {
             if (alive.expired())
                 return;
             for (int pad = 0; pad < kNumPads; ++pad)
             {
+                setPadParams (pad, params[(size_t) pad]);
                 if (files[(size_t) pad] == juce::File())
                     clearPad (pad);
                 else
