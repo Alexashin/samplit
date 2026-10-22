@@ -1,0 +1,169 @@
+<title>Samplit: рынок и идея</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geologica:wght@400;500;700;800&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* Layout: one reading column; the competitor table scrolls in place; tokens follow brand/tokens.css */
+:root {
+  --bg: #eef0f4; --surface: #f5f7fa; --pad: #e0e3e8; --line: #ced1d8; --text: #0e141f; --muted: #4a505c;
+  --accent: #314bff; --accent-soft: #dee9ff; --accent-text: #2537dd;
+  --ok-text: #24653a; --ok-soft: #e1f3e6; --warn-text: #6e4d00; --warn-soft: #f7eed8; --crit-text: #a3262c; --crit-soft: #fbe7e6;
+  --f: "Geologica", "Segoe UI", system-ui, sans-serif; --mono: "JetBrains Mono", ui-monospace, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #0b0e15; --surface: #131720; --pad: #1e232d; --line: #2d333e; --text: #eef0f4; --muted: #a6abb5;
+  --accent: #7ca1ff; --accent-soft: #1b295a; --accent-text: #aac5ff;
+  --ok-text: #8fd6a4; --ok-soft: #173322; --warn-text: #e8c071; --warn-soft: #382c12; --crit-text: #f2a19c; --crit-soft: #3e1d1d; color-scheme: dark; } }
+:root[data-theme="dark"] {
+  --bg: #0b0e15; --surface: #131720; --pad: #1e232d; --line: #2d333e; --text: #eef0f4; --muted: #a6abb5;
+  --accent: #7ca1ff; --accent-soft: #1b295a; --accent-text: #aac5ff;
+  --ok-text: #8fd6a4; --ok-soft: #173322; --warn-text: #e8c071; --warn-soft: #382c12; --crit-text: #f2a19c; --crit-soft: #3e1d1d; color-scheme: dark; }
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text); font: 400 1rem/1.6 var(--f); -webkit-font-smoothing: antialiased; }
+.wrap { max-width: 980px; margin: 0 auto; padding-block: 48px 80px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+h1 { font: 800 clamp(2rem, 5vw, 2.8rem)/1.1 var(--f); letter-spacing: -.02em; margin: 0 0 12px; text-wrap: balance; }
+h2 { font: 700 1.5rem/1.2 var(--f); letter-spacing: -.015em; margin: 56px 0 12px; text-wrap: balance; }
+h3 { font: 600 1.0625rem/1.3 var(--f); margin: 0 0 6px; }
+p { margin: 0 0 12px; max-width: 68ch; text-wrap: pretty; }
+a { color: var(--accent-text); text-underline-offset: 2px; }
+.eyebrow { font: 600 .75rem/1 var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--muted); display: block; margin-bottom: 10px; }
+.lead { font-size: 1.125rem; }
+.thesis { background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 24px; margin: 28px 0 0; }
+.thesis p { font-size: 1.15rem; font-weight: 500; margin: 0; max-width: 60ch; }
+.cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 14px; margin-top: 16px; }
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 16px 18px; min-width: 0; }
+.card p, .card li { font-size: .9375rem; }
+.card ul { margin: 6px 0 0; padding-left: 1.1em; display: grid; gap: 4px; }
+.tbl { overflow-x: auto; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); margin-top: 16px; }
+table { border-collapse: collapse; width: 100%; font-size: .875rem; min-width: 820px; }
+th, td { text-align: left; vertical-align: top; padding: 10px 12px; border-bottom: 1px solid var(--line); }
+th { font: 600 .75rem/1.2 var(--mono); text-transform: uppercase; letter-spacing: .05em; color: var(--muted); background: var(--bg); }
+tr:last-child td { border-bottom: 0; }
+td b { font-weight: 600; }
+.pill { display: inline-block; font: 600 .6875rem/1 var(--mono); padding: 4px 7px; border-radius: 99px; white-space: nowrap; }
+.p-plug { background: var(--accent-soft); color: var(--accent-text); }
+.p-app { background: var(--pad); color: var(--muted); }
+.p-cloud { background: var(--warn-soft); color: var(--warn-text); }
+ol.pains { padding-left: 1.3em; display: grid; gap: 12px; margin: 16px 0 0; max-width: 72ch; }
+ol.pains li::marker { font: 600 .9rem var(--mono); color: var(--accent-text); }
+.q { color: var(--muted); font-style: italic; }
+.take { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 16px; }
+@media (max-width: 720px) { .take { grid-template-columns: 1fr; } }
+.take .card h3 { display: flex; gap: 8px; align-items: center; }
+.yes { color: var(--ok-text); } .no { color: var(--crit-text); }
+.prio { font: 600 .6875rem/1 var(--mono); padding: 3px 6px; border-radius: 6px; background: var(--pad); color: var(--muted); margin-left: 6px; white-space: nowrap; }
+.src { font-size: .8125rem; color: var(--muted); }
+.src li { margin-bottom: 4px; overflow-wrap: anywhere; }
+.note { font-size: .875rem; color: var(--muted); }
+</style>
+
+<main class="wrap">
+  <span class="eyebrow">Исследование · 23.10.2026</span>
+  <h1>Рынок менеджеров сэмплов и идея Samplit</h1>
+  <p class="lead">Что продюсеры используют для поиска сэмплов, за что хвалят и ругают, какие приёмы уже есть на рынке и где наше место. Источники: обсуждения на KVR и Elektronauts, обзоры Sound On Sound, MusicRadar, MusicTech, документация производителей.</p>
+
+  <div class="thesis">
+    <span class="eyebrow">Идея в одной фразе</span>
+    <p>Samplit находит звук в твоей собственной коллекции по словам или «на слух» и сразу кладёт его на пэд, а каждый пэд уходит на свою дорожку DAW. Всё внутри плагина и без интернета.</p>
+  </div>
+
+  <h2>Где пустое место</h2>
+  <p>Каждый продукт закрывает одну часть пути «найти → послушать → сыграть → свести». Сочетания из всех четырёх частей у локальной коллекции нет ни у кого.</p>
+  <div class="cols">
+    <div class="card"><h3>Лучший библиотекарь живёт вне DAW</h3><p>Sononym считают «единственным настоящим менеджером сэмплов», но это отдельное приложение, и связь с DAW у него слабая.</p></div>
+    <div class="card"><h3>Плагины с картой только про барабаны</h3><p>XO и Atlas удобны прямо в DAW, но работают только с ударными, без лупов, и группируют по звучанию с ошибками.</p></div>
+    <div class="card"><h3>Плагины-менеджеры падают на больших коллекциях</h3><p>ADSR Sample Manager и Waves Cosmos ругают за долгое сканирование, падения и потерю результатов сканирования.</p></div>
+    <div class="card"><h3>Поиск по описанию только в облаке или вне DAW</h3><p>У Splice поиск похожих работает по их каталогу. Новые инструменты с поиском словами (SonikSearch, Curlo, SFX Stacks) это отдельные приложения, в основном для звукорежиссёров кино.</p></div>
+  </div>
+
+  <h2>Кто есть на рынке</h2>
+  <div class="tbl"><table>
+    <thead><tr><th>Продукт</th><th>Формат</th><th>Сильное</th><th>На что жалуются</th><th>Что берём</th></tr></thead>
+    <tbody>
+      <tr><td><b>Sononym</b></td><td><span class="pill p-app">приложение</span></td><td>Поиск похожих по пяти признакам (общий, спектр, тембр, высота, амплитуда), поиск по записанному голосом звуку, фильтры по длине, громкости, яркости, гармоничности. Лупы и one-shot, поиск дублей</td><td>Слабая связь с DAW и редакторами, метаданные нельзя править, нет карты, обновления раз в год</td><td>Похожие по выбранному признаку, фильтры по физике звука, поиск «голосом»</td></tr>
+      <tr><td><b>XLN XO</b></td><td><span class="pill p-plug">плагин</span></td><td>Карта ударных, предпросмотр движением мыши по карте, подбор похожих к своему кику, рандомизация кита. Категоризацию хвалят сильнее, чем у Atlas</td><td>Только ударные, одна карта, редкие обновления, дорого</td><td>Замена сэмпла на пэде на похожий, быстрый предпросмотр</td></tr>
+      <tr><td><b>Algonaut Atlas 2</b></td><td><span class="pill p-plug">плагин</span></td><td>Карта-«созвездие» по тембру, сборка кита, несколько карт, список, поиск по подпапкам, кроссплатформенность, отзывчивый разработчик</td><td>Только ударные, нет лупов и высоты; «группировка ошибается так же часто, как попадает»; неудобный секвенсор</td><td>Кит по запросу, отзывчивость к пользователям</td></tr>
+      <tr><td><b>ADSR Sample Manager</b></td><td><span class="pill p-plug">плагин</span></td><td>Бесплатный, прослушивание в DAW, BPM и тональность, теги</td><td>Теги жанра и инструмента «далеко от правды», теги только по имени файла, медленный скан, падения DAW на больших базах</td><td>Цель: работать в DAW и не падать на 100 тыс. файлов</td></tr>
+      <tr><td><b>Waves Cosmos</b></td><td><span class="pill p-app">приложение</span> <span class="pill p-plug">в CR8</span></td><td>Несколько тегов на сэмпл, характер (яркость, сатурация, динамика), лупы и one-shot, бесплатный на старте</td><td>«Сломан», скан идёт днями, забывает папки и результаты сканирования, нет поиска по подпапкам</td><td>Теги характера. И урок: скан должен быть быстрым, продолжаемым и надёжным</td></tr>
+      <tr><td><b>Splice</b></td><td><span class="pill p-cloud">облако</span></td><td>Поиск похожих (Similar Sounds), поиск звуком из DAW (Search with Sound), тональность и BPM</td><td>Подписка; поиск идёт по их каталогу, а не по твоей коллекции</td><td>Поиск звуком из DAW, подгонку под проект</td></tr>
+      <tr><td><b>Loopcloud</b></td><td><span class="pill p-cloud">облако</span></td><td>Синхронизация темпа и тональности с DAW, редактор лупов, фильтры по лейблу, жанру, тональности</td><td>Подписка и меняющиеся цены, плагин слабее приложения, умный поиск медленнее обычного</td><td>Подстройку под темп и тональность проекта (допфункции)</td></tr>
+      <tr><td><b>Ableton Live 12</b></td><td><span class="pill p-plug">в DAW</span></td><td>Поиск похожих по своей библиотеке (сэмплы до 60 с), замена сэмплов в Drum Rack на похожие, свои теги</td><td>Работает только в Ableton</td><td>Подтверждение, что «похожие» и замену ждут от рынка</td></tr>
+      <tr><td><b>SonikSearch, Curlo, SFX Stacks, soundgrep</b></td><td><span class="pill p-app">приложение</span></td><td>Локальный поиск словами («warm pad», «punchy kick») через модели вида CLAP, без интернета</td><td>Новые, независимых обзоров почти нет; ориентированы на звуковые эффекты и пост-продакшн, macOS</td><td>Подтверждение нашего технического подхода (CLAP локально)</td></tr>
+    </tbody>
+  </table></div>
+  <p class="note" style="margin-top:10px">Цены и состав функций меняются, перед записью в записку проверить по сайтам производителей. Отзывы с форумов это мнения отдельных пользователей.</p>
+
+  <h2>Что болит у продюсеров</h2>
+  <ol class="pains">
+    <li><b>Сканирование и стабильность на больших коллекциях.</b> Про Cosmos пишут, что скан занимает дни и теряется, про ADSR — что он падает вместе с DAW на большой базе. <span class="q">«takes days to scan samples»</span></li>
+    <li><b>Неточные автотеги.</b> Теги по имени файла, ошибки групп, «397 файлов с тегом CAT и ноль с тегом BASS». Автотегам не доверяют, если их нельзя поправить руками.</li>
+    <li><b>Работа вне DAW.</b> Отдельное приложение приходится держать рядом с DAW и перетаскивать оттуда; плагины облачных сервисов урезаны по сравнению с приложением.</li>
+    <li><b>Подписки и облако.</b> <span class="q">«Not into subscriptions»</span>. Хотят пользоваться своей уже купленной коллекцией.</li>
+    <li><b>Только барабаны.</b> Лучшие визуальные инструменты не работают с лупами, басом, вокалом.</li>
+    <li><b>Скорость отбора.</b> Ценят быстрый предпросмотр и фильтры, которые сужают «43 000 киков до 150».</li>
+  </ol>
+
+  <h2>Что берём и чего избегаем</h2>
+  <div class="take">
+    <div class="card">
+      <h3 class="yes">Берём</h3>
+      <ul>
+        <li>Поиск словами по-русски и по-английски по своей коллекции <span class="prio">v1</span></li>
+        <li>«Найти похожие» на выбранный сэмпл <span class="prio">v1</span></li>
+        <li>Замена сэмпла на пэде на похожий одной кнопкой <span class="prio">v1</span></li>
+        <li>Фильтры по физике звука: длина, громкость, яркость, атака <span class="prio">v1</span></li>
+        <li>Автотеги типа и характера, которые можно поправить руками <span class="prio">v1</span></li>
+        <li>Кит по запросу: kick, snare, hat, 808 в одном характере <span class="prio">v2</span></li>
+        <li>Поиск «голосом» или звуком с дорожки DAW <span class="prio">v2</span></li>
+        <li>Карта похожих звуков <span class="prio">v2</span></li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3 class="no">Избегаем</h3>
+      <ul>
+        <li>Полного пересканирования: только новые и изменённые файлы (уже сделано в ядре)</li>
+        <li>Потери результатов: индекс пишется по ходу, скан можно прервать и продолжить</li>
+        <li>Тормозов DAW: всё тяжёлое в фоне, аудиопоток не трогаем</li>
+        <li>Тегов только по имени файла: анализируем сам звук</li>
+        <li>Ограничения ударными: лупы, бас, вокал, FX с первого дня</li>
+        <li>Подписки и облака</li>
+      </ul>
+    </div>
+  </div>
+
+  <h2>Чем Samplit отличается</h2>
+  <div class="cols">
+    <div class="card"><h3>Плагин, а не приложение рядом</h3><p>Поиск, прослушивание и игра в одном окне внутри DAW. Не нужно переключаться и перетаскивать между программами.</p></div>
+    <div class="card"><h3>Найденное сразу играет</h3><p>Сэмпл кладётся на пэд, пэд уходит на свою дорожку микшера. Этого нет ни у менеджеров, ни у облачных сервисов.</p></div>
+    <div class="card"><h3>Поиск по описанию на русском</h3><p>Локальная модель «текст ↔ звук» без интернета. У конкурентов такой поиск либо в облаке, либо только на английском.</p></div>
+    <div class="card"><h3>Своя коллекция без подписки</h3><p>Работаем с тем, что у продюсера уже есть на диске. Индекс и модели лежат локально.</p></div>
+  </div>
+
+  <h2>Риски</h2>
+  <ul style="max-width:72ch;display:grid;gap:8px;padding-left:1.1em">
+    <li>Качество CLAP на коротких one-shot и на русских запросах ещё не проверено: нужен прототип на 200 сэмплах и замер на размеченных запросах.</li>
+    <li>Автотеги ошибаются у всех конкурентов. Значит, правка тегов руками обязательна, и точность нужно измерять, а не оценивать на глаз.</li>
+    <li>Скорость анализа на 50 тыс. файлов: модель на CPU может работать часы, скан должен быть фоновым и продолжаемым.</li>
+  </ul>
+
+  <h2>Источники</h2>
+  <ul class="src">
+    <li><a href="https://www.kvraudio.com/forum/viewtopic.php?p=8821316" target="_blank" rel="noopener">KVR: Best 'Sample Manager' plugin?</a></li>
+    <li><a href="https://www.kvraudio.com/forum/viewtopic.php?p=7916394" target="_blank" rel="noopener">KVR: обсуждение XO, Atlas, Sononym</a></li>
+    <li><a href="https://www.elektronauts.com/t/atlas-xo-other-sample-managers-your-favs-and-why-pls/163586?page=5" target="_blank" rel="noopener">Elektronauts: Atlas, XO, other sample managers</a></li>
+    <li><a href="https://www.elektronauts.com/t/atlas-xo-cosmos-and-the-like-which-of-these-analyse-the-audio/237294" target="_blank" rel="noopener">Elektronauts: Atlas, XO, Cosmos, which analyse the audio</a></li>
+    <li><a href="https://www.kvraudio.com/product/adsr-sample-manager-by-adsr" target="_blank" rel="noopener">KVR: ADSR Sample Manager, отзывы</a></li>
+    <li><a href="https://www.soundonsound.com/news/sononym-aim-make-sample-substitution-easy" target="_blank" rel="noopener">Sound On Sound: Sononym</a></li>
+    <li><a href="https://www.musicradar.com/reviews/sononym-sononym" target="_blank" rel="noopener">MusicRadar: Sononym review</a></li>
+    <li><a href="https://www.electronicdrumadvisor.com/?p=13073" target="_blank" rel="noopener">Atlas 2 review</a></li>
+    <li><a href="https://www.waves.com/introducing-cosmos-sample-finder" target="_blank" rel="noopener">Waves: COSMOS Sample Finder</a></li>
+    <li><a href="https://musictech.com/news/waves-cosmos-free-ai-powered-sample-finder/" target="_blank" rel="noopener">MusicTech: Waves Cosmos</a></li>
+    <li><a href="https://splice.com/blog/introducing-similar-sounds/" target="_blank" rel="noopener">Splice: Similar Sounds</a></li>
+    <li><a href="https://support.splice.com/en/articles/12997591-getting-started-with-the-splice-sounds-plugin-now-in-beta" target="_blank" rel="noopener">Splice: Sounds plugin, Search with Sound</a></li>
+    <li><a href="https://musictech.com/reviews/loops/review-loopmasters-loopcloud-6/" target="_blank" rel="noopener">MusicTech: Loopcloud 6 review</a></li>
+    <li><a href="https://forum.ableton.com/viewtopic.php?p=1818210" target="_blank" rel="noopener">Ableton forum: Live 12 browser</a></li>
+    <li><a href="https://www.kvraudio.com/news-print.php?id=66700" target="_blank" rel="noopener">KVR: SonikSearch, локальный семантический поиск</a></li>
+    <li><a href="https://feedbagel.com/post/sfx-stacks-desktop-app-for-natural-language-search-of-local-sound-effects-librar" target="_blank" rel="noopener">SFX Stacks</a></li>
+    <li><a href="https://vi-control.net/community/threads/samplesorter-ai-visual-sample-browsing-plugin-for-large-sample-libraries.172866/" target="_blank" rel="noopener">VI-Control: SampleSorter AI</a></li>
+  </ul>
+</main>

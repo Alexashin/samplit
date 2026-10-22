@@ -59,9 +59,5 @@ namespace samplit
 
         if (logo != nullptr)
             logo->drawWithin (g, logoArea.toFloat(), juce::RectanglePlacement::xLeft | juce::RectanglePlacement::yMid, 1.0f);
-
-        g.setColour (brand::textMuted);
-        g.setFont (juce::FontOptions (12.0f));
-        g.drawText (utf8 ("Офлайн-библиотека сэмплов · мульти-аут"), logoArea, juce::Justification::centredRight);
     }
 }
