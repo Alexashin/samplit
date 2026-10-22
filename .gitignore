@@ -30,6 +30,8 @@ __pycache__/
 # локальное
 build-log.txt
 .shots/
+.vs/
+out/
 .claude/
 .cache/
 compile_commands.json
