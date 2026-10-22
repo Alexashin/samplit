@@ -1,0 +1,37 @@
+include(FetchContent)
+
+# SQLite берём официальной amalgamation (один .c), хеш SHA3-256 с sqlite.org/download.html
+FetchContent_Declare(sqlite_amalgamation
+    URL      https://www.sqlite.org/2026/sqlite-amalgamation-3540100.zip
+    URL_HASH SHA3_256=92281c86e2957f9b9305890f9ac04204caa7b677cc868dc326d942689df28e30
+    DOWNLOAD_EXTRACT_TIMESTAMP TRUE)
+FetchContent_MakeAvailable(sqlite_amalgamation)
+
+add_library(sqlite3 STATIC ${sqlite_amalgamation_SOURCE_DIR}/sqlite3.c)
+target_include_directories(sqlite3 PUBLIC ${sqlite_amalgamation_SOURCE_DIR})
+target_compile_definitions(sqlite3 PRIVATE SQLITE_THREADSAFE=1 SQLITE_OMIT_LOAD_EXTENSION)
+set_target_properties(sqlite3 PROPERTIES POSITION_INDEPENDENT_CODE ON)
+
+# Ядро без графики. Модули JUCE (juce_core, juce_audio_formats) подключаются как к обычной
+# статической библиотеке: код модулей компилируется в неё, а потребители (плагин, тесты) линкуют те же
+# модули и получают свои копии; компоновщик берёт символы из первого определения, дубликатов нет.
+add_library(samplit_core STATIC
+    include/samplit/core/Library.h
+    src/Library.cpp)
+set_target_properties(samplit_core PROPERTIES POSITION_INDEPENDENT_CODE ON)
+
+target_include_directories(samplit_core PUBLIC include)
+target_compile_options(samplit_core PRIVATE $<$<CXX_COMPILER_ID:MSVC>:/utf-8>)
+
+target_compile_definitions(samplit_core PUBLIC
+    JUCE_WEB_BROWSER=0
+    JUCE_USE_CURL=0)
+
+target_link_libraries(samplit_core
+    PUBLIC
+        sqlite3
+        juce::juce_core
+        juce::juce_audio_formats
+    PRIVATE
+        juce::juce_recommended_config_flags
+        juce::juce_recommended_warning_flags)
