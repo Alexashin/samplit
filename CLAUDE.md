@@ -39,6 +39,15 @@ docs/
 - Коммиты осмысленные, без упоминаний ИИ в коде, комментариях и истории. Комментарии в коде — по делу.
 - Сэмплы в git не коммитить (`.gitignore`); тестовый набор лежит отдельно.
 
+## Сборка и проверка
+
+- Сборка: `.	oolsuild.ps1` (Debug), `-Config Release`. Перед сборкой закрыть Reaper и Samplit.exe: Windows не даёт перезаписать загруженный плагин.
+- Тесты: `ctest --test-dir build\Debug --output-on-failure` или `build\Debug	ests\SamplitTests_artefacts\Debug\SamplitTests.exe`.
+- pluginval: `~/tools/pluginval/pluginval.exe --strictness-level 5 --skip-gui-tests --validate <путь к Samplit.vst3>`.
+- Устройство кода простым языком: `docs/architecture.md`, сборка и правила: `docs/development.md`, сценарий показа: `docs/demo-kt0.md`, обзор рынка: `docs/research/market.html`.
+- Офлайн-набор страниц для показа: `tools/make_offline_pages.py`.
+- Репозиторий на GitHub только на личном аккаунте владельца, организации вуза не трогаем.
+
 ## Инструменты
 
 - Сборка: CMake + Ninja + MSVC (Visual Studio 2026, нагрузка «C++ desktop»). Python 3.12 системный. Node.js LTS поставлен.
