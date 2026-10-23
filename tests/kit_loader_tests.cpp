@@ -1,5 +1,6 @@
 #include "KitEngine.h"
 #include "KitLoader.h"
+#include "PluginProcessor.h"
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -278,4 +279,75 @@ TEST_CASE ("loadKit reports errors and cancel", "[loader]")
         CHECK_FALSE (res.ok());
         CHECK (res.cancelled);
     }
+}
+
+namespace
+{
+    template <typename Pred>
+    bool pumpUntil (Pred done, int timeoutMs = 10000)
+    {
+        const auto end = juce::Time::getMillisecondCounter() + (juce::uint32) timeoutMs;
+        while (! done() && juce::Time::getMillisecondCounter() < end)
+            juce::MessageManager::getInstance()->runDispatchLoopUntil (10);
+        return done();
+    }
+}
+
+TEST_CASE ("processor loads a kit in the background and applies the mic mix", "[loader]")
+{
+    const auto dir = loaderDir();
+    const auto t = writePack (dir, "pk", "kick", 36);
+    auto preset = presetOf ({ "pk" });
+    preset.mics["oh"].mute = true;
+
+    SamplitProcessor processor;
+    processor.prepareToPlay (44100.0, 512);
+
+    bool called = false;
+    KitLoadResult got;
+    processor.loadKitAsync (preset, optionsFor (dir, { { "pk", t.key } }), [&] (const KitLoadResult& r)
+    {
+        called = true;
+        got = r;
+    });
+    CHECK (processor.isKitLoading());
+    REQUIRE (pumpUntil ([&] { return called; }));
+
+    CHECK (got.ok());
+    CHECK_FALSE (processor.isKitLoading());
+    CHECK (processor.getKitLoadProgress() == 1.0f);
+    REQUIRE (processor.getKit() != nullptr);
+    CHECK (processor.getKit()->pieces.size() == 1);
+}
+
+TEST_CASE ("a failed or cancelled load keeps the current kit", "[loader]")
+{
+    const auto dir = loaderDir();
+    const auto t = writePack (dir, "pk", "kick", 36);
+
+    SamplitProcessor processor;
+    processor.prepareToPlay (44100.0, 512);
+
+    bool called = false;
+    processor.loadKitAsync (presetOf ({ "pk" }), optionsFor (dir, { { "pk", t.key } }), [&] (const KitLoadResult&) { called = true; });
+    REQUIRE (pumpUntil ([&] { return called; }));
+    const auto first = processor.getKit();
+    REQUIRE (first != nullptr);
+
+    // Нет лицензии: загрузка не удалась, прежний кит на месте
+    called = false;
+    bool ok = true;
+    processor.loadKitAsync (presetOf ({ "pk" }), optionsFor (dir, {}), [&] (const KitLoadResult& r) { called = true; ok = r.ok(); });
+    REQUIRE (pumpUntil ([&] { return called; }));
+    CHECK_FALSE (ok);
+    CHECK (processor.getKit() == first);
+
+    // Отмена: колбэк не приходит, флаг загрузки сброшен
+    called = false;
+    processor.loadKitAsync (presetOf ({ "pk" }), optionsFor (dir, { { "pk", t.key } }), [&] (const KitLoadResult&) { called = true; });
+    processor.cancelKitLoad();
+    CHECK_FALSE (processor.isKitLoading());
+    pumpUntil ([&] { return called; }, 300);
+    CHECK_FALSE (called);
+    CHECK (processor.getKit() == first);
 }

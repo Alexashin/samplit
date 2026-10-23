@@ -35,6 +35,8 @@ namespace samplit
     {
         stopTimer();
         lifeToken.reset();
+        cancelKitLoad();
+        kitLoaderPool.removeAllJobs (true, 10000);
         loader.removeAllJobs (true, 4000);
     }
 
@@ -418,6 +420,54 @@ namespace samplit
             retired.push_back ({ nullptr, nullptr, std::move (old), juce::Time::getMillisecondCounter() });
         collectGarbage();
         sendChangeMessage();
+    }
+
+    void SamplitProcessor::cancelKitLoad()
+    {
+        if (kitCancel != nullptr)
+            kitCancel->store (true);
+        ++kitGeneration;
+        kitLoading.store (false);
+    }
+
+    void SamplitProcessor::loadKitAsync (const Preset& preset, KitLoadOptions options,
+                                         std::function<void (const KitLoadResult&)> done)
+    {
+        cancelKitLoad();
+        auto cancel = std::make_shared<std::atomic<bool>> (false);
+        kitCancel = cancel;
+        const auto generation = kitGeneration;
+        kitLoading.store (true);
+        kitProgress.store (0.0f);
+
+        options.cancel = cancel.get();
+        options.progress = [this] (float f) { kitProgress.store (f); };
+        std::weak_ptr<int> alive = lifeToken;
+
+        kitLoaderPool.addJob ([this, alive, preset, options = std::move (options), cancel, generation, done = std::move (done)]
+        {
+            auto result = std::make_shared<KitLoadResult> (loadKit (preset, options));
+
+            juce::MessageManager::callAsync ([this, alive, result, cancel, generation, done]
+            {
+                if (alive.expired() || generation != kitGeneration)
+                    return;     // устарело: пришла новая загрузка или процессор уничтожен
+
+                kitLoading.store (false);
+                kitProgress.store (1.0f);
+                if (result->ok())
+                {
+                    for (int i = 0; i < Kit::kMaxMics; ++i)
+                    {
+                        const MicMix mix = i < (int) result->mix.size() ? result->mix[(size_t) i] : MicMix {};
+                        kitEngine.setMicMix (i, mix.mute ? -100.0f : mix.levelDb, mix.pan);
+                    }
+                    setKit (result->kit);
+                }
+                if (done)
+                    done (*result);
+            });
+        });
     }
 
     std::shared_ptr<const Kit> SamplitProcessor::getKit() const

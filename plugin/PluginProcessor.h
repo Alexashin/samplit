@@ -2,6 +2,7 @@
 
 #include "Instrument.h"
 #include "KitEngine.h"
+#include "KitLoader.h"
 #include "SamplerEngine.h"
 
 #include <juce_audio_formats/juce_audio_formats.h>
@@ -91,6 +92,14 @@ namespace samplit
         void setKitSelectMode (HitSelect mode) noexcept { kitEngine.setSelectMode (mode); }
         void setKitSpread (int layers) noexcept { kitEngine.setSpread (layers); }
 
+        // Фоновая загрузка кита из пресета и пакетов. Новая загрузка отменяет прежнюю. По готовности (message thread)
+        // кит ставится через setKit(), микрофонам выставляются уровни и панорамы, потом зовётся done.
+        // При ошибке или отмене прежний кит остаётся играть. Звук не блокируется
+        void loadKitAsync (const Preset&, KitLoadOptions, std::function<void (const KitLoadResult&)> done = {});
+        void cancelKitLoad();
+        bool isKitLoading() const noexcept { return kitLoading.load(); }
+        float getKitLoadProgress() const noexcept { return kitProgress.load(); }
+
         // Имя пресета в состоянии проекта (сам пресет подгружает загрузчик пакетов)
         juce::String getPresetName() const;
         void setPresetName (const juce::String&);
@@ -166,9 +175,14 @@ namespace samplit
         std::atomic<uint64_t> activeLo { 0 }, activeHi { 0 };
         std::atomic<uint32_t> enabledOutputs { 0 };
         std::atomic<int> loadsInFlight { 0 };
+        std::atomic<bool> kitLoading { false };
+        std::atomic<float> kitProgress { 0.0f };
+        std::shared_ptr<std::atomic<bool>> kitCancel;       // только message thread
+        uint32_t kitGeneration = 0;                         // только message thread
 
         // Пока жив токен, отложенные колбэки загрузки могут обращаться к процессору
         std::shared_ptr<int> lifeToken = std::make_shared<int> (0);
+        juce::ThreadPool kitLoaderPool { juce::ThreadPoolOptions{}.withThreadName ("Samplit kit loader").withNumberOfThreads (1) };
         juce::ThreadPool loader { juce::ThreadPoolOptions{}.withThreadName ("Samplit loader").withNumberOfThreads (2) };
 
         JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (SamplitProcessor)
