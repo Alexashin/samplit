@@ -1,25 +1,25 @@
 #pragma once
 
-#include "PadEngine.h"
+#include "Instrument.h"
+#include "SamplerEngine.h"
 
 #include <juce_audio_formats/juce_audio_formats.h>
 #include <juce_audio_processors/juce_audio_processors.h>
 
 #include <array>
 #include <atomic>
+#include <map>
 #include <memory>
+#include <set>
 #include <vector>
 
 namespace samplit
 {
-    // Настройки пэда, которые видит пользователь
-    struct PadParams
+    // Как разложить несколько файлов на одну клавишу
+    enum class Spread
     {
-        float gainDb = 0.0f;   // −24…+6 дБ
-        float pitch = 0.0f;    // −12…+12 полутонов
-        float pan = 0.0f;      // −1 лево … 1 право
-
-        bool isDefault() const noexcept { return gainDb == 0.0f && pitch == 0.0f && pan == 0.0f; }
+        Variations,     // все на весь диапазон velocity, группа выбирает вариацию (random / cycle)
+        VelocityLayers  // диапазон velocity делится поровну между файлами по порядку имён
     };
 
     class SamplitProcessor final : public juce::AudioProcessor,
@@ -51,32 +51,36 @@ namespace samplit
         const juce::String getProgramName (int) override { return {}; }
         void changeProgramName (int, const juce::String&) override {}
 
-        // Состояние в проекте DAW: файлы на пэдах и последняя папка браузера
+        // Состояние в проекте DAW: группы, зоны, последняя папка браузера
         void getStateInformation (juce::MemoryBlock&) override;
         void setStateInformation (const void*, int) override;
-
-        // ---- Сэмплы. Всё ниже вызывается из message thread ----
 
         // Читает файл с диска. Медленно, поэтому вызывается из фонового потока. nullptr, если не аудио или длиннее 60 с
         static SamplePtr readSample (juce::AudioFormatManager&, const juce::File&);
 
-        // Загружает файл на пэд в фоне. Пэд сразу запоминает файл, звук появится, когда загрузка закончится
-        void loadPadSample (int pad, const juce::File&);
-        void clearPad (int pad);
+        // ---- Инструмент. Всё ниже вызывается из message thread; после изменения шлётся change message ----
 
-        // Ставит готовый сэмпл на голос (пэд или прослушивание). Старый сэмпл удаляется позже, когда точно не звучит
-        void assignSample (int voice, SamplePtr);
+        // Текущий снимок: группы и зоны. Не меняется, можно держать и читать сколько угодно
+        std::shared_ptr<const Instrument> getInstrument() const;
+
+        // Добавляет группу и возвращает её индекс (-1, если достигнут kMaxGroups). Выход по умолчанию: Out (индекс+1)
+        int addGroup (const juce::String& name);
+        void removeGroup (int group);                // вместе с зонами
+        void setGroup (int group, const Group&);
+
+        // Добавляет файлы на клавишу как зоны группы. Возвращает число добавленных зон
+        int addFilesToKey (const juce::Array<juce::File>& files, int group, int key, Spread spread);
+
+        // Папка как кит: файлы по порядку имён ложатся на клавиши подряд начиная с firstKey, по одному на клавишу
+        int addFolderAsKit (const juce::File& folder, int group, int firstKey);
+
+        void removeZone (int zone);
+        void setZone (int zone, const Zone&);        // sample из аргумента игнорируется
+        void clearKey (int group, int key);          // убирает зоны группы, покрывающие только эту клавишу
 
         // Прослушивание из браузера: грузит и играет файл в Main. Новое прослушивание обрывает старое
         void previewFile (const juce::File&);
-        void stopPreview() noexcept { pendingStops.fetch_or (1u << kPreviewVoice); }
-
-        void setPadParams (int pad, PadParams);
-        PadParams getPadParams (int pad) const;
-
-        juce::File getPadFile (int pad) const;
-        bool isPadLoaded (int pad) const { return owned[(size_t) pad] != nullptr; }
-        SamplePtr getPadSample (int pad) const { return owned[(size_t) pad]; }
+        void stopPreview() noexcept { pendingPreviewStop.store (true); }
 
         juce::File getLastFolder() const;
         void setLastFolder (const juce::File&);
@@ -86,44 +90,65 @@ namespace samplit
 
         // ---- UI ↔ audio thread ----
 
-        void triggerPad (int pad) noexcept { pendingTriggers.fetch_or (1u << pad); }
+        // Сыграть клавишу из интерфейса (velocity 1..127)
+        void triggerNote (int note, int velocity = 100) noexcept;
 
-        // Какие пэды сейчас звучат и какие идут на свой выход, а не в Main
-        uint32_t getActiveMask() const noexcept { return activeMask.load(); }
-        uint32_t getSeparateOutMask() const noexcept { return separateOutMask.load(); }
+        // Какие клавиши звучат (биты 0..127 в двух словах)
+        std::array<uint64_t, 2> getActiveKeys() const noexcept { return { activeLo.load(), activeHi.load() }; }
 
-        // Для тестов и сборки мусора: сколько снятых с пэдов сэмплов ещё ждут удаления
+        // Какие выходы 1..kNumOutputs включены в хосте (бит N-1). Группа на выключенный выход играет в Main
+        uint32_t getEnabledOutputMask() const noexcept { return enabledOutputs.load(); }
+
+        // Для тестов и сборки мусора: сколько снимков и сэмплов ещё ждут удаления
         size_t getRetiredCount() const noexcept { return retired.size(); }
         void collectGarbage (bool force = false);
+
+        // Сколько файлов ещё читается в фоне
+        int getNumLoading() const noexcept { return loadsInFlight.load(); }
 
     private:
         static BusesProperties makeBuses();
         void timerCallback() override { collectGarbage(); }
-        void startLoad (int voice, const juce::File&, bool playWhenReady);
 
-        PadEngine engine;
+        // Модель меняется только в message thread. publish() собирает снимок с загруженными сэмплами и отдаёт движку
+        void publish();
+        void requestLoad (const juce::File&);
+        void startPreviewWith (SamplePtr);
+        static juce::Array<juce::File> sortedAudioFiles (const juce::Array<juce::File>&);
+
+        SamplerEngine engine;
         juce::AudioFormatManager formats;
 
-        // Владение сэмплами: только message thread
-        std::array<SamplePtr, kNumVoices> owned {};
-        struct Retired { SamplePtr sample; juce::uint32 since; };
+        // Модель и кэш сэмплов: только message thread
+        Instrument model;
+        std::map<juce::String, SamplePtr> cache;
+        std::set<juce::String> loading, failed;
+
+        struct Retired { std::shared_ptr<const Instrument> snapshot; SamplePtr preview; juce::uint32 since; };
         std::vector<Retired> retired;
 
-        // Файлы пэдов и папка браузера: читаются и из потока хоста при сохранении проекта
+        // Опубликованный снимок читается и из потока хоста при сохранении проекта
         mutable juce::CriticalSection stateLock;
-        std::array<juce::File, kNumPads> padFiles;
-        std::array<PadParams, kNumPads> padParams {};
+        std::shared_ptr<const Instrument> published;
         juce::File lastFolder;
+        SamplePtr previewSample;
+        juce::File previewFileLoaded;
 
-        std::array<std::atomic<uint32_t>, kNumVoices> loadGeneration {};
-        std::atomic<uint32_t> pendingTriggers { 0 };
-        std::atomic<uint32_t> pendingStops { 0 };
-        std::atomic<uint32_t> activeMask { 0 };
-        std::atomic<uint32_t> separateOutMask { 0 };
+        // Очередь нот из UI в audio thread: пишет только message thread, читает только audio thread
+        static constexpr int kQueue = 64;
+        std::array<std::atomic<uint32_t>, kQueue> queue {};     // note | velocity << 8
+        std::atomic<uint32_t> queueWrite { 0 };
+        std::atomic<uint32_t> queueRead { 0 };
+        std::atomic<uint32_t> previewGeneration { 0 };
+        std::atomic<bool> pendingPreview { false };
+        std::atomic<bool> pendingPreviewStop { false };
+        std::atomic<uint64_t> activeLo { 0 }, activeHi { 0 };
+        std::atomic<uint32_t> enabledOutputs { 0 };
+        std::atomic<int> loadsInFlight { 0 };
 
         // Пока жив токен, отложенные колбэки загрузки могут обращаться к процессору
         std::shared_ptr<int> lifeToken = std::make_shared<int> (0);
-        juce::ThreadPool loader { juce::ThreadPoolOptions{}.withThreadName ("Samplit loader").withNumberOfThreads (1) };
+        juce::ThreadPool loader { juce::ThreadPoolOptions{}.withThreadName ("Samplit loader").withNumberOfThreads (2) };
 
         JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (SamplitProcessor)
     };

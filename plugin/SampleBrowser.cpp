@@ -208,7 +208,7 @@ namespace samplit
         else
             s = utf8 ("Показано ") + juce::String (visible.size()) + utf8 (" из ") + juce::String (allFiles.size());
 
-        status.setText (s + utf8 ("   ·   ↑↓ слушать, Enter или перетащить на пэд"), juce::dontSendNotification);
+        status.setText (s + utf8 ("   ·   ↑↓ слушать, Enter или перетащить на клавишу"), juce::dontSendNotification);
     }
 
     void SampleBrowser::paintListBoxItem (int row, juce::Graphics& g, int width, int height, bool selected)
@@ -275,8 +275,8 @@ namespace samplit
 
     void SampleBrowser::returnKeyPressed (int lastRowSelected)
     {
-        if (juce::isPositiveAndBelow (lastRowSelected, visible.size()) && onPutOnFreePad)
-            onPutOnFreePad (allFiles.getReference (visible[lastRowSelected]));
+        if (juce::isPositiveAndBelow (lastRowSelected, visible.size()) && onPutOnKey)
+            onPutOnKey (allFiles.getReference (visible[lastRowSelected]));
     }
 
     juce::var SampleBrowser::getDragSourceDescription (const juce::SparseSet<int>& rows)

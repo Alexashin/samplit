@@ -1,10 +1,11 @@
 #pragma once
 
+#include "GroupPanel.h"
+#include "KeyboardView.h"
 #include "LookAndFeel.h"
-#include "PadGrid.h"
-#include "PadSettings.h"
 #include "PluginProcessor.h"
 #include "SampleBrowser.h"
+#include "ZoneEditor.h"
 
 #include <juce_gui_basics/juce_gui_basics.h>
 
@@ -12,7 +13,8 @@
 
 namespace samplit
 {
-    // Окно плагина: браузер сэмплов слева, пэды справа. DragAndDropContainer нужен, чтобы тащить сэмпл из списка на пэд
+    // Окно плагина: браузер сэмплов слева, группы и зоны справа, клавиатура внизу.
+    // DragAndDropContainer нужен, чтобы тащить сэмпл из списка на клавишу
     class SamplitEditor final : public juce::AudioProcessorEditor,
                                 public juce::DragAndDropContainer
     {
@@ -30,8 +32,9 @@ namespace samplit
         juce::Rectangle<int> logoArea;
 
         SampleBrowser browser;
-        PadGrid pads;
-        PadSettings settings;
+        GroupPanel groups;
+        ZoneEditor zones;
+        KeyboardView keyboard;
 
         JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (SamplitEditor)
     };

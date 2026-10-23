@@ -30,16 +30,19 @@ target_sources(Samplit PRIVATE
     Brand.h
     LookAndFeel.h
     Sample.h
-    PadEngine.h
-    PadEngine.cpp
+    Instrument.h
+    SamplerEngine.h
+    SamplerEngine.cpp
     PluginProcessor.h
     PluginProcessor.cpp
     SampleBrowser.h
     SampleBrowser.cpp
-    PadGrid.h
-    PadGrid.cpp
-    PadSettings.h
-    PadSettings.cpp
+    KeyboardView.h
+    KeyboardView.cpp
+    GroupPanel.h
+    GroupPanel.cpp
+    ZoneEditor.h
+    ZoneEditor.cpp
     PluginEditor.h
     PluginEditor.cpp)
 

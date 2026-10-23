@@ -11,26 +11,41 @@ namespace samplit
     }
 
     SamplitEditor::SamplitEditor (SamplitProcessor& p)
-        : AudioProcessorEditor (&p), processor (p), browser (p), pads (p), settings (p)
+        : AudioProcessorEditor (&p), processor (p), browser (p), groups (p), zones (p), keyboard (p)
     {
         setLookAndFeel (&lookAndFeel);
         logo = juce::Drawable::createFromImageData (BinaryData::lockuphondark_svg, BinaryData::lockuphondark_svgSize);
 
-        browser.onPutOnFreePad = [this] (const juce::File& file)
+        // Enter в браузере кладёт файл на выбранную клавишу в выбранную группу
+        browser.onPutOnKey = [this] (const juce::File& file)
         {
-            const int pad = pads.firstFreePad();
-            processor.loadPadSample (pad >= 0 ? pad : 0, file);
+            const auto inst = processor.getInstrument();
+            int group = groups.getSelectedGroup();
+            if (inst == nullptr || inst->groups.empty())
+                group = processor.addGroup (utf8 ("Группа 1"));
+            if (group >= 0)
+                processor.addFilesToKey ({ file }, group, keyboard.getSelectedKey(), Spread::Variations);
         };
 
-        pads.onSelect = [this] (int pad) { settings.setPad (pad); };
+        keyboard.onSelectKey = [this] (int key) { zones.setKey (key); };
+        groups.onSelectGroup = [this] (int group)
+        {
+            keyboard.setSelectedGroup (group);
+            zones.setGroup (group);
+        };
+
+        keyboard.setSelectedGroup (groups.getSelectedGroup());
+        zones.setGroup (groups.getSelectedGroup());
+        zones.setKey (keyboard.getSelectedKey());
 
         addAndMakeVisible (browser);
-        addAndMakeVisible (pads);
-        addAndMakeVisible (settings);
+        addAndMakeVisible (groups);
+        addAndMakeVisible (zones);
+        addAndMakeVisible (keyboard);
 
         setResizable (true, true);
-        setResizeLimits (860, 520, 1800, 1200);
-        setSize (1080, 680);
+        setResizeLimits (900, 620, 1800, 1200);
+        setSize (1180, 780);
     }
 
     SamplitEditor::~SamplitEditor()
@@ -44,13 +59,16 @@ namespace samplit
         logoArea = area.removeFromTop (30);
         area.removeFromTop (16);
 
-        browser.setBounds (area.removeFromLeft (juce::jlimit (320, 460, area.getWidth() * 2 / 5)));
+        keyboard.setBounds (area.removeFromBottom (juce::jlimit (130, 180, area.getHeight() / 4)));
+        area.removeFromBottom (14);
+
+        browser.setBounds (area.removeFromLeft (juce::jlimit (320, 440, area.getWidth() * 3 / 10)));
         area.removeFromLeft (20);
 
-        // Пэды квадратные по ширине колонки, остаток высоты отдаём панели настроек
-        pads.setBounds (area.removeFromTop (juce::jmin (PadGrid::preferredHeight (area.getWidth()), area.getHeight() - 150)));
-        area.removeFromTop (6);
-        settings.setBounds (area.withHeight (juce::jmin (area.getHeight(), 150)));
+        // Группам нужно место под несколько строк, остальное таблице зон
+        groups.setBounds (area.removeFromTop (juce::jlimit (210, 330, area.getHeight() * 11 / 20)));
+        area.removeFromTop (12);
+        zones.setBounds (area);
     }
 
     void SamplitEditor::paint (juce::Graphics& g)

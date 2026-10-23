@@ -11,7 +11,7 @@
 namespace samplit
 {
     // Браузер сэмплов: выбор папки, фоновое сканирование, поиск по имени, список с прослушиванием и волна.
-    // Из списка сэмпл перетаскивается на пэд, Enter кладёт его на ближайший пустой пэд.
+    // Из списка сэмпл перетаскивается на клавишу, Enter кладёт его на выбранную клавишу.
     class SampleBrowser final : public juce::Component,
                                 private juce::ListBoxModel,
                                 private juce::ChangeListener
@@ -23,7 +23,7 @@ namespace samplit
         void paint (juce::Graphics&) override;
         void resized() override;
 
-        std::function<void (const juce::File&)> onPutOnFreePad;
+        std::function<void (const juce::File&)> onPutOnKey;
 
     private:
         class Scanner;

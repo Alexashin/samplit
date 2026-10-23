@@ -11,12 +11,12 @@ include(Catch)
 juce_add_console_app(SamplitTests PRODUCT_NAME "SamplitTests")
 
 target_sources(SamplitTests PRIVATE
-    ${CMAKE_SOURCE_DIR}/plugin/PadEngine.cpp
+    ${CMAKE_SOURCE_DIR}/plugin/SamplerEngine.cpp
     ${CMAKE_SOURCE_DIR}/plugin/PluginProcessor.cpp
     editor_stub.cpp
     juce_setup.cpp
     test_helpers.h
-    pad_engine_tests.cpp
+    sampler_engine_tests.cpp
     processor_tests.cpp
     core_tests.cpp)
 
@@ -26,6 +26,7 @@ target_compile_options(SamplitTests PRIVATE $<$<CXX_COMPILER_ID:MSVC>:/utf-8>)
 target_compile_definitions(SamplitTests PRIVATE
     JucePlugin_Name="Samplit"
     JUCE_WEB_BROWSER=0
+    JUCE_MODAL_LOOPS_PERMITTED=1
     JUCE_USE_CURL=0)
 
 target_link_libraries(SamplitTests

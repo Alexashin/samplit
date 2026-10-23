@@ -18,6 +18,16 @@ namespace samplit::brand
 
     // Радиус пэда: 24% стороны, как у знака
     constexpr float padRadiusRatio = 0.24f;
+
+    // Цвет группы: по индексу, одинаков на клавиатуре, в списке групп и в таблице зон
+    inline juce::Colour groupColour (int index)
+    {
+        static const juce::Colour base[] = { juce::Colour (0xff7ca1ff), juce::Colour (0xffffa66b), juce::Colour (0xff6fd6a1),
+                                             juce::Colour (0xffe27bd0), juce::Colour (0xffffd166), juce::Colour (0xff5fd0e8),
+                                             juce::Colour (0xffb79cff), juce::Colour (0xffff7b7b) };
+        const auto c = base[(size_t) (index % 8)];
+        return (index / 8) % 2 == 0 ? c : c.darker (0.35f);
+    }
 }
 
 namespace samplit
