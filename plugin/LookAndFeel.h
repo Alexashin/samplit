@@ -71,6 +71,13 @@ namespace samplit
             const juce::Point<float> dot (centre.x + arcRadius * std::sin (value), centre.y - arcRadius * std::cos (value));
             g.setColour (slider.findColour (juce::Slider::thumbColourId));
             g.fillEllipse (juce::Rectangle<float> (thickness * 1.6f, thickness * 1.6f).withCentre (dot));
+            drawFocus (g, slider, 6.0f);
+        }
+
+        // Невысокие списки (выход в линейке микшера) мельче, чтобы влезало «Out 16»
+        juce::Font getComboBoxFont (juce::ComboBox& box) override
+        {
+            return juce::FontOptions (box.getHeight() <= 24 ? 13.0f : juce::jmin (16.0f, (float) box.getHeight() * 0.85f));
         }
 
         void drawButtonBackground (juce::Graphics& g, juce::Button& button, const juce::Colour& background,
@@ -83,6 +90,31 @@ namespace samplit
                 colour = colour.brighter (0.08f);
             g.setColour (colour);
             g.fillRoundedRectangle (button.getLocalBounds().toFloat(), 8.0f);
+            drawFocus (g, button, 8.0f);
+        }
+
+        void drawComboBox (juce::Graphics& g, int width, int height, bool down, int bx, int by, int bw, int bh,
+                           juce::ComboBox& box) override
+        {
+            LookAndFeel_V4::drawComboBox (g, width, height, down, bx, by, bw, bh, box);
+            drawFocus (g, box, 5.0f);
+        }
+
+        void drawLinearSlider (juce::Graphics& g, int x, int y, int width, int height, float pos, float minPos,
+                               float maxPos, juce::Slider::SliderStyle style, juce::Slider& slider) override
+        {
+            LookAndFeel_V4::drawLinearSlider (g, x, y, width, height, pos, minPos, maxPos, style, slider);
+            drawFocus (g, slider, 6.0f);
+        }
+
+        // Обводка элемента с фокусом клавиатуры. Слайдеры сами не перерисовываются при смене фокуса,
+        // поэтому окно плагина перерисовывает их через FocusChangeListener
+        static void drawFocus (juce::Graphics& g, juce::Component& c, float radius)
+        {
+            if (! c.hasKeyboardFocus (false))
+                return;
+            g.setColour (brand::accentHover);
+            g.drawRoundedRectangle (c.getLocalBounds().toFloat().reduced (1.0f), radius, 2.0f);
         }
     };
 }

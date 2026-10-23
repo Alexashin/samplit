@@ -10,7 +10,8 @@
 namespace samplit
 {
     // Пиано-клавиатура (ноты 24..108, C3 = 60). Клик играет клавишу, чем ниже точка клика, тем громче.
-    // Клавиши с зонами подкрашены цветом группы и подписаны числом вариаций.
+    // С китом клавиши барабанов подкрашены по барабану, имя барабана видно в подсказке над клавиатурой.
+    // В служебном режиме клавиши с зонами подкрашены цветом группы и подписаны числом вариаций.
     // Сюда же роняют файлы и папки: из списка браузера и из проводника. Все файлы ложатся на клавишу под курсором
     // в выбранную группу как вариации, с зажатым Alt как слои по velocity.
     class KeyboardView final : public juce::Component,
@@ -59,6 +60,7 @@ namespace samplit
         void select (int key);
         void rebuildKeyInfo();
         juce::String hintText() const;
+        juce::String pieceName (int key) const;
 
         void changeListenerCallback (juce::ChangeBroadcaster*) override;
         void timerCallback() override;
@@ -70,6 +72,8 @@ namespace samplit
 
         // Что стоит на клавишах: число зон и биты групп. Пересчитывается при смене инструмента, не в paint
         std::shared_ptr<const Instrument> instrument;
+        std::shared_ptr<const Kit> kit;             // не nullptr: играет кит, клавиатура показывает барабаны
+        std::array<int, 128> pieceAt {};
         std::array<int, 128> zoneCount {};
         std::array<uint16_t, 128> groupBits {};
 

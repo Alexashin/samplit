@@ -50,6 +50,7 @@ namespace samplit
     {
         setWantsKeyboardFocus (true);
         instrument = processor.getInstrument();
+        kit = processor.isServiceMode() ? nullptr : processor.getKit();
         rebuildKeyInfo();
         processor.addChangeListener (this);
         startTimerHz (30);
@@ -138,6 +139,14 @@ namespace samplit
     {
         zoneCount.fill (0);
         groupBits.fill (0);
+        pieceAt.fill (-1);
+
+        if (kit != nullptr)
+        {
+            for (int k = 0; k < 128; ++k)
+                pieceAt[(size_t) k] = kit->notes[(size_t) k].piece;
+            return;
+        }
         if (instrument == nullptr)
             return;
 
@@ -155,8 +164,16 @@ namespace samplit
     void KeyboardView::changeListenerCallback (juce::ChangeBroadcaster*)
     {
         instrument = processor.getInstrument();
+        kit = processor.isServiceMode() ? nullptr : processor.getKit();
         rebuildKeyInfo();
         repaint();
+    }
+
+    juce::String KeyboardView::pieceName (int key) const
+    {
+        if (kit == nullptr || ! juce::isPositiveAndBelow (key, 128) || pieceAt[(size_t) key] < 0)
+            return {};
+        return juce::String::fromUTF8 (kit->pieces[(size_t) pieceAt[(size_t) key]].name.c_str());
     }
 
     void KeyboardView::timerCallback()
@@ -193,6 +210,8 @@ namespace samplit
         select (key);
         processor.triggerNote (key, velocity);
         info = noteName (key) + utf8 ("  ·  velocity ") + juce::String (velocity);
+        if (kit != nullptr)
+            info << "  ·  " << (pieceAt[(size_t) key] >= 0 ? pieceName (key) : utf8 ("пусто"));
         infoSince = juce::Time::getMillisecondCounter();
         repaint();
     }
@@ -230,7 +249,7 @@ namespace samplit
 
     bool KeyboardView::isInterestedInDragSource (const SourceDetails& d)
     {
-        return d.description.isString() && isAudioFile (juce::File (d.description.toString()));
+        return kit == nullptr && d.description.isString() && isAudioFile (juce::File (d.description.toString()));
     }
 
     void KeyboardView::itemDragEnter (const SourceDetails& d)
@@ -249,6 +268,8 @@ namespace samplit
 
     bool KeyboardView::isInterestedInFileDrag (const juce::StringArray& files)
     {
+        if (kit != nullptr)
+            return false;
         for (const auto& f : files)
             if (juce::File (f).isDirectory() || isAudioFile (juce::File (f)))
                 return true;
@@ -310,6 +331,13 @@ namespace samplit
         if (info.isNotEmpty())
             return info;
 
+        if (kit != nullptr)
+        {
+            const auto name = pieceName (selectedKey);
+            return noteName (selectedKey) + (name.isNotEmpty() ? "  ·  " + name : juce::String())
+                   + utf8 ("  ·  клик играет барабан, ниже = громче  ·  ←/→ выбор клавиши, пробел играет");
+        }
+
         return utf8 ("Клик играет клавишу, ниже = громче  ·  перетащите файл или папку на клавишу  ·  Alt: слои по velocity  ·  ←/→ выбор клавиши");
     }
 
@@ -336,11 +364,14 @@ namespace samplit
 
                 const auto r = keyRect[(size_t) k].reduced (0.5f, 0.0f);
                 const int count = zoneCount[(size_t) k];
+                const int piece = pieceAt[(size_t) k];
                 const bool lit = isLit (k) != 0;
 
-                // Цвет клавиши: звучит, есть зоны, пусто
+                // Цвет клавиши: звучит, барабан или зоны, пусто
                 juce::Colour fill = black ? juce::Colour (0xff10131a) : juce::Colour (0xffdfe3ea);
-                if (count > 0)
+                if (piece >= 0)
+                    fill = fill.interpolatedWith (brand::groupColour (piece), black ? 0.55f : 0.6f);
+                else if (count > 0)
                 {
                     int group = 0;
                     for (int b = 0; b < 16; ++b)

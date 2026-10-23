@@ -5,16 +5,33 @@
 
 namespace samplit
 {
+    namespace
+    {
+       #if SAMPLIT_SERVICE_MODE
+        constexpr bool kServiceModeAvailable = true;
+       #else
+        constexpr bool kServiceModeAvailable = false;
+       #endif
+    }
+
     juce::AudioProcessorEditor* SamplitProcessor::createEditor()
     {
         return new SamplitEditor (*this);
     }
 
     SamplitEditor::SamplitEditor (SamplitProcessor& p)
-        : AudioProcessorEditor (&p), processor (p), browser (p), groups (p), zones (p), keyboard (p)
+        : AudioProcessorEditor (&p), processor (p), presets (p), license (p.getLicense()), mixer (p),
+          browser (p), groups (p), zones (p), keyboard (p)
     {
         setLookAndFeel (&lookAndFeel);
         logo = juce::Drawable::createFromImageData (BinaryData::lockuphondark_svg, BinaryData::lockuphondark_svgSize);
+
+        // Лицензия поменялась: другие пакеты открыты, у пресетов другое состояние
+        processor.getLicense().onChange = [this]
+        {
+            license.refresh();
+            presets.rescan();
+        };
 
         // Enter в браузере кладёт файл на выбранную клавишу в выбранную группу
         browser.onPutOnKey = [this] (const juce::File& file)
@@ -38,10 +55,20 @@ namespace samplit
         zones.setGroup (groups.getSelectedGroup());
         zones.setKey (keyboard.getSelectedKey());
 
-        addAndMakeVisible (browser);
-        addAndMakeVisible (groups);
-        addAndMakeVisible (zones);
-        addAndMakeVisible (keyboard);
+        serviceButton.setButtonText (utf8 ("Служебный режим"));
+        serviceButton.setClickingTogglesState (true);
+        serviceButton.setTooltip (utf8 ("Ручная раскладка сэмплов по клавишам. Пока он включён, кит молчит"));
+        serviceButton.onClick = [this] { showServiceScreen (serviceButton.getToggleState()); };
+
+        for (auto* c : std::initializer_list<juce::Component*> { &presets, &license, &mixer, &browser, &groups, &zones, &keyboard })
+            addChildComponent (c);
+        keyboard.setVisible (true);
+        addChildComponent (serviceButton);
+        serviceButton.setVisible (kServiceModeAvailable);
+
+        showServiceScreen (kServiceModeAvailable && processor.isServiceMode());
+
+        juce::Desktop::getInstance().addFocusChangeListener (this);
 
         setResizable (true, true);
         setResizeLimits (900, 620, 1800, 1200);
@@ -50,17 +77,54 @@ namespace samplit
 
     SamplitEditor::~SamplitEditor()
     {
+        juce::Desktop::getInstance().removeFocusChangeListener (this);
+        processor.getLicense().onChange = nullptr;
         setLookAndFeel (nullptr);
+    }
+
+    // Обводка фокуса рисуется в LookAndFeel: перерисовать прежний и новый элемент
+    void SamplitEditor::globalFocusChanged (juce::Component* focused)
+    {
+        if (lastFocused != nullptr)
+            lastFocused->repaint();
+        lastFocused = focused != nullptr && isParentOf (focused) ? focused : nullptr;
+        if (lastFocused != nullptr)
+            lastFocused->repaint();
+    }
+
+    void SamplitEditor::showServiceScreen (bool service)
+    {
+        processor.setServiceMode (service);
+        serviceButton.setToggleState (service, juce::dontSendNotification);
+
+        for (auto* c : std::initializer_list<juce::Component*> { &presets, &license, &mixer })
+            c->setVisible (! service);
+        for (auto* c : std::initializer_list<juce::Component*> { &browser, &groups, &zones })
+            c->setVisible (service);
+        resized();
     }
 
     void SamplitEditor::resized()
     {
         auto area = getLocalBounds().reduced (20);
         logoArea = area.removeFromTop (30);
+        if (serviceButton.isVisible())
+            serviceButton.setBounds (logoArea.removeFromRight (150).reduced (0, 1));
         area.removeFromTop (16);
 
         keyboard.setBounds (area.removeFromBottom (juce::jlimit (130, 180, area.getHeight() / 4)));
         area.removeFromBottom (14);
+
+        if (! processor.isServiceMode())
+        {
+            auto left = area.removeFromLeft (juce::jlimit (300, 400, area.getWidth() * 3 / 10));
+            area.removeFromLeft (20);
+            license.setBounds (left.removeFromBottom (128));
+            left.removeFromBottom (12);
+            presets.setBounds (left);
+            mixer.setBounds (area);
+            return;
+        }
 
         browser.setBounds (area.removeFromLeft (juce::jlimit (320, 440, area.getWidth() * 3 / 10)));
         area.removeFromLeft (20);

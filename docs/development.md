@@ -30,6 +30,21 @@ git submodule update --init --recursive
 | VST3 | `plugin\Samplit_artefacts\<Config>\VST3\Samplit.vst3` (копируется в `%LOCALAPPDATA%\Programs\Common\VST3`) |
 | Отдельное приложение | `plugin\Samplit_artefacts\<Config>\Standalone\Samplit.exe` |
 | Тесты | `tests\SamplitTests_artefacts\<Config>\SamplitTests.exe` |
+| Снимки окна | `tools\snapshot\samplit-snapshot_artefacts\<Config>\samplit-snapshot.exe` |
+
+Служебный режим (ручная раскладка сэмплов: браузер, группы, зоны) есть в Debug. В Release его нет, пока не включить `-DSAMPLIT_SERVICE_MODE=ON`.
+
+## Где плагин ищет данные
+
+Всё в `%APPDATA%\Samplit` (на macOS `~/Library/Samplit`):
+
+| Что | Где |
+|---|---|
+| Токен лицензии | `license.token` (и `clock.state`, защита от перевода часов) |
+| Пакеты | `packs\*.splpack` |
+| Пресеты | `presets\*.json` (формат: `docs/preset-format.md`) |
+
+Адрес сервера лицензий задаётся при сборке определением `SAMPLIT_LICENSE_URL`. Без него плагин только проверяет токен и в сеть не ходит.
 
 Чтобы не копировать плагин в системную папку, добавьте `-DSAMPLIT_COPY_PLUGIN=OFF` к вызову CMake.
 
@@ -57,6 +72,8 @@ ctest --test-dir build\Debug --output-on-failure
 - `processor_tests.cpp` проверяют процессор: шины и раскладки (Main стерео, 16 моно-выходов), маршрутизацию на выходы, прослушивание в Main, чтение WAV, состояние проекта.
 - `pack_tests.cpp` проверяют формат пакета: запись и чтение, шифрование, подмену байта, манифест.
 - `license_tests.cpp` проверяют токен лицензии: подпись, срок, машину, откат часов, совместимость с Python-сервером.
+- `kit_loader_tests.cpp` проверяют загрузчик кита: разбор пресета, сборку `Kit` из пакетов, пакеты без лицензии, отмену, фоновую загрузку в процессоре.
+- `license_manager_tests.cpp` проверяют лицензию в плагине и экран кита без графики: ключи из токена, просрочку, откат часов, список пресетов со статусом пакетов, микшер (Solo, Mute, выход), сохранение пресета и микшера в проекте, служебный режим.
 - `core_tests.cpp` проверяют индекс папок в SQLite.
 - Python: `python tests/test_mark_kit.py` (разметка), `cd tools/license_server; .venv\Scripts\python.exe -m pytest tests` (сервер).
 
@@ -69,6 +86,14 @@ pluginval.exe --strictness-level 5 --skip-gui-tests --validate build\Debug\plugi
 ```
 
 Ожидаем `SUCCESS`. Проверка на уровне 5 прогоняет разные частоты и размеры блока, включение и выключение шин.
+
+## Снимки интерфейса
+
+```powershell
+build\Debug\tools\snapshot\samplit-snapshot_artefacts\Debug\samplit-snapshot.exe <папка>
+```
+
+Запускать из корня репозитория (берёт `tools/presets/studio600-default.json`). Утилита собирает во временной папке тестовый пакет на 15 микрофонов и токен, подписанный тестовым ключом, и сохраняет окно плагина в PNG: без лицензии, до выбора пресета, с загруженным китом, в узком (900×620) и широком окне. Нужна, чтобы проверить вёрстку без DAW, и для иллюстраций в записке.
 
 ## Проверка в DAW
 

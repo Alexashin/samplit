@@ -52,11 +52,22 @@ target_sources(Samplit PRIVATE
     GroupPanel.cpp
     ZoneEditor.h
     ZoneEditor.cpp
+    PresetPanel.h
+    PresetPanel.cpp
+    LicensePanel.h
+    LicensePanel.cpp
+    MixerPanel.h
+    MixerPanel.cpp
     PluginEditor.h
     PluginEditor.cpp)
 
 # Исходники в UTF-8: русские строки интерфейса
 target_compile_options(Samplit PRIVATE $<$<CXX_COMPILER_ID:MSVC>:/utf-8>)
+
+# Служебный режим (ручная раскладка сэмплов) есть в Debug всегда, в Release только по опции
+option(SAMPLIT_SERVICE_MODE "Show the service (manual mapping) screen in Release builds" OFF)
+target_compile_definitions(Samplit PRIVATE
+    SAMPLIT_SERVICE_MODE=$<IF:$<OR:$<CONFIG:Debug>,$<BOOL:${SAMPLIT_SERVICE_MODE}>>,1,0>)
 
 target_compile_definitions(Samplit PUBLIC
     JUCE_WEB_BROWSER=0
