@@ -3,6 +3,7 @@
 #include "Instrument.h"
 #include "KitEngine.h"
 #include "KitLoader.h"
+#include "LicenseManager.h"
 #include "SamplerEngine.h"
 
 #include <juce_audio_formats/juce_audio_formats.h>
@@ -97,6 +98,13 @@ namespace samplit
         // При ошибке или отмене прежний кит остаётся играть. Звук не блокируется
         void loadKitAsync (const Preset&, KitLoadOptions, std::function<void (const KitLoadResult&)> done = {});
         void cancelKitLoad();
+
+        // То же, но пакеты берутся из папки лицензии, а ключи из действующего токена
+        void loadPreset (const Preset&, std::function<void (const KitLoadResult&)> done = {});
+
+        LicenseManager& getLicense() noexcept { return *license; }
+        // Для тестов: подмена менеджера лицензий (другая папка данных, ключ, часы)
+        void setLicenseManager (std::unique_ptr<LicenseManager>);
         bool isKitLoading() const noexcept { return kitLoading.load(); }
         float getKitLoadProgress() const noexcept { return kitProgress.load(); }
 
@@ -175,6 +183,7 @@ namespace samplit
         std::atomic<uint64_t> activeLo { 0 }, activeHi { 0 };
         std::atomic<uint32_t> enabledOutputs { 0 };
         std::atomic<int> loadsInFlight { 0 };
+        std::unique_ptr<LicenseManager> license;
         std::atomic<bool> kitLoading { false };
         std::atomic<float> kitProgress { 0.0f };
         std::shared_ptr<std::atomic<bool>> kitCancel;       // только message thread

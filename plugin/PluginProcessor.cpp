@@ -26,6 +26,7 @@ namespace samplit
     SamplitProcessor::SamplitProcessor() : AudioProcessor (makeBuses())
     {
         formats.registerBasicFormats();
+        license = std::make_unique<LicenseManager> (LicenseManager::defaultConfig());
         model.groups.push_back ({ "Group 1", 1 });
         publish();
         startTimer (1000);
@@ -420,6 +421,19 @@ namespace samplit
             retired.push_back ({ nullptr, nullptr, std::move (old), juce::Time::getMillisecondCounter() });
         collectGarbage();
         sendChangeMessage();
+    }
+
+    void SamplitProcessor::setLicenseManager (std::unique_ptr<LicenseManager> manager)
+    {
+        license = std::move (manager);
+    }
+
+    void SamplitProcessor::loadPreset (const Preset& preset, std::function<void (const KitLoadResult&)> done)
+    {
+        KitLoadOptions options;
+        options.packDir = license->getPackDir();
+        options.keyFor = [this] (const juce::String& id, pack::PackKey& key) { return license->keyFor (id, key); };
+        loadKitAsync (preset, std::move (options), std::move (done));
     }
 
     void SamplitProcessor::cancelKitLoad()

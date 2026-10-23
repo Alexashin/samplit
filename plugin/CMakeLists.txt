@@ -36,6 +36,8 @@ target_sources(Samplit PRIVATE
     Kit.h
     KitLoader.h
     KitLoader.cpp
+    LicenseManager.h
+    LicenseManager.cpp
     KitEngine.h
     KitEngine.cpp
     PluginProcessor.h
