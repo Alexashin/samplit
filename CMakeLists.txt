@@ -15,6 +15,7 @@ option(SAMPLIT_BUILD_TESTS "Build unit tests" ON)
 
 add_subdirectory(libs/JUCE)
 add_subdirectory(core)
+add_subdirectory(tools/packer)
 add_subdirectory(plugin)
 
 if(SAMPLIT_BUILD_HOST)

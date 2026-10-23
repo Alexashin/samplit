@@ -1,0 +1,24 @@
+{
+  "publicKeyHex": "03a107bff3ce10be1d70dd18e74bc09967e4d6309ba50d5f1ddc8664125531b8",
+  "fingerprint": "win:test-machine-guid:1a2b3c4d",
+  "issuedAt": 1800000000,
+  "validSeconds": 604800,
+  "packKeysHex": {
+    "studio600-kick": "6465666768696a6b6c6d6e6f707172737475767778797a7b7c7d7e7f80818283",
+    "studio600-тарелки": "0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20"
+  },
+  "token": {
+    "payload": {
+      "licenseId": "L-99D3871E",
+      "user": "Серверный тест",
+      "machine": "c712cf708fc3c9aedc843421c06950e8b63cff4b274711c2d9bf5ad5ffe79b5e",
+      "notBefore": 1800000000,
+      "expires": 1800604800,
+      "packs": {
+        "studio600-kick": "BNhDPzZ60AOf/bVT2RbZSTVQTZocY5ZuIJ82+DOhzcXJo4Rhi65bR5oEP48luESMxEtQM2stL/IMXAcFR5v+YLx+a2O50s7O",
+        "studio600-тарелки": "5kCvx8Q1wkSKyd+zi0/+1AHpS1qj43I//komlNcX1BbTxIyZEumjnk8KYdoEUDx2Pond+3xT95VmunzXLHdb0+rO+OkvyBCc"
+      }
+    },
+    "sig": "a9Ho3A/PFSdFHhAHryVckCC0F8G95tZusJw4WlhPKvnZ0HvBrC2s76mV3PtLtRO58U9q3QRUx/VZ6VP26NVFDw=="
+  }
+}

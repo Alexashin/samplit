@@ -12,12 +12,36 @@ target_include_directories(sqlite3 PUBLIC ${sqlite_amalgamation_SOURCE_DIR})
 target_compile_definitions(sqlite3 PRIVATE SQLITE_THREADSAFE=1 SQLITE_OMIT_LOAD_EXTENSION)
 set_target_properties(sqlite3 PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
+# Monocypher: шифрование блоков пакетов (XChaCha20-Poly1305) и подпись токена лицензии (Ed25519 на SHA-512,
+# совместима со стандартными библиотеками, в том числе на сервере). Тарболл зафиксирован хешем
+FetchContent_Declare(monocypher
+    URL      https://github.com/LoupVaillant/Monocypher/archive/refs/tags/4.0.2.tar.gz
+    URL_HASH SHA256=BC1CA30B1B2654E4E7DAF2492C0D204200E55137F23FDA6B7142FD7D523BD6B4
+    DOWNLOAD_EXTRACT_TIMESTAMP TRUE)
+FetchContent_MakeAvailable(monocypher)
+
+add_library(monocypher STATIC
+    ${monocypher_SOURCE_DIR}/src/monocypher.c
+    ${monocypher_SOURCE_DIR}/src/optional/monocypher-ed25519.c)
+target_include_directories(monocypher PUBLIC ${monocypher_SOURCE_DIR}/src ${monocypher_SOURCE_DIR}/src/optional)
+set_target_properties(monocypher PROPERTIES POSITION_INDEPENDENT_CODE ON)
+
 # Ядро без графики. Модули JUCE (juce_core, juce_audio_formats) подключаются как к обычной
 # статической библиотеке: код модулей компилируется в неё, а потребители (плагин, тесты) линкуют те же
 # модули и получают свои копии; компоновщик берёт символы из первого определения, дубликатов нет.
 add_library(samplit_core STATIC
     include/samplit/core/Library.h
-    src/Library.cpp)
+    src/Library.cpp
+    include/samplit/core/Manifest.h
+    src/Manifest.cpp
+    include/samplit/core/Pack.h
+    src/Pack.cpp
+    src/PackRandom.cpp
+    include/samplit/core/License.h
+    src/License.cpp
+    src/LicenseKey.cpp
+    include/samplit/core/LicenseClient.h
+    src/LicenseClient.cpp)
 set_target_properties(samplit_core PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
 target_include_directories(samplit_core PUBLIC include)
@@ -30,8 +54,14 @@ target_compile_definitions(samplit_core PUBLIC
 target_link_libraries(samplit_core
     PUBLIC
         sqlite3
+        monocypher
         juce::juce_core
         juce::juce_audio_formats
     PRIVATE
         juce::juce_recommended_config_flags
         juce::juce_recommended_warning_flags)
+
+# Генератор случайных чисел ОС (PackRandom.cpp)
+if(WIN32)
+    target_link_libraries(samplit_core PRIVATE bcrypt)
+endif()

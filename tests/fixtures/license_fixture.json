@@ -1,0 +1,25 @@
+{
+  "publicKeyHex": "03a107bff3ce10be1d70dd18e74bc09967e4d6309ba50d5f1ddc8664125531b8",
+  "fingerprint": "win:test-machine-guid:1a2b3c4d",
+  "machineId": "c712cf708fc3c9aedc843421c06950e8b63cff4b274711c2d9bf5ad5ffe79b5e",
+  "now": 1800000000,
+  "canonicalPayload": "{\"expires\":4100000000,\"licenseId\":\"L-FIXTURE-1\",\"machine\":\"c712cf708fc3c9aedc843421c06950e8b63cff4b274711c2d9bf5ad5ffe79b5e\",\"notBefore\":1700000000,\"packs\":{\"studio600-kick\":\"AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBoTyK4E+WLcnEQaSORR5Yu0jBO6NDp6Zj8lzn5cXPkcqGFjO1W6HRx3W62SCuHFrp\",\"studio600-тарелки\":\"AgICAgICAgICAgICAgICAgICAgICAgICxz5ZhZR0RKNviW/VMc2YoM9wKPmQ0uJequ3r/WJMANzBEkXmGPkDIdG4QKb1mFNk\"},\"user\":\"Тестовый пользователь \\\"Q\\\"\"}",
+  "packKeysHex": {
+    "studio600-kick": "6465666768696a6b6c6d6e6f707172737475767778797a7b7c7d7e7f80818283",
+    "studio600-тарелки": "0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20"
+  },
+  "token": {
+    "payload": {
+      "licenseId": "L-FIXTURE-1",
+      "user": "Тестовый пользователь \"Q\"",
+      "machine": "c712cf708fc3c9aedc843421c06950e8b63cff4b274711c2d9bf5ad5ffe79b5e",
+      "notBefore": 1700000000,
+      "expires": 4100000000,
+      "packs": {
+        "studio600-kick": "AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBoTyK4E+WLcnEQaSORR5Yu0jBO6NDp6Zj8lzn5cXPkcqGFjO1W6HRx3W62SCuHFrp",
+        "studio600-тарелки": "AgICAgICAgICAgICAgICAgICAgICAgICxz5ZhZR0RKNviW/VMc2YoM9wKPmQ0uJequ3r/WJMANzBEkXmGPkDIdG4QKb1mFNk"
+      }
+    },
+    "sig": "IoQswvQ+8Hhf2+5NXGDLnXpCpTDsajVL8pPoS9qPEZCnjEI4xQ8KYP+BCPdiZ9af5cChBhF+9ytbtGkitk6KCg=="
+  }
+}
