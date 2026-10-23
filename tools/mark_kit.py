@@ -197,7 +197,8 @@ def build_packs(kit, mappings, library_root=None):
     piece_order = {p['id']: i for i, p in enumerate(kit['pieces'])}
     frames_cache = {}
 
-    report = {'problems': [], 'orphans': [], 'sources': {}}
+    report = {'problems': [], 'orphans': [], 'excluded': [], 'sources': {}}
+    exclude = set(kit.get('excludeFiles', []))   # повреждённые файлы библиотеки: удар с таким файлом не берём
 
     # pack id -> piece id -> {'piece':..., 'hits': [...], 'layers': {...}}
     store = defaultdict(dict)
@@ -237,7 +238,7 @@ def build_packs(kit, mappings, library_root=None):
             report['problems'].append(f'нет выгрузки {nki}.json для источника {source}')
             continue
         hits = merge_hits(mappings[nki]['hits'])
-        stat = {'nki': nki, 'hits_in': 0, 'hits_out': 0, 'zones_out': 0, 'merges': 0}
+        stat = {'nki': nki, 'hits_in': 0, 'hits_out': 0, 'zones_out': 0, 'zones_excluded': 0, 'merges': 0}
         report['sources'][source] = stat
 
         # Группируем по (барабан, клавиша, -D) для разбиения на отрезки velocity
@@ -284,6 +285,10 @@ def build_packs(kit, mappings, library_root=None):
                         for pr in probs:
                             report['problems'].append(f"{pid} клавиша {key} velocity {h['vel']} {mic['id']}: {pr}")
                     hid = f"{pid}_{key}_{h['vel']}" + ('_d' if (h['d'] and not h['merged']) else '')
+                    if any(f['path'] in exclude for f in files.values()):
+                        report['excluded'].append(hid)
+                        stat['zones_excluded'] += len(files)
+                        continue
                     hit = {'id': hid, 'key': key, 'vel': h['vel'], 'd': peer}
                     pack_id = unverified_pack if unverified else piece['pack']
                     put_hit(pack_id, piece, hit, layer, unverified, files)
@@ -410,7 +415,7 @@ def check(kit, mappings, library_root, out=print, expected=(EXPECTED_HITS, EXPEC
             s = report['sources'][snare]
             nki = mappings[nki_name]
             hits_total = base['hits_in'] + s['hits_in']
-            zones_total = base['zones_out'] + s['zones_out']
+            zones_total = base['zones_out'] + s['zones_out'] + base['zones_excluded'] + s['zones_excluded']
             out(f"   {nki_name}: ударов {hits_total} (ожидание {expected[0]}), "
                 f"зон {zones_total} (ожидание {expected[1]}); зон в выгрузке {nki['zones']}")
             if hits_total != expected[0]:
@@ -420,6 +425,8 @@ def check(kit, mappings, library_root, out=print, expected=(EXPECTED_HITS, EXPEC
                 out(f'!  расхождение по зонам: {zones_total} вместо {expected[1]}')
                 errors += 1
     out(f"   слито обычный + -D в один удар (A5): {base['merges']}")
+    if report['excluded']:
+        out(f"   вырезано ударов с повреждёнными файлами (excludeFiles): {len(report['excluded'])}: {sorted(set(report['excluded']))}")
     if report['orphans']:
         out(f"!  клавиши без разметки (сохранены в барабан orphan пакета непроверенного): {report['orphans']}")
     # Различия между .nki вне малого барабана

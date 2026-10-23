@@ -12,7 +12,7 @@ desktop.ini
 
 # deps / builds
 node_modules/
-dist/
+/dist/
 build/
 .venv/
 venv/

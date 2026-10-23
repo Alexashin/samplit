@@ -31,7 +31,8 @@ Copy-Item (Join-Path $artefacts 'VST3\Samplit.vst3') (Join-Path $out 'Plugin') -
 Copy-Item (Join-Path $artefacts 'Standalone\Samplit.exe') (Join-Path $out 'Plugin')
 Copy-Item (Join-Path $packs '*.splpack') (Join-Path $out 'Data\packs')
 Copy-Item (Join-Path $root 'tools\presets\*.json') (Join-Path $out 'Data\presets')
-Copy-Item (Join-Path $root 'tools\dist\install.ps1'), (Join-Path $root 'tools\dist\uninstall.ps1') $setup
+Copy-Item (Join-Path $root 'tools\dist\install.ps1'), (Join-Path $root 'tools\dist\uninstall.ps1'),
+    (Join-Path $root 'tools\dist\fingerprint.ps1'), (Join-Path $root 'tools\dist\license.ps1') $setup
 Copy-Item (Join-Path $root 'tools\dist\img') $setup -Recurse
 Copy-Item (Join-Path $root 'tools\dist\guide.html') (Join-Path $out 'Инструкция.html')
 
@@ -39,6 +40,10 @@ Copy-Item (Join-Path $root 'tools\dist\guide.html') (Join-Path $out 'Инстр�
 $cmd = "@echo off`r`npowershell -NoProfile -ExecutionPolicy Bypass -File `"%~dp0setup\{0}`"`r`npause`r`n"
 [IO.File]::WriteAllText((Join-Path $out 'Установить.cmd'), ($cmd -f 'install.ps1'), [Text.Encoding]::ASCII)
 [IO.File]::WriteAllText((Join-Path $out 'Удалить.cmd'), ($cmd -f 'uninstall.ps1'), [Text.Encoding]::ASCII)
+[IO.File]::WriteAllText((Join-Path $out 'Код компьютера.cmd'), ($cmd -f 'fingerprint.ps1'), [Text.Encoding]::ASCII)
+# Файл лицензии перетаскивают на этот батник: его путь приходит в %1
+$lic = "@echo off`r`npowershell -NoProfile -ExecutionPolicy Bypass -File `"%~dp0setup\license.ps1`" %1`r`npause`r`n"
+[IO.File]::WriteAllText((Join-Path $out 'Установить лицензию.cmd'), $lic, [Text.Encoding]::ASCII)
 
 if ($License) {
     if (-not (Test-Path $License)) { throw "нет файла лицензии: $License" }

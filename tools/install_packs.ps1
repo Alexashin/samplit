@@ -1,6 +1,8 @@
 ﻿# Сборка пакетов библиотеки Studio600 и установка их на этот компьютер вместе с пресетами и токеном лицензии.
 #
-#   .\tools\install_packs.ps1                       все пакеты из sample_library\packs-src (кроме unverified), токен на 120 дней
+#   .\tools\install_packs.ps1                       все пакеты из sample_library\packs-src (кроме unverified), бессрочный токен
+#   .\tools\install_packs.ps1 -All                  вместе с studio600-unverified (полные пресеты)
+#   .\tools\install_packs.ps1 -Days 120             токен на срок вместо бессрочного
 #   .\tools\install_packs.ps1 -Packs studio600-core,studio600-hat
 #   .\tools\install_packs.ps1 -SkipBuild            только пресеты и токен (пакеты уже собраны)
 #
@@ -15,13 +17,16 @@
 # лицензий (tools\license_server\.venv). Сэмплы библиотеки в sample_library\00-Studio600ru-Drum-LIB.
 param(
     [string[]]$Packs = @(),
-    [int]$Days = 120,
+    [int]$Days = 0,         # 0: бессрочный токен
+    [switch]$All,
     [switch]$SkipBuild
 )
 
 $ErrorActionPreference = 'Stop'
 $root = Resolve-Path (Join-Path $PSScriptRoot '..')
 $env:PYTHONIOENCODING = 'utf-8'
+# Через powershell -File массив приходит одной строкой через запятую
+$Packs = @($Packs | ForEach-Object { $_ -split ',' } | Where-Object { $_ })
 
 $packer = Join-Path $root 'build\Release\tools\packer\samplit-packer_artefacts\Release\samplit-packer.exe'
 $python = Join-Path $root 'tools\license_server\.venv\Scripts\python.exe'
@@ -37,10 +42,11 @@ foreach ($need in @($packer, $python, $library, $sources, (Join-Path $secrets 's
 New-Item -ItemType Directory -Force (Join-Path $data 'packs'), (Join-Path $data 'presets'), (Join-Path $secrets 'packs') | Out-Null
 
 $manifests = Get-ChildItem $sources -Filter '*.json' | Sort-Object Name
-# studio600-unverified по умолчанию не собираем: пресеты его не берут (includeUnverified: false), а в нём два
-# повреждённых файла библиотеки (TOMS-Pearl-Masters/A2/0-397.wav, 0-398.wav), на которых сборка останавливается
+# studio600-unverified по умолчанию не собираем: основные пресеты его не берут (includeUnverified: false), он нужен
+# полным пресетам (-All). Повреждённые файлы библиотеки (TOMS-Pearl-Masters/A2/0-397.wav, 0-398.wav) вырезаны
+# в tools\kit-studio600.json (excludeFiles)
 if ($Packs.Count -gt 0) { $manifests = $manifests | Where-Object { $Packs -contains $_.BaseName } }
-else { $manifests = $manifests | Where-Object { $_.BaseName -ne 'studio600-unverified' } }
+elseif (-not $All) { $manifests = $manifests | Where-Object { $_.BaseName -ne 'studio600-unverified' } }
 if (-not $manifests) { throw 'нет манифестов для сборки' }
 
 foreach ($m in $manifests) {
@@ -69,8 +75,9 @@ Copy-Item (Join-Path $root 'tools\presets\*.json') (Join-Path $data 'presets') -
 $installed = Get-ChildItem (Join-Path $data 'packs') -Filter '*.splpack' |
     Where-Object { Test-Path (Join-Path $secrets "packs\$($_.BaseName).key") } | ForEach-Object { $_.BaseName }
 $fingerprint = (& $packer fingerprint).Trim()
+$term = @(if ($Days -gt 0) { '--days', "$Days" } else { '--perpetual' })
 & $python (Join-Path $root 'tools\make_token.py') --fingerprint $fingerprint --packs ($installed -join ',') `
-    --user 'Samplit, стенд ВКР' --days $Days --out (Join-Path $data 'license.token')
+    --user 'Алексашин А.А.' @term --out (Join-Path $data 'license.token')
 if ($LASTEXITCODE -ne 0) { throw 'выпуск токена не прошёл' }
 
 Write-Host "Готово: $data"

@@ -7,6 +7,11 @@
     "snare_hi": "ED-Ambasador-NEW"
   },
   "unverifiedPack": "studio600-unverified",
+  "excludeFiles": [
+    "TOMS-Pearl-Masters/A2/0-397.wav",
+    "TOMS-Pearl-Masters/A2/0-398.wav"
+  ],
+  "excludeFilesNote": "Файлы микрофона A2 состоят из нулей (на других микрофонах целы). Удар без собственного микрофона тома не берём: оба удара tom_14 на клавише 100 (velocity 70 и 71) вырезаны из пакета. Запросить файлы у Пачевского заново",
   "mics": [
     { "id": "kick_in",   "source": "KICK-IN",         "name": "Kick In",                  "role": "close",    "out": 1 },
     { "id": "kick_out",  "source": "KICK-OUT",        "name": "Kick Out",                 "role": "close",    "out": 2 },

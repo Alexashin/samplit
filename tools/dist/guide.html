@@ -1,0 +1,229 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Samplit: установка и работа</title>
+<style>
+  :root {
+    --bg: #f6f7fb;
+    --surface: #ffffff;
+    --text: #141821;
+    --muted: #5a6172;
+    --line: #dfe3ec;
+    --accent: #314bff;
+    --accent-soft: #e8ebff;
+    --warn-bg: #fff4e5;
+    --warn-line: #f2b25c;
+    --code-bg: #eef0f6;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font: 16px/1.6 "Geologica", "Segoe UI", system-ui, -apple-system, sans-serif;
+  }
+  main { max-width: 880px; margin: 0 auto; padding: 40px 16px 80px; }
+  header { border-bottom: 1px solid var(--line); padding-bottom: 24px; margin-bottom: 8px; }
+  .brand { font-weight: 700; font-size: 15px; letter-spacing: .02em; color: var(--accent); text-transform: uppercase; }
+  h1 { font-size: 32px; line-height: 1.2; margin: 8px 0 12px; }
+  h2 { font-size: 22px; margin: 44px 0 12px; padding-top: 8px; }
+  h3 { font-size: 17px; margin: 24px 0 8px; }
+  p, li { max-width: 72ch; }
+  .lead { color: var(--muted); font-size: 17px; margin: 0; }
+  nav { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 16px 20px; margin: 24px 0; }
+  nav ol { margin: 0; padding-left: 20px; columns: 2; column-gap: 32px; }
+  nav li { margin: 2px 0; }
+  a { color: var(--accent); }
+  ol.steps { padding-left: 0; list-style: none; counter-reset: step; }
+  ol.steps > li { counter-increment: step; position: relative; padding-left: 44px; margin: 14px 0; }
+  ol.steps > li::before {
+    content: counter(step); position: absolute; left: 0; top: 0;
+    width: 28px; height: 28px; border-radius: 8px; background: var(--accent); color: #fff;
+    font-weight: 700; font-size: 14px; display: flex; align-items: center; justify-content: center;
+  }
+  .ui { font-weight: 600; white-space: nowrap; }
+  kbd, code { font-family: "JetBrains Mono", Consolas, monospace; font-size: 14px; background: var(--code-bg); border-radius: 5px; padding: 1px 6px; }
+  figure { margin: 20px 0; }
+  figure img { width: 100%; height: auto; border-radius: 12px; border: 1px solid var(--line); display: block; }
+  figure.small img { max-width: 360px; }
+  figcaption { color: var(--muted); font-size: 14px; margin-top: 8px; }
+  .note { background: var(--accent-soft); border-radius: 10px; padding: 12px 16px; margin: 16px 0; }
+  .warn { background: var(--warn-bg); border-left: 4px solid var(--warn-line); border-radius: 6px; padding: 12px 16px; margin: 16px 0; }
+  table { border-collapse: collapse; width: 100%; background: var(--surface); border-radius: 10px; overflow: hidden; border: 1px solid var(--line); margin: 12px 0; }
+  th, td { text-align: left; padding: 9px 14px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { background: var(--code-bg); font-size: 14px; }
+  tr:last-child td { border-bottom: 0; }
+  footer { margin-top: 56px; padding-top: 20px; border-top: 1px solid var(--line); color: var(--muted); font-size: 14px; }
+  @media (max-width: 640px) {
+    h1 { font-size: 26px; }
+    nav ol { columns: 1; }
+    th, td { padding: 8px 10px; }
+  }
+</style>
+</head>
+<body>
+<main>
+
+<header>
+  <div class="brand">Samplit</div>
+  <h1>Установка и работа</h1>
+  <p class="lead">Мультимикрофонная ударная установка на библиотеке Studio600. Плагин VST3 для Cubase и отдельное приложение для Windows.</p>
+</header>
+
+<nav aria-label="Содержание">
+  <ol>
+    <li><a href="#need">Что нужно</a></li>
+    <li><a href="#install">Установка</a></li>
+    <li><a href="#license">Лицензия</a></li>
+    <li><a href="#app">Первый звук без DAW</a></li>
+    <li><a href="#cubase">Работа в Cubase</a></li>
+    <li><a href="#multiout">Каждый микрофон на своей дорожке</a></li>
+    <li><a href="#window">Окно плагина</a></li>
+    <li><a href="#keys">Раскладка клавиш</a></li>
+    <li><a href="#trouble">Если что-то не так</a></li>
+    <li><a href="#remove">Удаление</a></li>
+  </ol>
+</nav>
+
+<h2 id="need">1. Что нужно</h2>
+<ul>
+  <li>Windows 10 или 11, 64 бит.</li>
+  <li>Около 1 ГБ свободного места на диске и 2 ГБ свободной оперативной памяти: звук пресета целиком лежит в памяти.</li>
+  <li>Cubase (проверялось в Cubase 15). Без Cubase можно играть в отдельном приложении Samplit.</li>
+  <li>Права администратора и интернет не нужны.</li>
+</ul>
+
+<h2 id="install">2. Установка</h2>
+<ol class="steps">
+  <li>Закройте Cubase, если он открыт.</li>
+  <li>Распакуйте архив <code>Samplit-….zip</code> в любую папку (правой кнопкой → <span class="ui">Извлечь все</span>).</li>
+  <li>В распакованной папке дважды щёлкните <span class="ui">Установить.cmd</span>. Откроется чёрное окно, установка займёт около минуты: копируется 1 ГБ сэмплов.</li>
+  <li>Когда в окне появится <span class="ui">Готово</span>, нажмите любую клавишу. На рабочем столе появится ярлык <span class="ui">Samplit</span>.</li>
+</ol>
+<div class="warn">
+  Windows может показать окно «Система Windows защитила ваш компьютер»: программа не подписана сертификатом. Нажмите <span class="ui">Подробнее</span> → <span class="ui">Выполнить в любом случае</span>.
+</div>
+<p>Что куда ставится:</p>
+<table>
+  <tr><th>Что</th><th>Куда</th></tr>
+  <tr><td>Плагин VST3</td><td><code>%LOCALAPPDATA%\Programs\Common\VST3\Samplit.vst3</code></td></tr>
+  <tr><td>Отдельное приложение</td><td><code>%LOCALAPPDATA%\Programs\Samplit\Samplit.exe</code> и ярлык на рабочем столе</td></tr>
+  <tr><td>Пакеты сэмплов, пресеты, лицензия</td><td><code>%APPDATA%\Samplit</code></td></tr>
+</table>
+
+<h2 id="license">3. Лицензия</h2>
+<p>Сэмплы лежат в зашифрованных пакетах и открываются только по лицензии, выписанной на ваш компьютер. Лицензия выдаётся один раз и действует бессрочно, интернет для неё не нужен.</p>
+<ol class="steps">
+  <li>Установщик в конце сам показывает код компьютера, копирует его в буфер обмена и кладёт на рабочий стол файл <code>Код компьютера Samplit.txt</code>. Позже код можно получить двойным щелчком по <span class="ui">Код компьютера.cmd</span> в папке дистрибутива. Тот же код есть в окне плагина: блок <span class="ui">Лицензия</span> → <span class="ui">Скопировать код</span>.</li>
+  <li>Отправьте код автору (вставьте в письмо или сообщение). Код описывает только компьютер, личных данных в нём нет.</li>
+  <li>В ответ придёт файл <code>license.token</code>. Перетащите его на <span class="ui">Установить лицензию.cmd</span> в папке дистрибутива. Либо откройте плагин, нажмите <span class="ui">Загрузить лицензию</span> и выберите этот файл.</li>
+  <li>В блоке появится <span class="ui">Бессрочная лицензия</span>, у пресетов надпись <span class="ui">Все пакеты на месте</span>.</li>
+</ol>
+<figure class="small">
+  <img src="setup/img/license.png" alt="Блок «Лицензия» без лицензии: статус «Лицензии нет, пакеты закрыты», кнопки «Скопировать код» и «Загрузить лицензию»">
+  <figcaption>Блок «Лицензия», пока лицензии нет</figcaption>
+</figure>
+<p>Лицензия общая для плагина в Cubase и для отдельного приложения: загружать её второй раз не нужно.</p>
+
+<h2 id="app">4. Первый звук без DAW</h2>
+<ol class="steps">
+  <li>Откройте Samplit ярлыком на рабочем столе.</li>
+  <li>Если звука нет: вверху окна нажмите <span class="ui">Options</span> → <span class="ui">Audio/MIDI Settings</span> и выберите устройство вывода (колонки или наушники).</li>
+  <li>Слева в списке <span class="ui">Пресеты</span> щёлкните <span class="ui">Studio600: Ahead Live</span>. Под списком пойдёт загрузка, около 10 секунд.</li>
+  <li>Щёлкайте по клавишам внизу окна. Чем ниже по клавише, тем сильнее удар. Имя барабана видно в строке над клавиатурой.</li>
+</ol>
+<figure>
+  <img src="setup/img/main.png" alt="Окно Samplit: слева список пресетов и блок лицензии, справа микшер микрофонов, внизу клавиатура с подкрашенными клавишами барабанов">
+  <figcaption>Загружен пресет «Studio600: Ahead Live»</figcaption>
+</figure>
+<div class="note">
+  Сила удара (velocity) выбирает другую запись, а не просто делает громче: тихий удар звучит как настоящий тихий удар. Как выбирается запись между ударами (случайно или по кругу), настраивается на вкладке «Выбор удара».
+</div>
+
+<h2 id="cubase">5. Работа в Cubase</h2>
+<h3>Звуковой драйвер</h3>
+<p><span class="ui">Студия → Настройка студии → Аудио система</span>. В поле <span class="ui">ASIO драйвер</span> должен быть выбран драйвер звуковой карты. Если там <span class="ui">Нет драйвера</span> и выбрать нечего, установите бесплатный драйвер ASIO4ALL с сайта asio4all.org, перезапустите Cubase и выберите <span class="ui">ASIO4ALL v2</span>.</p>
+<h3>Дорожка с Samplit</h3>
+<ol class="steps">
+  <li><span class="ui">Проект → Добавить дорожку → Инструмент</span>.</li>
+  <li>В поле <span class="ui">Инструмент</span> выберите <span class="ui">Samplit</span> (можно начать печатать название) и нажмите <span class="ui">Добавить дорожку</span>.</li>
+  <li>Откроется окно плагина. Если не открылось, нажмите на дорожке кнопку <span class="ui">Редактировать инструмент</span>.</li>
+  <li>Выберите пресет слева и играйте с MIDI-клавиатуры, экранной клавиатуры Cubase (<kbd>Alt</kbd>+<kbd>K</kbd>) или кликом по клавишам плагина. Дорожка должна быть выделена.</li>
+</ol>
+<p>Выбранный пресет и настройки микшера сохраняются вместе с проектом Cubase и восстанавливаются при его открытии.</p>
+
+<h2 id="multiout">6. Каждый микрофон на своей дорожке</h2>
+<p>Установка записана на 15 микрофонов. По умолчанию все они сведены в один стерео-выход. Чтобы обрабатывать микрофоны отдельно, включите отдельные выходы:</p>
+<ol class="steps">
+  <li>В окне плагина, в верхней полосе Cubase над самим плагином, нажмите кнопку <span class="ui">Активировать выходы</span>. Тот же список есть в окне <span class="ui">Студия → VST-инструменты</span> (<kbd>F11</kbd>).</li>
+  <li>Отметьте <span class="ui">Out 1</span> … <span class="ui">Out 15</span>.</li>
+  <li>Откройте микшер <kbd>F3</kbd>: у Samplit появятся каналы по числу выходов. Кнопка <span class="ui">S</span> на канале оставляет слышным только его.</li>
+  <li>В окне Samplit пропадёт оранжевая надпись «Отдельные выходы в DAW выключены».</li>
+</ol>
+<table>
+  <tr><th>Выход</th><th>Микрофон</th><th>Выход</th><th>Микрофон</th></tr>
+  <tr><td>Out 1</td><td>Kick In</td><td>Out 9</td><td>Room Mid (центр)</td></tr>
+  <tr><td>Out 2</td><td>Kick Out</td><td>Out 10</td><td>Hi-Hat</td></tr>
+  <tr><td>Out 3</td><td>Snare Top</td><td>Out 11</td><td>Ride</td></tr>
+  <tr><td>Out 4</td><td>Snare Bottom</td><td>Out 12</td><td>Том 10"</td></tr>
+  <tr><td>Out 5</td><td>Overhead 1 (со стороны хэта)</td><td>Out 13</td><td>Том 14"</td></tr>
+  <tr><td>Out 6</td><td>Overhead 2 (со стороны райда)</td><td>Out 14</td><td>Том 16" средний</td></tr>
+  <tr><td>Out 7</td><td>Room 1 (со стороны хэта)</td><td>Out 15</td><td>Том 16" низкий</td></tr>
+  <tr><td>Out 8</td><td>Room 2 (со стороны райда)</td><td></td><td></td></tr>
+</table>
+<p>Выход любого микрофона можно поменять в его линейке. Микрофон, чей выход не включён в Cubase, подписан «→ Main» и звучит в общем стерео-выходе.</p>
+
+<h2 id="window">7. Окно плагина</h2>
+<table>
+  <tr><th>Где</th><th>Что делает</th></tr>
+  <tr><td>Пресеты</td><td>Клик или <kbd>Enter</kbd> загружает пресет. Пресеты отличаются малым барабаном: Ahead Live, Ahead Low, Ambasador Hi. Пресеты «Studio600 полный» (по одному на каждый малый) дополнительно включают непроверенные удары: заглушённые тарелки, клавиши без описания в руководстве, тарелки на C7–G#7. Надпись под именем показывает, всё ли на месте.</td></tr>
+  <tr><td>Микрофоны</td><td>Линейка на каждый микрофон: выход, панорама, уровень, <span class="ui">M</span> (заглушить) и <span class="ui">S</span> (слушать только его). Двойной клик по ручке или фейдеру возвращает исходное значение.</td></tr>
+  <tr><td>Выбор удара</td><td>Вторая вкладка справа. Для каждой группы клавиш выбирается, как берётся запись внутри силы удара: <span class="ui">Случайно</span> (без повтора подряд), <span class="ui">По кругу</span> (с первой записи до последней и снова) или <span class="ui">По velocity</span> (сила удара задаёт конкретную запись). Стоит значение из пресета: бочка по кругу, хэт C2–F#4 случайно, крэши по кругу (кроме C1 и E1). Выбор сохраняется в проекте.</td></tr>
+  <tr><td>Клавиатура</td><td>Подкрашены клавиши с барабанами. Клик играет, ниже по клавише сильнее. Стрелки <kbd>←</kbd> <kbd>→</kbd> выбирают клавишу, <kbd>Пробел</kbd> играет её.</td></tr>
+  <tr><td>Лицензия</td><td>Состояние лицензии, код компьютера и загрузка файла лицензии.</td></tr>
+</table>
+<p>Панорама действует на общий стерео-выход. На отдельном выходе микрофон моно, его громкость задаёт фейдер.</p>
+
+<h2 id="keys">8. Раскладка клавиш</h2>
+<p>Нумерация нот как в Cubase: средняя «до» C3 = нота 60. Пресет «Ahead Live»; в двух других меняется только звук малого барабана.</p>
+<table>
+  <tr><th>Барабан</th><th>Клавиши</th></tr>
+  <tr><td>Бочка (Pearl Masters)</td><td>A-1 … C0</td></tr>
+  <tr><td>Малый барабан</td><td>C#0 … G#0</td></tr>
+  <tr><td>Crash 18"</td><td>C1 … D#1</td></tr>
+  <tr><td>Crash 16"</td><td>E1 … G1</td></tr>
+  <tr><td>China 16"</td><td>G#1 … A#1</td></tr>
+  <tr><td>Splash 10"</td><td>B1</td></tr>
+  <tr><td>Хэт (HHX Evolution 14")</td><td>C2 … D#4, F#4, G4</td></tr>
+  <tr><td>Райд (Amedia 22")</td><td>C5 … A#5</td></tr>
+  <tr><td>Том 16" напольный, низкий</td><td>C6, C#6</td></tr>
+  <tr><td>Том 16" напольный, средний</td><td>D6, D#6</td></tr>
+  <tr><td>Том 14"</td><td>E6, F6</td></tr>
+  <tr><td>Том 10"</td><td>F#6, G6</td></tr>
+</table>
+
+<h2 id="trouble">9. Если что-то не так</h2>
+<table>
+  <tr><th>Что видно</th><th>Что сделать</th></tr>
+  <tr><td>Cubase не находит Samplit</td><td><span class="ui">Студия → VST Plug-in Manager</span>, внизу <span class="ui">Plug-in Paths</span>: добавьте папку <code>%LOCALAPPDATA%\Programs\Common\VST3</code> и нажмите <span class="ui">Пересканировать</span>.</td></tr>
+  <tr><td>Нет звука в Cubase</td><td>Проверьте ASIO-драйвер (раздел 5) и что дорожка Samplit выделена.</td></tr>
+  <tr><td>«Лицензии нет, пакеты закрыты»</td><td>Загрузите файл лицензии (раздел 3).</td></tr>
+  <tr><td>«Лицензия выписана на другой компьютер»</td><td>Файл выписан на другой ПК. Скопируйте код этого компьютера и попросите новый файл.</td></tr>
+  <tr><td>У пресета «не установлены: …»</td><td>Пакеты не скопировались. Закройте Cubase и запустите <span class="ui">Установить.cmd</span> ещё раз.</td></tr>
+  <tr><td>Установка пишет «Закройте программы»</td><td>Закройте Cubase и Samplit и запустите установку снова.</td></tr>
+  <tr><td>Щелчки и треск</td><td>Увеличьте размер буфера звуковой карты (в настройках ASIO-драйвера), например до 512.</td></tr>
+</table>
+
+<h2 id="remove">10. Удаление</h2>
+<p>Закройте Cubase и Samplit, дважды щёлкните <span class="ui">Удалить.cmd</span> в папке дистрибутива. Файл лицензии остаётся в <code>%APPDATA%\Samplit</code>, чтобы при повторной установке не просить его заново; эту папку можно удалить вручную.</p>
+
+<footer>
+  Samplit — программная часть выпускной квалификационной работы, Алексашин А.А., ВГТУ, группа бИВТ-232. Научный руководитель Пачевский Д.Е.<br>
+  Барабанная библиотека Studio600 Drum LIB © Пачевский Д.Е.
+</footer>
+
+</main>
+</body>
+</html>

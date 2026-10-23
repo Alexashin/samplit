@@ -79,6 +79,16 @@ class MarkKitTest(unittest.TestCase):
     def build(self, library=None):
         return mark_kit.build_packs(synthetic_kit(), {'FAKE': synthetic_mapping()}, library)
 
+
+    def test_excluded_file_drops_the_whole_hit(self):
+        kit = synthetic_kit()
+        kit['excludeFiles'] = ['kick/KICK-IN/81.wav']
+        manifests, report = mark_kit.build_packs(kit, {'FAKE': synthetic_mapping()})
+        ids = [h['id'] for p in manifests['core']['pieces'] if p['id'] == 'kick' for h in p['hits']]
+        self.assertNotIn('kick_21_81', ids)
+        self.assertEqual(len(ids), 3)
+        self.assertEqual(report['excluded'], ['kick_21_81'])
+
     def hits_of(self, manifest):
         return {h['id']: h for p in manifest['pieces'] for h in p['hits']}
 
