@@ -15,6 +15,7 @@ target_sources(SamplitTests PRIVATE
     ${CMAKE_SOURCE_DIR}/plugin/KitEngine.cpp
     ${CMAKE_SOURCE_DIR}/plugin/KitLoader.cpp
     ${CMAKE_SOURCE_DIR}/plugin/LicenseManager.cpp
+    ${CMAKE_SOURCE_DIR}/plugin/PresetLibrary.cpp
     ${CMAKE_SOURCE_DIR}/plugin/PluginProcessor.cpp
     editor_stub.cpp
     juce_setup.cpp

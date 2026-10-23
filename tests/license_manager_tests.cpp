@@ -237,3 +237,187 @@ TEST_CASE ("the processor opens packs only with a licence", "[licmgr]")
         CHECK_FALSE (runPreset());
     }
 }
+
+namespace
+{
+    // Пакет с одним барабаном на клавише key и двумя микрофонами
+    void writeKickPack (const juce::File& packDir, const juce::String& id, const pack::PackKey& key, int note)
+    {
+        packDir.createDirectory();
+        juce::String error;
+        auto w = pack::PackWriter::create (packDir.getChildFile (id + ".splpack"), id, key, error);
+        REQUIRE (w != nullptr);
+        pack::DecodedAudio a;
+        a.sampleRate = 44100.0;
+        a.frames = 500;
+        a.samples.assign (500, 5000);
+        REQUIRE (w->addAudio (a, error) == 0);
+
+        pack::Manifest m;
+        m.id = id;
+        m.mics = { { "kick_in", "Kick In", "close", 1 }, { "oh", "OH", "overhead", 2 } };
+        pack::Piece p;
+        p.id = id;
+        p.keys = { note };
+        p.layers = { { "all", "center", 1, 127 } };
+        pack::Hit h;
+        h.id = id + "0";
+        h.layer = "all";
+        h.key = note;
+        pack::HitFile f;
+        f.chunk = 0;
+        f.frames = 500;
+        f.rate = 44100.0;
+        f.peak = 5000;
+        h.files["kick_in"] = f;
+        h.files["oh"] = f;
+        p.hits.push_back (h);
+        m.pieces.push_back (p);
+        REQUIRE (w->finish (m, error));
+    }
+
+    void writePreset (const juce::File& dir, const juce::String& json)
+    {
+        auto presets = dir.getChildFile ("presets");
+        presets.createDirectory();
+        const auto id = juce::JSON::parse (json).getProperty ("id", {}).toString();
+        presets.getChildFile (id + ".json").replaceWithText (json);
+    }
+
+    const char* kPresetJson = R"({ "format": 1, "id": "p1", "name": "Preset 1", "packs": ["kick", "snare", "cym"],
+        "select": { "mode": "live" },
+        "mics": { "oh": { "level": -4.0, "pan": 0.5, "out": 6 } } })";
+}
+
+TEST_CASE ("presets show which packs are installed and licensed", "[licmgr]")
+{
+    Env env;
+    const auto kickKey = pack::generateKey();
+    writeKickPack (env.dir.getChildFile ("packs"), "kick", kickKey, 36);
+    writeKickPack (env.dir.getChildFile ("packs"), "snare", pack::generateKey(), 38);
+    writePreset (env.dir, kPresetJson);
+    writePreset (env.dir, R"({ "id": "p2", "name": "Only cymbals", "packs": ["cym"] })");
+    env.dir.getChildFile ("presets").getChildFile ("broken.json").replaceWithText ("{ nope");
+    env.writeToken ({ { "kick", kickKey } });
+
+    SamplitProcessor processor;
+    processor.setLicenseManager (started (env));
+    const auto presets = processor.scanPresets();
+    REQUIRE (presets.size() == 2);
+
+    const auto& p1 = presets[0];
+    CHECK (p1.preset.id == "p1");
+    REQUIRE (p1.packs.size() == 3);
+    CHECK (p1.packs[0].second == PackState::Ready);
+    CHECK (p1.packs[1].second == PackState::NoLicense);
+    CHECK (p1.packs[2].second == PackState::NotInstalled);
+    CHECK (p1.isPlayable());
+    CHECK_FALSE (p1.isComplete());
+    CHECK_FALSE (presets[1].isPlayable());
+}
+
+TEST_CASE ("mixer: preset values, solo and mute, saved with the project", "[licmgr]")
+{
+    Env env;
+    const auto kickKey = pack::generateKey();
+    writeKickPack (env.dir.getChildFile ("packs"), "kick", kickKey, 36);
+    writePreset (env.dir, kPresetJson);
+    env.writeToken ({ { "kick", kickKey } });
+
+    juce::MemoryBlock saved;
+    {
+        SamplitProcessor a;
+        a.prepareToPlay (44100.0, 512);
+        a.setLicenseManager (started (env));
+        const auto presets = a.scanPresets();
+        REQUIRE (presets.size() == 1);
+
+        bool called = false;
+        a.selectPreset (presets[0].preset, [&] (const KitLoadResult&) { called = true; });
+        REQUIRE (pumpUntil ([&] { return called; }));
+        REQUIRE (a.getKit() != nullptr);
+        CHECK (a.getPresetName() == "p1");
+        CHECK (a.getLastKitLoad().missingPacks.size() == 2);
+
+        // Значения пресета: oh на Out 6, −4 дБ, панорама 0,5; kick_in как в пакете
+        CHECK (a.getMicState (0).out == 1);
+        CHECK (a.getMicState (1).out == 6);
+        CHECK (a.getMicState (1).levelDb == -4.0f);
+        CHECK (a.getMicState (1).pan == 0.5f);
+
+        auto m = a.getMicState (0);
+        m.solo = true;
+        m.out = 3;
+        a.setMicState (0, m);
+        m = a.getMicState (1);
+        m.levelDb = -10.0f;
+        m.mute = true;
+        a.setMicState (1, m);
+
+        // Пределы
+        auto wild = a.getMicState (1);
+        wild.levelDb = 100.0f;
+        wild.out = 99;
+        a.setMicState (1, wild);
+        CHECK (a.getMicState (1).levelDb == 12.0f);
+        CHECK (a.getMicState (1).out == kNumOutputs);
+        a.setMicState (1, m);
+
+        a.getStateInformation (saved);
+    }
+
+    // Новый экземпляр: пресет и микшер восстанавливаются из проекта
+    SamplitProcessor b;
+    b.prepareToPlay (44100.0, 512);
+    b.setLicenseManager (started (env));
+    b.setStateInformation (saved.getData(), (int) saved.getSize());
+    REQUIRE (pumpUntil ([&] { return b.getKit() != nullptr && ! b.isKitLoading(); }));
+    CHECK (b.getPresetName() == "p1");
+    CHECK (b.getMicState (0).solo);
+    CHECK (b.getMicState (0).out == 3);
+    CHECK (b.getMicState (1).mute);
+    CHECK (b.getMicState (1).levelDb == -10.0f);
+
+    // Выбор пресета заново сбрасывает микшер к значениям пресета
+    bool called = false;
+    b.selectPreset (b.scanPresets()[0].preset, [&] (const KitLoadResult&) { called = true; });
+    REQUIRE (pumpUntil ([&] { return called; }));
+    CHECK_FALSE (b.getMicState (0).solo);
+    CHECK (b.getMicState (1).levelDb == -4.0f);
+}
+
+TEST_CASE ("service mode silences the kit and gives notes back to the sampler", "[licmgr]")
+{
+    Env env;
+    const auto kickKey = pack::generateKey();
+    writeKickPack (env.dir.getChildFile ("packs"), "kick", kickKey, 36);
+    writePreset (env.dir, kPresetJson);
+    env.writeToken ({ { "kick", kickKey } });
+
+    SamplitProcessor p;
+    p.prepareToPlay (44100.0, 512);
+    p.setLicenseManager (started (env));
+    bool called = false;
+    p.selectPreset (p.scanPresets()[0].preset, [&] (const KitLoadResult&) { called = true; });
+    REQUIRE (pumpUntil ([&] { return called; }));
+
+    auto renderNote = [&]
+    {
+        juce::AudioBuffer<float> buffer (p.getTotalNumOutputChannels(), 512);
+        buffer.clear();
+        juce::MidiBuffer midi;
+        midi.addEvent (juce::MidiMessage::noteOn (1, 36, (juce::uint8) 100), 0);
+        p.processBlock (buffer, midi);
+        float peak = 0.0f;
+        for (int ch = 0; ch < buffer.getNumChannels(); ++ch)
+            peak = std::max (peak, buffer.getMagnitude (ch, 0, 512));
+        return peak;
+    };
+
+    CHECK (renderNote() > 0.0f);
+    p.setServiceMode (true);
+    CHECK (p.isServiceMode());
+    CHECK (renderNote() == 0.0f);   // в сэмплере на клавише 36 ничего нет
+    p.setServiceMode (false);
+    CHECK (renderNote() > 0.0f);
+}

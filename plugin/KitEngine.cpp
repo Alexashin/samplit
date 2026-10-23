@@ -76,6 +76,8 @@ namespace samplit
             l.store (1.0f);
         for (auto& p : micPan)
             p.store (0.0f);
+        for (auto& o : micOut)
+            o.store (-1);
         lastHit.fill (-1);
     }
 
@@ -104,6 +106,12 @@ namespace samplit
             return;
         micLevel[(size_t) mic].store (juce::Decibels::decibelsToGain (levelDb, -100.0f));
         micPan[(size_t) mic].store (std::clamp (pan, -1.0f, 1.0f));
+    }
+
+    void KitEngine::setMicOutput (int mic, int out) noexcept
+    {
+        if (mic >= 0 && mic < Kit::kMaxMics)
+            micOut[(size_t) mic].store (out < 0 ? -1 : std::min (out, kNumOutputs));
     }
 
     bool KitEngine::isUsing (const Kit* kit) const noexcept
@@ -337,7 +345,8 @@ namespace samplit
                 if (v.clip == nullptr)
                     continue;
 
-                const int bus = std::clamp (kit->mics[(size_t) v.mic].out, 0, kNumOutputs);
+                const int over = micOut[(size_t) v.mic].load();
+                const int bus = std::clamp (over >= 0 ? over : kit->mics[(size_t) v.mic].out, 0, kNumOutputs);
                 float* left = outL[(size_t) bus];
                 float* right = outR[(size_t) bus];
                 const float level = micLevel[(size_t) v.mic].load();

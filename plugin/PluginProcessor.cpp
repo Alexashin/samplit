@@ -415,7 +415,7 @@ namespace samplit
         }
 
         kitEngine.setKit (newKit.get());
-        kitActive.store (newKit != nullptr);
+        kitActive.store (newKit != nullptr && ! serviceMode.load());
 
         if (old != nullptr)
             retired.push_back ({ nullptr, nullptr, std::move (old), juce::Time::getMillisecondCounter() });
@@ -451,6 +451,7 @@ namespace samplit
         auto cancel = std::make_shared<std::atomic<bool>> (false);
         kitCancel = cancel;
         const auto generation = kitGeneration;
+        const bool keepMix = std::exchange (restoreMixPending, false);
         kitLoading.store (true);
         kitProgress.store (0.0f);
 
@@ -458,11 +459,11 @@ namespace samplit
         options.progress = [this] (float f) { kitProgress.store (f); };
         std::weak_ptr<int> alive = lifeToken;
 
-        kitLoaderPool.addJob ([this, alive, preset, options = std::move (options), cancel, generation, done = std::move (done)]
+        kitLoaderPool.addJob ([this, alive, preset, options = std::move (options), cancel, generation, keepMix, done = std::move (done)]
         {
             auto result = std::make_shared<KitLoadResult> (loadKit (preset, options));
 
-            juce::MessageManager::callAsync ([this, alive, result, cancel, generation, done]
+            juce::MessageManager::callAsync ([this, alive, result, cancel, generation, keepMix, done]
             {
                 if (alive.expired() || generation != kitGeneration)
                     return;     // устарело: пришла новая загрузка или процессор уничтожен
@@ -471,17 +472,117 @@ namespace samplit
                 kitProgress.store (1.0f);
                 if (result->ok())
                 {
-                    for (int i = 0; i < Kit::kMaxMics; ++i)
+                    // Микшер: значения пресета, а при восстановлении проекта сохранённые в нём (по id микрофона)
+                    std::vector<MicState> fresh;
                     {
-                        const MicMix mix = i < (int) result->mix.size() ? result->mix[(size_t) i] : MicMix {};
-                        kitEngine.setMicMix (i, mix.mute ? -100.0f : mix.levelDb, mix.pan);
+                        const juce::ScopedLock sl (stateLock);
+                        for (size_t i = 0; i < result->kit->mics.size(); ++i)
+                        {
+                            const auto& mic = result->kit->mics[i];
+                            const auto saved = savedMix.find (juce::String (mic.id));
+                            if (keepMix && saved != savedMix.end())
+                                fresh.push_back (saved->second);
+                            else
+                            {
+                                const auto& m = result->mix[i];
+                                fresh.push_back ({ m.levelDb, m.pan, m.mute, false, mic.out });
+                            }
+                        }
+                        savedMix.clear();
+                        for (size_t i = 0; i < fresh.size(); ++i)
+                            savedMix[juce::String (result->kit->mics[i].id)] = fresh[i];
                     }
+                    mixer = std::move (fresh);
+                    applyMixer();
                     setKit (result->kit);
                 }
+
+                lastLoad = *result;
+                lastLoad.kit = nullptr;
+                sendChangeMessage();
                 if (done)
                     done (*result);
             });
         });
+    }
+
+    std::vector<PresetEntry> SamplitProcessor::scanPresets() const
+    {
+        return samplit::scanPresets (license->getPresetDir(), license->getPackDir(),
+                                     [this] (const juce::String& id, pack::PackKey& key) { return license->keyFor (id, key); });
+    }
+
+    void SamplitProcessor::selectPreset (const Preset& preset, std::function<void (const KitLoadResult&)> done)
+    {
+        restoreMixPending = false;
+        setPresetName (preset.id);
+        loadPreset (preset, std::move (done));
+    }
+
+    bool SamplitProcessor::restorePreset()
+    {
+        const auto id = getPresetName();
+        if (id.isEmpty())
+            return false;
+        for (const auto& e : scanPresets())
+            if (e.preset.id == id)
+            {
+                restoreMixPending = true;
+                loadPreset (e.preset);
+                return true;
+            }
+        return false;
+    }
+
+    SamplitProcessor::MicState SamplitProcessor::getMicState (int mic) const
+    {
+        return juce::isPositiveAndBelow (mic, (int) mixer.size()) ? mixer[(size_t) mic] : MicState {};
+    }
+
+    void SamplitProcessor::setMicState (int mic, const MicState& state)
+    {
+        const auto current = getKit();
+        if (current == nullptr || ! juce::isPositiveAndBelow (mic, (int) mixer.size()) || mic >= (int) current->mics.size())
+            return;
+
+        auto s = state;
+        s.levelDb = juce::jlimit (-60.0f, 12.0f, s.levelDb);
+        s.pan = juce::jlimit (-1.0f, 1.0f, s.pan);
+        s.out = juce::jlimit (0, kNumOutputs, s.out);
+        mixer[(size_t) mic] = s;
+        {
+            const juce::ScopedLock sl (stateLock);
+            savedMix[juce::String (current->mics[(size_t) mic].id)] = s;
+        }
+        applyMixer();
+    }
+
+    // Solo: если хоть один микрофон в соло, остальные молчат. Mute сильнее соло
+    void SamplitProcessor::applyMixer()
+    {
+        const bool anySolo = std::any_of (mixer.begin(), mixer.end(), [] (const MicState& m) { return m.solo; });
+        for (int i = 0; i < Kit::kMaxMics; ++i)
+        {
+            if (i < (int) mixer.size())
+            {
+                const auto& m = mixer[(size_t) i];
+                const bool silent = m.mute || (anySolo && ! m.solo);
+                kitEngine.setMicMix (i, silent ? -100.0f : m.levelDb, m.pan);
+                kitEngine.setMicOutput (i, m.out);
+            }
+            else
+            {
+                kitEngine.setMicMix (i, 0.0f, 0.0f);
+                kitEngine.setMicOutput (i, -1);
+            }
+        }
+    }
+
+    void SamplitProcessor::setServiceMode (bool on)
+    {
+        serviceMode.store (on);
+        kitActive.store (! on && getKit() != nullptr);
+        sendChangeMessage();
     }
 
     std::shared_ptr<const Kit> SamplitProcessor::getKit() const
@@ -570,6 +671,17 @@ namespace samplit
             const juce::ScopedLock sl (stateLock);
             state.setProperty ("folder", lastFolder.getFullPathName(), nullptr);
             state.setProperty ("preset", presetName, nullptr);
+            for (const auto& [id, m] : savedMix)
+            {
+                juce::ValueTree v ("MIC");
+                v.setProperty ("id", id, nullptr);
+                v.setProperty ("level", m.levelDb, nullptr);
+                v.setProperty ("pan", m.pan, nullptr);
+                v.setProperty ("mute", m.mute, nullptr);
+                v.setProperty ("solo", m.solo, nullptr);
+                v.setProperty ("out", m.out, nullptr);
+                state.appendChild (v, nullptr);
+            }
             inst = published;
         }
 
@@ -616,8 +728,21 @@ namespace samplit
             return;
 
         Instrument parsed;
+        std::map<juce::String, MicState> mix;
         for (const auto& v : state)
         {
+            if (v.hasType ("MIC"))
+            {
+                MicState m;
+                m.levelDb = juce::jlimit (-60.0f, 12.0f, (float) v.getProperty ("level", 0.0));
+                m.pan = juce::jlimit (-1.0f, 1.0f, (float) v.getProperty ("pan", 0.0));
+                m.mute = (bool) v.getProperty ("mute", false);
+                m.solo = (bool) v.getProperty ("solo", false);
+                m.out = juce::jlimit (0, kNumOutputs, (int) v.getProperty ("out", 0));
+                mix[v.getProperty ("id").toString()] = m;
+                continue;
+            }
+
             if (v.hasType ("GROUP") && (int) parsed.groups.size() < kMaxGroups)
             {
                 Group g;
@@ -657,6 +782,7 @@ namespace samplit
         {
             const juce::ScopedLock sl (stateLock);
             presetName = state.getProperty ("preset").toString();
+            savedMix = std::move (mix);
         }
 
         // Хост может звать setState не из message thread, а модель меняется только там
@@ -669,6 +795,7 @@ namespace samplit
             for (const auto& z : model.zones)
                 requestLoad (z.file);
             publish();
+            restorePreset();
         };
 
         auto* mm = juce::MessageManager::getInstanceWithoutCreating();

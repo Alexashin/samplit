@@ -221,6 +221,32 @@ TEST_CASE ("kit: mic level and pan apply, pan only on Main", "[kit]")
     }
 }
 
+TEST_CASE ("kit: mic output can be moved without rebuilding the kit", "[kit]")
+{
+    KitBuilder b;
+    b.mic ("a", 1);
+    const int p = b.piece ("p");
+    b.hit (p, b.layer (p, 1, 127), 60, { 1.0f });
+    const auto kit = b.done();
+
+    Rig r;
+    r.engine.setKit (kit.get());
+
+    r.engine.setMicOutput (0, 5);
+    r.hitOnce (60, 100);
+    REQUIRE (r.level (1) == 0.0f);
+    REQUIRE (std::abs (r.level (5) - 1.0f) < 1e-4f);
+
+    r.engine.setMicOutput (0, 0);
+    r.hitOnce (60, 100);
+    REQUIRE (std::abs (r.level (0, 0) - 1.0f) < 1e-4f);
+    REQUIRE (r.level (5) == 0.0f);
+
+    r.engine.setMicOutput (0, -1);
+    r.hitOnce (60, 100);
+    REQUIRE (std::abs (r.level (1) - 1.0f) < 1e-4f);
+}
+
 TEST_CASE ("kit: file gain is applied per mic", "[kit]")
 {
     KitBuilder b;

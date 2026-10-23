@@ -42,6 +42,9 @@ namespace samplit
         // Message thread: уровень (дБ) и панорама микрофона. Панорама действует, когда микрофон идёт в Main
         void setMicMix (int mic, float levelDb, float pan) noexcept;
 
+        // Message thread: выход микрофона поверх выхода из кита. -1: как в ките
+        void setMicOutput (int mic, int out) noexcept;
+
         // Детерминированный ГСЧ для тестов
         void setSeed (uint32_t seed) noexcept { rng = seed != 0 ? seed : 0x9e3779b9u; }
 
@@ -93,6 +96,7 @@ namespace samplit
         std::atomic<int> spread { 0 };
         std::array<std::atomic<float>, Kit::kMaxMics> micLevel;
         std::array<std::atomic<float>, Kit::kMaxMics> micPan;
+        std::array<std::atomic<int>, Kit::kMaxMics> micOut;
         std::array<std::atomic<const Kit*>, kMaxStrikes> strikeKit {};   // != nullptr, пока удар звучит
         std::array<Strike, kMaxStrikes> strikes {};
         std::array<int, 128> lastHit;

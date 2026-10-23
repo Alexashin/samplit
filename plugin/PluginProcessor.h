@@ -4,6 +4,7 @@
 #include "KitEngine.h"
 #include "KitLoader.h"
 #include "LicenseManager.h"
+#include "PresetLibrary.h"
 #include "SamplerEngine.h"
 
 #include <juce_audio_formats/juce_audio_formats.h>
@@ -108,6 +109,36 @@ namespace samplit
         bool isKitLoading() const noexcept { return kitLoading.load(); }
         float getKitLoadProgress() const noexcept { return kitProgress.load(); }
 
+        // Итог последней загрузки (без самого кита): ошибка, недоступные пакеты, предупреждения
+        const KitLoadResult& getLastKitLoad() const noexcept { return lastLoad; }
+
+        // Пресеты из папки данных и состояние их пакетов
+        std::vector<PresetEntry> scanPresets() const;
+
+        // Выбор пресета пользователем: запоминается в проекте, микшер берёт значения пресета
+        void selectPreset (const Preset&, std::function<void (const KitLoadResult&)> done = {});
+
+        // После загрузки проекта: найти сохранённый пресет и загрузить его с сохранённым микшером.
+        // false: пресет в проекте не задан или не найден в папке
+        bool restorePreset();
+
+        // ---- Микшер микрофонов кита (message thread). Индекс как в Kit::mics ----
+        struct MicState
+        {
+            float levelDb = 0.0f;
+            float pan = 0.0f;
+            bool mute = false;
+            bool solo = false;
+            int out = 0;            // 0 = Main, 1..kNumOutputs = Out N
+        };
+
+        MicState getMicState (int mic) const;
+        void setMicState (int mic, const MicState&);
+
+        // Служебный режим: играет сэмплер с ручной раскладкой, кит молчит. В релизе переключателя нет
+        void setServiceMode (bool);
+        bool isServiceMode() const noexcept { return serviceMode.load(); }
+
         // Имя пресета в состоянии проекта (сам пресет подгружает загрузчик пакетов)
         juce::String getPresetName() const;
         void setPresetName (const juce::String&);
@@ -183,7 +214,14 @@ namespace samplit
         std::atomic<uint64_t> activeLo { 0 }, activeHi { 0 };
         std::atomic<uint32_t> enabledOutputs { 0 };
         std::atomic<int> loadsInFlight { 0 };
+        void applyMixer();
+
         std::unique_ptr<LicenseManager> license;
+        std::vector<MicState> mixer;                        // только message thread
+        std::map<juce::String, MicState> savedMix;          // по id микрофона, под stateLock: пишется в проект
+        KitLoadResult lastLoad;                             // только message thread
+        bool restoreMixPending = false;                     // только message thread
+        std::atomic<bool> serviceMode { false };
         std::atomic<bool> kitLoading { false };
         std::atomic<float> kitProgress { 0.0f };
         std::shared_ptr<std::atomic<bool>> kitCancel;       // только message thread
