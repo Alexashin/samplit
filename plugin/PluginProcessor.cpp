@@ -16,10 +16,10 @@ namespace samplit
 
     juce::AudioProcessor::BusesProperties SamplitProcessor::makeBuses()
     {
-        // Шина 0 это Main. Шины 1..16 это отдельные выходы групп. DAW включает их сама
+        // Шина 0 это Main (стерео). Шины 1..16 это отдельные моно-выходы групп и микрофонов. DAW включает их сама
         auto props = BusesProperties().withOutput ("Main", juce::AudioChannelSet::stereo(), true);
         for (int i = 0; i < kNumOutputs; ++i)
-            props = props.withOutput ("Out " + juce::String (i + 1), juce::AudioChannelSet::stereo(), false);
+            props = props.withOutput ("Out " + juce::String (i + 1), juce::AudioChannelSet::mono(), false);
         return props;
     }
 
@@ -41,6 +41,7 @@ namespace samplit
     void SamplitProcessor::prepareToPlay (double sampleRate, int)
     {
         engine.prepare (sampleRate);
+        kitEngine.prepare (sampleRate);
     }
 
     bool SamplitProcessor::isBusesLayoutSupported (const BusesLayout& layouts) const
@@ -48,8 +49,10 @@ namespace samplit
         if (layouts.getMainOutputChannelSet() != juce::AudioChannelSet::stereo())
             return false;
 
-        for (const auto& out : layouts.outputBuses)
-            if (! out.isDisabled() && out != juce::AudioChannelSet::stereo())
+        // Выходы микрофонов и групп только моно (или выключены)
+        for (int i = 1; i < layouts.outputBuses.size(); ++i)
+            if (! layouts.outputBuses.getReference (i).isDisabled()
+                && layouts.outputBuses.getReference (i) != juce::AudioChannelSet::mono())
                 return false;
 
         return layouts.inputBuses.isEmpty();
@@ -73,7 +76,8 @@ namespace samplit
         if (main.getNumChannels() < 2)
             return;
 
-        // Куда идёт каждый выход группы: на свою шину, если DAW её включила, иначе в Main
+        // Куда идёт каждый выход группы или микрофона: на свою моно-шину, если DAW её включила (правый указатель
+        // nullptr), иначе в стерео Main
         std::array<float*, kNumOutputs + 1> outL {};
         std::array<float*, kNumOutputs + 1> outR {};
         outL[0] = main.getWritePointer (0);
@@ -87,13 +91,27 @@ namespace samplit
                 continue;
 
             auto target = getBusBuffer (buffer, false, out);
-            if (target.getNumChannels() < 2)
+            if (target.getNumChannels() < 1)
                 continue;
             outL[(size_t) out] = target.getWritePointer (0);
-            outR[(size_t) out] = target.getWritePointer (1);
+            outR[(size_t) out] = target.getNumChannels() > 1 ? target.getWritePointer (1) : nullptr;
             enabled |= 1u << (out - 1);
         }
         enabledOutputs.store (enabled);
+
+        const bool useKit = kitActive.load();
+        auto noteOn = [&] (int note, int velocity)
+        {
+            if (useKit)
+                kitEngine.noteOn (note, velocity);
+            else
+                engine.noteOn (note, velocity);
+        };
+        auto renderRange = [&] (int from, int to)
+        {
+            engine.render (outL, outR, from, to);
+            kitEngine.render (outL, outR, from, to);
+        };
 
         const int numSamples = buffer.getNumSamples();
 
@@ -108,7 +126,7 @@ namespace samplit
         for (; r != w; ++r)
         {
             const auto e = queue[r % kQueue].load();
-            engine.noteOn ((int) (e & 0xff), (int) ((e >> 8) & 0xff));
+            noteOn ((int) (e & 0xff), (int) ((e >> 8) & 0xff));
         }
         queueRead.store (r);
 
@@ -122,17 +140,19 @@ namespace samplit
 
             const int at = juce::jlimit (pos, numSamples, meta.samplePosition);
             if (at > pos)
-                engine.render (outL, outR, pos, at);
+                renderRange (pos, at);
             pos = at;
-            engine.noteOn (msg.getNoteNumber(), msg.getVelocity());
+            noteOn (msg.getNoteNumber(), msg.getVelocity());
         }
         if (numSamples > pos)
-            engine.render (outL, outR, pos, numSamples);
+            renderRange (pos, numSamples);
 
         engine.publishActivity();
-        const auto keys = engine.getActiveKeys();
-        activeLo.store (keys[0]);
-        activeHi.store (keys[1]);
+        kitEngine.publishActivity();
+        const auto samplerKeys = engine.getActiveKeys();
+        const auto kitKeys = kitEngine.getActiveKeys();
+        activeLo.store (samplerKeys[0] | kitKeys[0]);
+        activeHi.store (samplerKeys[1] | kitKeys[1]);
     }
 
     // ---------------------------------------------------------------- загрузка
@@ -209,7 +229,7 @@ namespace samplit
         engine.setInstrument (snapshot.get());
 
         if (old != nullptr)
-            retired.push_back ({ std::move (old), nullptr, juce::Time::getMillisecondCounter() });
+            retired.push_back ({ std::move (old), nullptr, nullptr, juce::Time::getMillisecondCounter() });
 
         collectGarbage();
         sendChangeMessage();
@@ -227,6 +247,8 @@ namespace samplit
             if (r.snapshot != nullptr && engine.isUsing (r.snapshot.get()))
                 return false;
             if (r.preview != nullptr && engine.isUsing (r.preview.get()))
+                return false;
+            if (r.kit != nullptr && kitEngine.isUsing (r.kit.get()))
                 return false;
             return true;
         });
@@ -378,6 +400,47 @@ namespace samplit
             publish();
     }
 
+    // ---------------------------------------------------------------- кит
+
+    void SamplitProcessor::setKit (std::shared_ptr<const Kit> newKit)
+    {
+        std::shared_ptr<const Kit> old;
+        {
+            const juce::ScopedLock sl (stateLock);
+            old = std::move (kit);
+            kit = newKit;
+        }
+
+        kitEngine.setKit (newKit.get());
+        kitActive.store (newKit != nullptr);
+
+        if (old != nullptr)
+            retired.push_back ({ nullptr, nullptr, std::move (old), juce::Time::getMillisecondCounter() });
+        collectGarbage();
+        sendChangeMessage();
+    }
+
+    std::shared_ptr<const Kit> SamplitProcessor::getKit() const
+    {
+        const juce::ScopedLock sl (stateLock);
+        return kit;
+    }
+
+    juce::String SamplitProcessor::getPresetName() const
+    {
+        const juce::ScopedLock sl (stateLock);
+        return presetName;
+    }
+
+    void SamplitProcessor::setPresetName (const juce::String& name)
+    {
+        {
+            const juce::ScopedLock sl (stateLock);
+            presetName = name;
+        }
+        sendChangeMessage();
+    }
+
     // ---------------------------------------------------------------- прослушивание
 
     void SamplitProcessor::startPreviewWith (SamplePtr sample)
@@ -386,7 +449,7 @@ namespace samplit
             return;
 
         if (previewSample != nullptr)
-            retired.push_back ({ nullptr, previewSample, juce::Time::getMillisecondCounter() });
+            retired.push_back ({ nullptr, previewSample, nullptr, juce::Time::getMillisecondCounter() });
         previewSample = std::move (sample);
         engine.setPreviewSample (previewSample.get());
         pendingPreview.store (true);
@@ -442,6 +505,7 @@ namespace samplit
         {
             const juce::ScopedLock sl (stateLock);
             state.setProperty ("folder", lastFolder.getFullPathName(), nullptr);
+            state.setProperty ("preset", presetName, nullptr);
             inst = published;
         }
 
@@ -526,6 +590,10 @@ namespace samplit
 
         const juce::String folder = state.getProperty ("folder").toString();
         setLastFolder (juce::File::isAbsolutePath (folder) ? juce::File (folder) : juce::File());
+        {
+            const juce::ScopedLock sl (stateLock);
+            presetName = state.getProperty ("preset").toString();
+        }
 
         // Хост может звать setState не из message thread, а модель меняется только там
         std::weak_ptr<int> alive = lifeToken;

@@ -33,6 +33,9 @@ target_sources(Samplit PRIVATE
     Instrument.h
     SamplerEngine.h
     SamplerEngine.cpp
+    Kit.h
+    KitEngine.h
+    KitEngine.cpp
     PluginProcessor.h
     PluginProcessor.cpp
     SampleBrowser.h

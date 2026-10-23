@@ -10,7 +10,7 @@ namespace samplit
 {
     constexpr int kMaxGroups = 16;
 
-    // Выходы плагина: 0 = Main, 1..kNumOutputs = отдельные стерео-шины Out 1..Out N
+    // Выходы плагина: 0 = Main (стерео), 1..kNumOutputs = отдельные моно-шины Out 1..Out N
     constexpr int kNumOutputs = 16;
 
     // Номер ноты в нумерации Cubase: 60 = C3

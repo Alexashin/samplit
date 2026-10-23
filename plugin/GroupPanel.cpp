@@ -353,7 +353,7 @@ namespace samplit
     void GroupPanel::updateFooter()
     {
         footerWarns = false;
-        juce::String text = utf8 ("Выход группы: Main или Out N. В DAW Out N это отдельный стерео-канал, "
+        juce::String text = utf8 ("Выход группы: Main или Out N. В DAW Out N это отдельный моно-канал, "
                                   "на него можно вывести каждую группу на свою дорожку.");
 
         // Предупреждаем о выбранной группе, а если с ней всё хорошо, о первой проблемной

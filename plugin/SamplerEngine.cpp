@@ -1,4 +1,5 @@
 #include "SamplerEngine.h"
+#include "Interpolation.h"
 
 #include <algorithm>
 #include <cmath>
@@ -191,6 +192,8 @@ namespace samplit
             const float* srcR = audio.getReadPointer (audio.getNumChannels() > 1 ? 1 : 0);
             float* left = outL[(size_t) v.output];
             float* right = outR[(size_t) v.output];
+            const bool mono = right == nullptr;  // моно-выход: каналы голоса складываются пополам
+            const bool exact = v.step == 1.0;    // позиция целая, интерполировать нечего
 
             for (int i = start; i < end; ++i)
             {
@@ -218,10 +221,32 @@ namespace samplit
                     --v.fadeLeft;
                 }
 
-                // Линейная интерполяция между соседними отсчётами
-                const float frac = (float) (v.position - idx);
-                left[i] += (srcL[idx] + (srcL[idx + 1] - srcL[idx]) * frac) * gain * v.gainL;
-                right[i] += (srcR[idx] + (srcR[idx + 1] - srcR[idx]) * frac) * gain * v.gainR;
+                // Кубическая интерполяция Эрмита между соседними отсчётами
+                float smpL, smpR;
+                if (exact)
+                {
+                    smpL = srcL[idx];
+                    smpR = srcR[idx];
+                }
+                else
+                {
+                    const float frac = (float) (v.position - idx);
+                    const int im1 = idx > 0 ? idx - 1 : idx;
+                    const int i2 = idx + 2 < length ? idx + 2 : idx + 1;
+                    smpL = hermite (srcL[im1], srcL[idx], srcL[idx + 1], srcL[i2], frac);
+                    smpR = hermite (srcR[im1], srcR[idx], srcR[idx + 1], srcR[i2], frac);
+                }
+                const float l = smpL * gain * v.gainL;
+                const float r = smpR * gain * v.gainR;
+                if (mono)
+                {
+                    left[i] += 0.5f * (l + r);
+                }
+                else
+                {
+                    left[i] += l;
+                    right[i] += r;
+                }
                 v.position += v.step;
             }
         }

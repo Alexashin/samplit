@@ -230,6 +230,21 @@ TEST_CASE ("a group sends its sound to its own output")
     REQUIRE (r.level (1) == 0.0f);
 }
 
+TEST_CASE ("a mono output receives the stereo voice as (L+R)/2")
+{
+    Rig r;
+    r.addGroup (PlayMode::All, 3);
+    auto& z = r.addZone (0, 60, 0.0f);
+    z.sample = makeSample (48000, kRate, 2, [] (int ch, int) { return ch == 0 ? 0.6f : 0.2f; });
+    r.commit();
+    r.pr[3] = nullptr;   // выход 3 моно
+
+    r.engine.noteOn (60, 127);
+    r.render();
+    REQUIRE (std::abs (r.level (3) - 0.4f) < 1e-4f);
+    REQUIRE (r.level (0) == 0.0f);
+}
+
 TEST_CASE ("group gain and pan shape the output")
 {
     Rig r;

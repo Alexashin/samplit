@@ -8,7 +8,7 @@
 
 namespace samplit
 {
-    constexpr int kMaxVoices = 64;
+    constexpr int kMaxVoices = 256;
 
     // Движок сэмплера: по ноте и velocity выбирает зоны из текущего снимка инструмента и играет их полифонично.
     // noteOn, stopPreview, previewOn и render вызываются только из audio thread: без аллокаций и блокировок.
@@ -38,6 +38,7 @@ namespace samplit
         void stopPreview() noexcept;
 
         // Дописывает все голоса в [start, end) блока. outL/outR индексируются выходом группы (0 = Main).
+        // outR[i] == nullptr означает моно-выход: левый и правый каналы голоса складываются пополам.
         // Суммирует, буфер не очищает. Указатели выходов, которых нет у хоста, должны вести в Main.
         void render (const std::array<float*, kNumOutputs + 1>& outL, const std::array<float*, kNumOutputs + 1>& outR,
                      int start, int end) noexcept;

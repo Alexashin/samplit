@@ -100,7 +100,7 @@ namespace
     };
 }
 
-TEST_CASE ("plugin declares Main plus one stereo output per group slot")
+TEST_CASE ("plugin declares stereo Main plus one mono output per group slot")
 {
     SamplitProcessor p;
 
@@ -111,11 +111,11 @@ TEST_CASE ("plugin declares Main plus one stereo output per group slot")
     for (int bus = 1; bus <= kNumOutputs; ++bus)
     {
         REQUIRE_FALSE (p.getBus (false, bus)->isEnabled());
-        REQUIRE (p.getBus (false, bus)->getDefaultLayout() == juce::AudioChannelSet::stereo());
+        REQUIRE (p.getBus (false, bus)->getDefaultLayout() == juce::AudioChannelSet::mono());
     }
 }
 
-TEST_CASE ("bus layouts: stereo only, Main required")
+TEST_CASE ("bus layouts: stereo Main required, extra outputs mono")
 {
     SamplitProcessor p;
     auto layout = p.getBusesLayout();
@@ -132,15 +132,15 @@ TEST_CASE ("bus layouts: stereo only, Main required")
         layout.outputBuses.getReference (0) = juce::AudioChannelSet::disabled();
         REQUIRE_FALSE (p.checkBusesLayoutSupported (layout));
     }
-    SECTION ("mono extra output is rejected")
+    SECTION ("stereo extra output is rejected")
     {
-        layout.outputBuses.getReference (1) = juce::AudioChannelSet::mono();
+        layout.outputBuses.getReference (1) = juce::AudioChannelSet::stereo();
         REQUIRE_FALSE (p.checkBusesLayoutSupported (layout));
     }
-    SECTION ("all stereo outputs are accepted")
+    SECTION ("all extra outputs mono is accepted")
     {
-        for (auto& out : layout.outputBuses)
-            out = juce::AudioChannelSet::stereo();
+        for (int i = 1; i < layout.outputBuses.size(); ++i)
+            layout.outputBuses.getReference (i) = juce::AudioChannelSet::mono();
         REQUIRE (p.checkBusesLayoutSupported (layout));
     }
 }
@@ -173,7 +173,7 @@ TEST_CASE ("without extra outputs everything plays into Main")
 
 TEST_CASE ("a group goes to its own output when the host enables it")
 {
-    Fixture f { 1, 2 };  // Out 1 и Out 2 включены, остальные нет. Каналы: Main = 0/1, Out 1 = 2/3, Out 2 = 4/5
+    Fixture f { 1, 2 };  // Out 1 и Out 2 включены, остальные нет. Каналы: Main = 0/1, Out 1 = 2, Out 2 = 3 (моно)
     f.processor.addGroup ("G2");
     f.processor.addGroup ("G3");
     f.put (constWav ("a.wav"), 0, 60);
@@ -184,23 +184,23 @@ TEST_CASE ("a group goes to its own output when the host enables it")
     {
         auto out = f.play (60);
         REQUIRE (Fixture::peak (out, 0) == 0.0f);
+        REQUIRE (Fixture::peak (out, 1) == 0.0f);
         REQUIRE (Fixture::peak (out, 2) > 0.0f);
-        REQUIRE (Fixture::peak (out, 3) > 0.0f);
-        REQUIRE (Fixture::peak (out, 4) == 0.0f);
+        REQUIRE (Fixture::peak (out, 3) == 0.0f);
     }
     SECTION ("group 2 plays only on Out 2")
     {
         auto out = f.play (61);
         REQUIRE (Fixture::peak (out, 0) == 0.0f);
         REQUIRE (Fixture::peak (out, 2) == 0.0f);
-        REQUIRE (Fixture::peak (out, 4) > 0.0f);
+        REQUIRE (Fixture::peak (out, 3) > 0.0f);
     }
     SECTION ("group 3 has its output switched off and falls back to Main")
     {
         auto out = f.play (62);
         REQUIRE (Fixture::peak (out, 0) > 0.0f);
         REQUIRE (Fixture::peak (out, 2) == 0.0f);
-        REQUIRE (Fixture::peak (out, 4) == 0.0f);
+        REQUIRE (Fixture::peak (out, 3) == 0.0f);
     }
     SECTION ("the user can send a group to Main explicitly")
     {

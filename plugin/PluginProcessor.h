@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Instrument.h"
+#include "KitEngine.h"
 #include "SamplerEngine.h"
 
 #include <juce_audio_formats/juce_audio_formats.h>
@@ -78,6 +79,22 @@ namespace samplit
         void setZone (int zone, const Zone&);        // sample из аргумента игнорируется
         void clearKey (int group, int key);          // убирает зоны группы, покрывающие только эту клавишу
 
+        // ---- Кит (мультимикрофонные барабаны) ----
+
+        // Задаёт кит: MIDI и ноты с экранной клавиатуры идут в него, а не в сэмплер. nullptr возвращает сэмплер.
+        // Кит должен быть собран (Kit::buildIndex()) и после публикации не меняется. Старый кит живёт, пока из него звучит удар
+        void setKit (std::shared_ptr<const Kit>);
+        std::shared_ptr<const Kit> getKit() const;
+
+        // Уровень (дБ) и панорама микрофона кита. Панорама слышна, когда микрофон идёт в Main
+        void setKitMicMix (int mic, float levelDb, float pan) noexcept { kitEngine.setMicMix (mic, levelDb, pan); }
+        void setKitSelectMode (HitSelect mode) noexcept { kitEngine.setSelectMode (mode); }
+        void setKitSpread (int layers) noexcept { kitEngine.setSpread (layers); }
+
+        // Имя пресета в состоянии проекта (сам пресет подгружает загрузчик пакетов)
+        juce::String getPresetName() const;
+        void setPresetName (const juce::String&);
+
         // Прослушивание из браузера: грузит и играет файл в Main. Новое прослушивание обрывает старое
         void previewFile (const juce::File&);
         void stopPreview() noexcept { pendingPreviewStop.store (true); }
@@ -96,7 +113,7 @@ namespace samplit
         // Какие клавиши звучат (биты 0..127 в двух словах)
         std::array<uint64_t, 2> getActiveKeys() const noexcept { return { activeLo.load(), activeHi.load() }; }
 
-        // Какие выходы 1..kNumOutputs включены в хосте (бит N-1). Группа на выключенный выход играет в Main
+        // Какие моно-выходы 1..kNumOutputs включены в хосте (бит N-1). Группа или микрофон на выключенный выход играет в Main
         uint32_t getEnabledOutputMask() const noexcept { return enabledOutputs.load(); }
 
         // Для тестов и сборки мусора: сколько снимков и сэмплов ещё ждут удаления
@@ -117,6 +134,7 @@ namespace samplit
         static juce::Array<juce::File> sortedAudioFiles (const juce::Array<juce::File>&);
 
         SamplerEngine engine;
+        KitEngine kitEngine;
         juce::AudioFormatManager formats;
 
         // Модель и кэш сэмплов: только message thread
@@ -124,12 +142,14 @@ namespace samplit
         std::map<juce::String, SamplePtr> cache;
         std::set<juce::String> loading, failed;
 
-        struct Retired { std::shared_ptr<const Instrument> snapshot; SamplePtr preview; juce::uint32 since; };
+        struct Retired { std::shared_ptr<const Instrument> snapshot; SamplePtr preview; std::shared_ptr<const Kit> kit; juce::uint32 since; };
         std::vector<Retired> retired;
 
         // Опубликованный снимок читается и из потока хоста при сохранении проекта
         mutable juce::CriticalSection stateLock;
         std::shared_ptr<const Instrument> published;
+        std::shared_ptr<const Kit> kit;
+        juce::String presetName;
         juce::File lastFolder;
         SamplePtr previewSample;
         juce::File previewFileLoaded;
@@ -139,6 +159,7 @@ namespace samplit
         std::array<std::atomic<uint32_t>, kQueue> queue {};     // note | velocity << 8
         std::atomic<uint32_t> queueWrite { 0 };
         std::atomic<uint32_t> queueRead { 0 };
+        std::atomic<bool> kitActive { false };
         std::atomic<uint32_t> previewGeneration { 0 };
         std::atomic<bool> pendingPreview { false };
         std::atomic<bool> pendingPreviewStop { false };
