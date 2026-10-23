@@ -18,7 +18,7 @@
 
 ## Где что
 
-- **Карточка проекта** (ТЗ, архитектура, истории, этапы, задачи команды): https://claude.ai/artifact/KRQDLNQF1VYxWEUzq2msYE. Задачи лежат в коллекции `tasks` базы артефакта (инструмент ArtifactData); статусы отмечает команда на странице. Новое задание или перенос — вносить туда. Исходник страницы: `Z:\!CCHGEU\ВКР\samplit-card.html`.
+- **Карточка проекта** (ТЗ, архитектура, истории, этапы, задачи команды): https://claude.ai/artifact/KRQDLNQF1VYxWEUzq2msYE. Задачи лежат в коллекции `tasks` базы артефакта (инструмент ArtifactData); статусы отмечает команда на странице. Новое задание или перенос — вносить туда. Локальных копий страниц нет: править через Artifact (read, затем publish), без чтения файла целиком не публикуется.
 - Учебные материалы (ТЗ кафедры, методички, справки, текст записки, презентация) — в `Z:\!CCHGEU\ВКР`, сюда их не класть.
 - `docs/` — техническая документация к коду (архитектура, инструкции по DAW), которая пойдёт в записку.
 
@@ -60,7 +60,7 @@ docs/
 - Сборка: `.\tools\build.ps1` (Debug), `-Config Release`. Перед сборкой закрыть Reaper и Samplit.exe: Windows не даёт перезаписать загруженный плагин.
 - Тесты: `ctest --test-dir build\Debug --output-on-failure` или `build\Debug\tests\SamplitTests_artefacts\Debug\SamplitTests.exe`.
 - pluginval: `~/tools/pluginval/pluginval.exe --strictness-level 5 --skip-gui-tests --validate <путь к Samplit.vst3>`.
-- Устройство кода простым языком: `docs/architecture.md`, сборка и правила: `docs/development.md`, обзор рынка: `docs/research/market.html`.
+- Устройство кода простым языком: `docs/architecture.md`, сборка и правила: `docs/development.md`, обзор рынка: https://claude.ai/artifact/MtrGSbQXofPqMEdgxfX7pS, брендбук: https://claude.ai/artifact/2rUTiaWbCMZ2JWh6MysCh2.
 - Репозиторий на GitHub только на личном аккаунте владельца, организации вуза не трогаем.
 
 ## Инструменты

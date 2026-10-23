@@ -1,4 +1,4 @@
-"""Assembles brand/brandbook.html from tokens.json, contrast.json and logo/*.svg."""
+"""Assembles brandbook.html (локальная копия не хранится в репозитории, публикуется в артефакт) from tokens.json, contrast.json and logo/*.svg."""
 import json, re, math
 from coloraide import Color
 
