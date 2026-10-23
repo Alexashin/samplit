@@ -54,3 +54,19 @@ magic "SPLP" (4 байта) | formatVersion u32 | packIdLen u16 | packId | manif
 ## Токен лицензии
 
 JSON `{ "payload": {...}, "sig": "<base64 Ed25519>" }`. Подпись на SHA-512 (Monocypher `crypto_ed25519_*`, совместима с PyNaCl и libsodium). Payload: `licenseId`, `user`, `machine` (хеш отпечатка), `notBefore`, `expires` (Unix, секунды), `packs`: `{ packId: "<ключ пакета, зашифрованный ключом машины, base64>" }`. Подробности в `docs/packs-plan.md`, раздел 6.
+
+## Уточнения по реализации (24.10.2026)
+
+Пакет (`core/pack`):
+- В хранимом манифесте у `HitFile` необязательное поле `peak` (пик в 24-битных единицах, 0 означает файл из нулей). `start` и `end` после сборки равны 0, обрезка применена физически, `path` не хранится.
+- Дополнительные данные AEAD блока: заголовок + номер блока (u32). У манифеста только заголовок. `manifestLen` включает тег 16 байт.
+- Тихий хвост обрезается при сборке (`--trim-db`, по умолчанию −60 дБ, RMS блока 10 мс), `tailChunk` пока не используется (`docs/streaming-design.md`).
+- Неизвестные поля манифеста (на любом уровне) сохраняются как есть; `requires` в коде называется `requiresPacks`.
+- Строковые литералы с русским текстом в ядре пишутся как `"..."_s` (оператор из `Manifest.h`): обычный литерал JUCE читает как Latin-1.
+
+Лицензия (`core/license`):
+- Подпись считается по каноническому JSON от `payload`: ключи по возрастанию, без пробелов, не-ASCII без экранирования, числа целые.
+- Клиент отправляет серверу сырой отпечаток машины. В токене `machine` = hex BLAKE2b-256(`"samplit-machine-id-v1"` + отпечаток). Ключ обёртки `machineKey` = BLAKE2b-256(`"samplit-machine-key-v1"` + отпечаток) в токен не попадает.
+- Обёртка ключа пакета: `base64(nonce24 | шифртекст32 | тег16)`, XChaCha20-Poly1305, AD = `"samplit-packkey-v1:" + packId`.
+- Порядок проверок: NoToken, Malformed, BadSignature, ClockRollback, WrongMachine, NotYetValid, Expired.
+- Тестовый публичный ключ в `core/src/LicenseKey.cpp` заменить боевым (`tools/license_server/admin.py init`) до выпуска сборки.
