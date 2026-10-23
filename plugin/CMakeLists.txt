@@ -58,6 +58,8 @@ target_sources(Samplit PRIVATE
     LicensePanel.cpp
     MixerPanel.h
     MixerPanel.cpp
+    PickPanel.h
+    PickPanel.cpp
     PluginEditor.h
     PluginEditor.cpp)
 

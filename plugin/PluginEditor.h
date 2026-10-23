@@ -5,6 +5,7 @@
 #include "LicensePanel.h"
 #include "LookAndFeel.h"
 #include "MixerPanel.h"
+#include "PickPanel.h"
 #include "PluginProcessor.h"
 #include "PresetPanel.h"
 #include "SampleBrowser.h"
@@ -16,7 +17,7 @@
 
 namespace samplit
 {
-    // Окно плагина. Основной экран: пресеты и лицензия слева, микшер микрофонов справа, клавиатура внизу.
+    // Окно плагина. Основной экран: пресеты и лицензия слева, микшер микрофонов и выбор удара справа (вкладки), клавиатура внизу.
     // Служебный экран (только в сборках с SAMPLIT_SERVICE_MODE): браузер сэмплов, группы и зоны для ручной раскладки.
     // DragAndDropContainer нужен, чтобы тащить сэмпл из списка на клавишу
     class SamplitEditor final : public juce::AudioProcessorEditor,
@@ -29,6 +30,9 @@ namespace samplit
 
         void paint (juce::Graphics&) override;
         void resized() override;
+
+        // Правая вкладка основного экрана: микшер микрофонов или выбор удара
+        void showRightTab (bool picks);
 
     private:
         void showServiceScreen (bool);
@@ -45,6 +49,8 @@ namespace samplit
         PresetPanel presets;
         LicensePanel license;
         MixerPanel mixer;
+        PickPanel picks;
+        juce::TextButton mixerTab, picksTab;
 
         SampleBrowser browser;
         GroupPanel groups;

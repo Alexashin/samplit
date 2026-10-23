@@ -55,14 +55,23 @@ namespace samplit
         float gainDb = 0.0f;
     };
 
-    // Слой: окно velocity и артикуляция. Необязательные поля приходят из манифеста пакета
+    // Как в режиме «Живой» выбирается удар внутри слоя
+    enum class Pick
+    {
+        Random,     // случайный, без повтора подряд, с разбросом по соседним слоям
+        Cycle,      // по кругу: с первого удара слоя (по возрастанию velocity) до последнего и снова
+        Exact       // velocity выбирает конкретный удар, как в Kontakt
+    };
+
+    // Слой: окно velocity и артикуляция. Необязательные поля приходят из манифеста пакета, pick и choice из пресета
     struct Layer
     {
         std::string id, artic;
         int velLo = 1, velHi = 127;
         std::string label;
         int key = -1;                   // слой привязан к одной клавише, -1: ко всем клавишам барабана
-        bool pickExact = false;         // pick: "exact": в режиме «Живой» только точный удар, без разброса и соседних слоёв
+        Pick pick = Pick::Random;
+        int choice = -1;                // индекс в Kit::choices: режим слоя переключает пользователь
         std::string peerGroup;
         bool unverified = false;
     };
@@ -99,6 +108,14 @@ namespace samplit
         Live      // слой по velocity (ближайший, если попали в щель), удар случайный внутри слоя, без повтора подряд
     };
 
+    // Переключатель выбора удара на экране кита для группы слоёв (например, хэт C2–F#4). Правила задаёт пресет
+    struct PickChoice
+    {
+        std::string id;                 // ключ для сохранения в проекте: барабаны и клавиши
+        std::string name;
+        Pick pick = Pick::Random;       // по умолчанию, из пресета
+    };
+
     // Индекс клавиши: какие слои и удары на ней лежат. Строится в Kit::buildIndex()
     struct NoteMap
     {
@@ -106,8 +123,9 @@ namespace samplit
         {
             int layer = 0;
             int velLo = 1, velHi = 127;
-            bool pickExact = false;
-            std::vector<int> hits;      // индексы в Piece::hits
+            Pick pick = Pick::Random;
+            int choice = -1;
+            std::vector<int> hits;      // индексы в Piece::hits, по возрастанию velLo
         };
 
         int piece = -1;
@@ -117,6 +135,7 @@ namespace samplit
     struct Kit
     {
         static constexpr int kMaxMics = kNumOutputs;
+        static constexpr int kMaxChoices = 32;
 
         std::string id, title;
         std::vector<Mic> mics;          // не больше kMaxMics
@@ -124,6 +143,7 @@ namespace samplit
         VelocityGain velocityGain = VelocityGain::None;
         HitSelect mode = HitSelect::Live;
         int spread = 0;                 // Live: брать удар из ±spread соседних слоёв
+        std::vector<PickChoice> choices;    // не больше kMaxChoices
         std::array<NoteMap, 128> notes {};
 
         // Проверяет связность и строит индекс клавиш. Вызывается один раз перед публикацией кита.
@@ -133,7 +153,7 @@ namespace samplit
             for (auto& n : notes)
                 n = {};
 
-            if ((int) mics.size() > kMaxMics)
+            if ((int) mics.size() > kMaxMics || (int) choices.size() > kMaxChoices)
                 return false;
 
             for (int p = 0; p < (int) pieces.size(); ++p)
@@ -142,7 +162,8 @@ namespace samplit
                 for (int h = 0; h < (int) piece.hits.size(); ++h)
                 {
                     auto& hit = piece.hits[(size_t) h];
-                    if (hit.layer < 0 || hit.layer >= (int) piece.layers.size() || hit.key < 0 || hit.key > 127)
+                    if (hit.layer < 0 || hit.layer >= (int) piece.layers.size() || hit.key < 0 || hit.key > 127
+                        || piece.layers[(size_t) hit.layer].choice >= (int) choices.size())
                         return false;
                     if (hit.files.size() > mics.size())
                         return false;
@@ -160,7 +181,7 @@ namespace samplit
                     if (ref == nullptr)
                     {
                         const auto& layer = piece.layers[(size_t) hit.layer];
-                        map.layers.push_back ({ hit.layer, layer.velLo, layer.velHi, layer.pickExact, {} });
+                        map.layers.push_back ({ hit.layer, layer.velLo, layer.velHi, layer.pick, layer.choice, {} });
                         ref = &map.layers.back();
                     }
                     ref->hits.push_back (h);
@@ -168,8 +189,15 @@ namespace samplit
             }
 
             for (auto& map : notes)
+            {
                 std::sort (map.layers.begin(), map.layers.end(), [] (const NoteMap::LayerRef& a, const NoteMap::LayerRef& b)
                            { return a.velLo != b.velLo ? a.velLo < b.velLo : a.layer < b.layer; });
+                if (map.piece < 0)
+                    continue;
+                const auto& hits = pieces[(size_t) map.piece].hits;
+                for (auto& l : map.layers)
+                    std::stable_sort (l.hits.begin(), l.hits.end(), [&] (int a, int b) { return hits[(size_t) a].velLo < hits[(size_t) b].velLo; });
+            }
             return true;
         }
     };

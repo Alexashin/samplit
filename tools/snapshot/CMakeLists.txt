@@ -14,6 +14,7 @@ target_sources(samplit-snapshot PRIVATE
     ${SAMPLIT_PLUGIN_DIR}/PresetPanel.cpp
     ${SAMPLIT_PLUGIN_DIR}/LicensePanel.cpp
     ${SAMPLIT_PLUGIN_DIR}/MixerPanel.cpp
+    ${SAMPLIT_PLUGIN_DIR}/PickPanel.cpp
     ${SAMPLIT_PLUGIN_DIR}/SampleBrowser.cpp
     ${SAMPLIT_PLUGIN_DIR}/KeyboardView.cpp
     ${SAMPLIT_PLUGIN_DIR}/GroupPanel.cpp

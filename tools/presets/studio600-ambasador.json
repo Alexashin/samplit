@@ -19,7 +19,21 @@
     "mode": "live",
     "layerSpread": 1,
     "noRepeat": true,
-    "velocityToGain": 0.0
+    "velocityToGain": 0.0,
+    "pick": [
+      { "name": "Бочка",                        "pieces": ["kick"], "mode": "cycle" },
+      { "name": "Малый",                        "pieces": ["snare_hi"], "mode": "random" },
+      { "name": "Томы",                         "pieces": ["tom_10", "tom_14", "tom_16m", "tom_16l"], "mode": "random" },
+      { "name": "Хэт C2–F#4",                   "pieces": ["hat"], "keys": [48, 78], "mode": "random", "includeExact": true },
+      { "name": "Хэт: крещендо G4",             "pieces": ["hat"], "keys": [79, 79], "mode": "exact", "includeExact": true },
+      { "name": "Райд",                         "pieces": ["ride"], "mode": "random" },
+      { "name": "Crash 18\": спокойная C1",     "pieces": ["crash_a"], "keys": [36, 36], "mode": "exact" },
+      { "name": "Crash 18\": раскачанная C#1–D#1", "pieces": ["crash_a"], "keys": [37, 39], "mode": "cycle" },
+      { "name": "Crash 16\": спокойная E1",     "pieces": ["crash_b"], "keys": [40, 40], "mode": "exact" },
+      { "name": "Crash 16\": раскачанная F1–G1", "pieces": ["crash_b"], "keys": [41, 43], "mode": "cycle" },
+      { "name": "China",                        "pieces": ["china"], "mode": "random" },
+      { "name": "Сплеш",                        "pieces": ["splash"], "mode": "random" }
+    ]
   },
   "mics": {
     "kick_in":  { "level": 0.0,  "pan": 0.0,   "out": 1,  "mute": false },

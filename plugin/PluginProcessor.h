@@ -135,6 +135,10 @@ namespace samplit
         MicState getMicState (int mic) const;
         void setMicState (int mic, const MicState&);
 
+        // ---- Выбор удара (message thread): переключатели Kit::choices, сохраняются в проекте по id ----
+        Pick getPickChoice (int choice) const;
+        void setPickChoice (int choice, Pick);
+
         // Служебный режим: играет сэмплер с ручной раскладкой, кит молчит. В релизе переключателя нет
         void setServiceMode (bool);
         bool isServiceMode() const noexcept { return serviceMode.load(); }
@@ -215,10 +219,13 @@ namespace samplit
         std::atomic<uint32_t> enabledOutputs { 0 };
         std::atomic<int> loadsInFlight { 0 };
         void applyMixer();
+        void applyPicks();
 
         std::unique_ptr<LicenseManager> license;
         std::vector<MicState> mixer;                        // только message thread
         std::map<juce::String, MicState> savedMix;          // по id микрофона, под stateLock: пишется в проект
+        std::vector<Pick> picks;                            // только message thread, по индексу Kit::choices
+        std::map<juce::String, Pick> savedPicks;            // по id переключателя, под stateLock: пишется в проект
         KitLoadResult lastLoad;                             // только message thread
         bool restoreMixPending = false;                     // только message thread
         std::atomic<bool> serviceMode { false };

@@ -135,6 +135,53 @@ TEST_CASE ("Preset parses the default preset file", "[loader]")
     CHECK (! p.includeUnverified);
 }
 
+TEST_CASE ("Preset reads pick rules and the default preset carries them", "[loader]")
+{
+    Preset p;
+    juce::String error;
+    const auto file = juce::File (SAMPLIT_TEST_FIXTURES).getParentDirectory().getParentDirectory()
+                          .getChildFile ("tools/presets/studio600-default.json");
+    REQUIRE (Preset::fromFile (file, p, error));
+    REQUIRE (p.pick.size() > 6);
+    CHECK (p.pick[0].pieces == std::vector<juce::String> { "kick" });
+    CHECK (p.pick[0].mode == Pick::Cycle);
+
+    const auto hat = std::find_if (p.pick.begin(), p.pick.end(), [] (const auto& r) { return r.pieces[0] == "hat" && r.keyLo == 48; });
+    REQUIRE (hat != p.pick.end());
+    CHECK (hat->keyHi == 78);
+    CHECK (hat->mode == Pick::Random);
+
+    CHECK_FALSE (Preset::fromJson ("{\"id\":\"x\",\"select\":{\"pick\":[{\"name\":\"a\",\"pieces\":[\"k\"],\"mode\":\"zzz\"}]}}", p, error));
+    CHECK_FALSE (Preset::fromJson ("{\"id\":\"x\",\"select\":{\"pick\":[{\"name\":\"a\",\"mode\":\"cycle\"}]}}", p, error));
+}
+
+TEST_CASE ("loadKit applies pick rules: the layer follows the rule and becomes a switch", "[loader]")
+{
+    const auto dir = loaderDir();
+    const auto t = writePack (dir, "pk", "kick", 36);
+
+    auto preset = presetOf ({ "pk" });
+    preset.pick.push_back ({ "Kick", { "kick" }, 0, 127, Pick::Cycle, false });
+    preset.pick.push_back ({ "Nothing here", { "absent" }, 0, 127, Pick::Random, false });
+
+    const auto res = loadKit (preset, optionsFor (dir, { { "pk", t.key } }));
+    REQUIRE (res.ok());
+    REQUIRE (res.kit->choices.size() == 1);   // правило без барабанов в ките переключателя не даёт
+    CHECK (res.kit->choices[0].pick == Pick::Cycle);
+    CHECK (res.kit->pieces[0].layers[0].pick == Pick::Cycle);
+    CHECK (res.kit->pieces[0].layers[0].choice == 0);
+
+    KitEngine engine;
+    engine.prepare (44100.0);
+    engine.setKit (res.kit.get());
+    const int a = engine.noteOn (36, 10).hit;
+    const int b = engine.noteOn (36, 10).hit;
+    const int c = engine.noteOn (36, 10).hit;
+    CHECK (a != b);
+    CHECK (a == c);
+    engine.setKit (nullptr);
+}
+
 TEST_CASE ("Preset rejects broken json", "[loader]")
 {
     Preset p;

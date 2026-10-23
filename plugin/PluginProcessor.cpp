@@ -415,6 +415,10 @@ namespace samplit
         }
 
         kitEngine.setKit (newKit.get());
+        picks.clear();
+        if (newKit != nullptr)
+            for (const auto& c : newKit->choices)
+                picks.push_back (c.pick);
         kitActive.store (newKit != nullptr && ! serviceMode.load());
 
         if (old != nullptr)
@@ -495,6 +499,19 @@ namespace samplit
                     mixer = std::move (fresh);
                     applyMixer();
                     setKit (result->kit);
+
+                    // Выбор удара: как в пресете, а при восстановлении проекта сохранённый (по id переключателя)
+                    {
+                        const juce::ScopedLock sl (stateLock);
+                        const auto& choices = result->kit->choices;
+                        for (size_t i = 0; i < choices.size(); ++i)
+                            if (const auto saved = savedPicks.find (juce::String (choices[i].id)); keepMix && saved != savedPicks.end())
+                                picks[i] = saved->second;
+                        savedPicks.clear();
+                        for (size_t i = 0; i < choices.size(); ++i)
+                            savedPicks[juce::String (choices[i].id)] = picks[i];
+                    }
+                    applyPicks();
                 }
 
                 lastLoad = *result;
@@ -555,6 +572,30 @@ namespace samplit
             savedMix[juce::String (current->mics[(size_t) mic].id)] = s;
         }
         applyMixer();
+    }
+
+    Pick SamplitProcessor::getPickChoice (int choice) const
+    {
+        return juce::isPositiveAndBelow (choice, (int) picks.size()) ? picks[(size_t) choice] : Pick::Random;
+    }
+
+    void SamplitProcessor::setPickChoice (int choice, Pick pick)
+    {
+        const auto current = getKit();
+        if (current == nullptr || ! juce::isPositiveAndBelow (choice, (int) picks.size()) || choice >= (int) current->choices.size())
+            return;
+        picks[(size_t) choice] = pick;
+        {
+            const juce::ScopedLock sl (stateLock);
+            savedPicks[juce::String (current->choices[(size_t) choice].id)] = pick;
+        }
+        applyPicks();
+    }
+
+    void SamplitProcessor::applyPicks()
+    {
+        for (int i = 0; i < Kit::kMaxChoices; ++i)
+            kitEngine.setPickChoice (i, i < (int) picks.size() ? (int) picks[(size_t) i] : -1);
     }
 
     // Solo: если хоть один микрофон в соло, остальные молчат. Mute сильнее соло
@@ -682,6 +723,13 @@ namespace samplit
                 v.setProperty ("out", m.out, nullptr);
                 state.appendChild (v, nullptr);
             }
+            for (const auto& [id, pick] : savedPicks)
+            {
+                juce::ValueTree v ("PICK");
+                v.setProperty ("id", id, nullptr);
+                v.setProperty ("mode", pickToString (pick), nullptr);
+                state.appendChild (v, nullptr);
+            }
             inst = published;
         }
 
@@ -729,8 +777,17 @@ namespace samplit
 
         Instrument parsed;
         std::map<juce::String, MicState> mix;
+        std::map<juce::String, Pick> pickModes;
         for (const auto& v : state)
         {
+            if (v.hasType ("PICK"))
+            {
+                Pick pick;
+                if (pickFromString (v.getProperty ("mode").toString(), pick))
+                    pickModes[v.getProperty ("id").toString()] = pick;
+                continue;
+            }
+
             if (v.hasType ("MIC"))
             {
                 MicState m;
@@ -783,6 +840,7 @@ namespace samplit
             const juce::ScopedLock sl (stateLock);
             presetName = state.getProperty ("preset").toString();
             savedMix = std::move (mix);
+            savedPicks = std::move (pickModes);
         }
 
         // Хост может звать setState не из message thread, а модель меняется только там

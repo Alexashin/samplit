@@ -78,6 +78,8 @@ namespace samplit
             p.store (0.0f);
         for (auto& o : micOut)
             o.store (-1);
+        for (auto& c : choicePick)
+            c.store (-1);
         lastHit.fill (-1);
     }
 
@@ -88,6 +90,8 @@ namespace samplit
         for (int i = 0; i < kMaxStrikes; ++i)
             release (i);
         lastHit.fill (-1);
+        for (auto& c : cyclePos)
+            c.fill (0);
     }
 
     void KitEngine::setKit (const Kit* kit) noexcept
@@ -97,7 +101,15 @@ namespace samplit
             selectMode.store ((int) kit->mode);
             spread.store (std::max (0, kit->spread));
         }
+        for (auto& c : choicePick)
+            c.store (-1);
         current.store (kit);
+    }
+
+    void KitEngine::setPickChoice (int choice, int pick) noexcept
+    {
+        if (choice >= 0 && choice < Kit::kMaxChoices)
+            choicePick[(size_t) choice].store (pick < 0 ? -1 : std::min (pick, (int) Pick::Exact));
     }
 
     void KitEngine::setMicMix (int mic, float levelDb, float pan) noexcept
@@ -176,7 +188,7 @@ namespace samplit
         }
 
         // Live: слой, в который попала velocity, а в щели между окнами ближайший (при равенстве мягче).
-        // Слой с pick "exact" играет только точный удар: без случайного выбора и без соседних слоёв
+        // Слой с pick "exact" играет только точный удар, "cycle" идёт по кругу; оба без соседних слоёв
         const int numLayers = (int) map.layers.size();
         int chosen = -1;
         int bestDistance = 1 << 30;
@@ -193,7 +205,23 @@ namespace samplit
         if (chosen < 0)
             return -1;
 
-        if (map.layers[(size_t) chosen].pickExact)
+        const auto& layer = map.layers[(size_t) chosen];
+        Pick pick = layer.pick;
+        if (layer.choice >= 0 && layer.choice < Kit::kMaxChoices)
+            if (const int p = choicePick[(size_t) layer.choice].load(); p >= 0)
+                pick = (Pick) p;
+
+        if (pick == Pick::Cycle)
+        {
+            if (layer.hits.empty())
+                return -1;
+            auto& pos = cyclePos[(size_t) note][(size_t) std::min (chosen, kMaxCycleLayers - 1)];
+            const int h = layer.hits[(size_t) (pos % (uint32_t) layer.hits.size())];
+            pos = (pos + 1) % (uint32_t) layer.hits.size();
+            return h;
+        }
+
+        if (pick == Pick::Exact)
         {
             int best = -1;
             int bestHitDistance = 1 << 30;
@@ -252,6 +280,8 @@ namespace samplit
         {
             lastKit = kit;
             lastHit.fill (-1);
+            for (auto& c : cyclePos)
+                c.fill (0);
         }
 
         velocity = std::clamp (velocity, 1, 127);

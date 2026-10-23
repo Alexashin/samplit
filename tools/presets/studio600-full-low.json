@@ -1,0 +1,250 @@
+{
+  "format": 1,
+  "id": "studio600-full-low",
+  "name": "Studio600 полный: Ahead Low",
+  "comment": "Для проверки: к основному набору добавлены непроверенные удары (пакет studio600-unverified: группы -D, клавиши без описания в руководстве, тарелки C7–G#7). Основной пресет без них",
+  "packs": [
+    "studio600-core",
+    "studio600-snare-low",
+    "studio600-hat",
+    "studio600-ride",
+    "studio600-cymbals",
+    "studio600-unverified"
+  ],
+  "pieces": [
+    "kick",
+    "snare_low",
+    "tom_10",
+    "tom_14",
+    "tom_16m",
+    "tom_16l",
+    "hat",
+    "ride",
+    "crash_a",
+    "crash_b",
+    "china",
+    "splash",
+    "cymbals_x"
+  ],
+  "includeUnverified": true,
+  "select": {
+    "mode": "live",
+    "layerSpread": 1,
+    "noRepeat": true,
+    "velocityToGain": 0.0,
+    "pick": [
+      {
+        "name": "Бочка",
+        "pieces": [
+          "kick"
+        ],
+        "mode": "cycle"
+      },
+      {
+        "name": "Малый",
+        "pieces": [
+          "snare_low"
+        ],
+        "mode": "random"
+      },
+      {
+        "name": "Томы",
+        "pieces": [
+          "tom_10",
+          "tom_14",
+          "tom_16m",
+          "tom_16l"
+        ],
+        "mode": "random"
+      },
+      {
+        "name": "Хэт C2–F#4",
+        "pieces": [
+          "hat"
+        ],
+        "keys": [
+          48,
+          78
+        ],
+        "mode": "random",
+        "includeExact": true
+      },
+      {
+        "name": "Хэт: крещендо G4",
+        "pieces": [
+          "hat"
+        ],
+        "keys": [
+          79,
+          79
+        ],
+        "mode": "exact",
+        "includeExact": true
+      },
+      {
+        "name": "Райд",
+        "pieces": [
+          "ride"
+        ],
+        "mode": "random"
+      },
+      {
+        "name": "Crash 18\": спокойная C1",
+        "pieces": [
+          "crash_a"
+        ],
+        "keys": [
+          36,
+          36
+        ],
+        "mode": "exact"
+      },
+      {
+        "name": "Crash 18\": раскачанная C#1–D#1",
+        "pieces": [
+          "crash_a"
+        ],
+        "keys": [
+          37,
+          39
+        ],
+        "mode": "cycle"
+      },
+      {
+        "name": "Crash 16\": спокойная E1",
+        "pieces": [
+          "crash_b"
+        ],
+        "keys": [
+          40,
+          40
+        ],
+        "mode": "exact"
+      },
+      {
+        "name": "Crash 16\": раскачанная F1–G1",
+        "pieces": [
+          "crash_b"
+        ],
+        "keys": [
+          41,
+          43
+        ],
+        "mode": "cycle"
+      },
+      {
+        "name": "China",
+        "pieces": [
+          "china"
+        ],
+        "mode": "random"
+      },
+      {
+        "name": "Сплеш",
+        "pieces": [
+          "splash"
+        ],
+        "mode": "random"
+      },
+      {
+        "name": "Тарелки C7–G#7 (не описаны)",
+        "pieces": [
+          "cymbals_x"
+        ],
+        "mode": "random"
+      }
+    ]
+  },
+  "mics": {
+    "kick_in": {
+      "level": 0.0,
+      "pan": 0.0,
+      "out": 1,
+      "mute": false
+    },
+    "kick_out": {
+      "level": -3.0,
+      "pan": 0.0,
+      "out": 2,
+      "mute": false
+    },
+    "sn_top": {
+      "level": 0.0,
+      "pan": 0.0,
+      "out": 3,
+      "mute": false
+    },
+    "sn_bot": {
+      "level": -6.0,
+      "pan": 0.0,
+      "out": 4,
+      "mute": false
+    },
+    "oh_1": {
+      "level": -2.0,
+      "pan": -0.8,
+      "out": 5,
+      "mute": false
+    },
+    "oh_2": {
+      "level": -2.0,
+      "pan": 0.8,
+      "out": 6,
+      "mute": false
+    },
+    "room_1": {
+      "level": -6.0,
+      "pan": -0.6,
+      "out": 7,
+      "mute": false
+    },
+    "room_2": {
+      "level": -6.0,
+      "pan": 0.6,
+      "out": 8,
+      "mute": false
+    },
+    "room_mid": {
+      "level": -6.0,
+      "pan": 0.0,
+      "out": 9,
+      "mute": false
+    },
+    "hat": {
+      "level": -3.0,
+      "pan": -0.35,
+      "out": 10,
+      "mute": false
+    },
+    "ride": {
+      "level": -3.0,
+      "pan": 0.4,
+      "out": 11,
+      "mute": false
+    },
+    "tom_a1": {
+      "level": 0.0,
+      "pan": -0.3,
+      "out": 12,
+      "mute": false
+    },
+    "tom_a2": {
+      "level": 0.0,
+      "pan": -0.05,
+      "out": 13,
+      "mute": false
+    },
+    "tom_a3": {
+      "level": 0.0,
+      "pan": 0.35,
+      "out": 14,
+      "mute": false
+    },
+    "tom_a4": {
+      "level": 0.0,
+      "pan": 0.55,
+      "out": 15,
+      "mute": false
+    }
+  }
+}

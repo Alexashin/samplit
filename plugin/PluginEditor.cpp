@@ -20,7 +20,7 @@ namespace samplit
     }
 
     SamplitEditor::SamplitEditor (SamplitProcessor& p)
-        : AudioProcessorEditor (&p), processor (p), presets (p), license (p.getLicense()), mixer (p),
+        : AudioProcessorEditor (&p), processor (p), presets (p), license (p.getLicense()), mixer (p), picks (p),
           browser (p), groups (p), zones (p), keyboard (p)
     {
         setLookAndFeel (&lookAndFeel);
@@ -60,7 +60,19 @@ namespace samplit
         serviceButton.setTooltip (utf8 ("Ручная раскладка сэмплов по клавишам. Пока он включён, кит молчит"));
         serviceButton.onClick = [this] { showServiceScreen (serviceButton.getToggleState()); };
 
-        for (auto* c : std::initializer_list<juce::Component*> { &presets, &license, &mixer, &browser, &groups, &zones, &keyboard })
+        mixerTab.setButtonText (utf8 ("Микрофоны"));
+        picksTab.setButtonText (utf8 ("Выбор удара"));
+        picksTab.setTooltip (utf8 ("Как выбирается удар: случайно, по кругу или по velocity"));
+        for (auto* t : { &mixerTab, &picksTab })
+        {
+            t->setClickingTogglesState (true);
+            t->setRadioGroupId (1);
+        }
+        mixerTab.onClick = [this] { showRightTab (false); };
+        picksTab.onClick = [this] { showRightTab (true); };
+        mixerTab.setToggleState (true, juce::dontSendNotification);
+
+        for (auto* c : std::initializer_list<juce::Component*> { &presets, &license, &mixer, &picks, &mixerTab, &picksTab, &browser, &groups, &zones, &keyboard })
             addChildComponent (c);
         keyboard.setVisible (true);
         addChildComponent (serviceButton);
@@ -97,11 +109,20 @@ namespace samplit
         processor.setServiceMode (service);
         serviceButton.setToggleState (service, juce::dontSendNotification);
 
-        for (auto* c : std::initializer_list<juce::Component*> { &presets, &license, &mixer })
+        for (auto* c : std::initializer_list<juce::Component*> { &presets, &license, &mixerTab, &picksTab })
             c->setVisible (! service);
+        showRightTab (picksTab.getToggleState());
         for (auto* c : std::initializer_list<juce::Component*> { &browser, &groups, &zones })
             c->setVisible (service);
         resized();
+    }
+
+    void SamplitEditor::showRightTab (bool showPicks)
+    {
+        const bool kit = ! processor.isServiceMode();
+        (showPicks ? picksTab : mixerTab).setToggleState (true, juce::dontSendNotification);
+        mixer.setVisible (kit && ! showPicks);
+        picks.setVisible (kit && showPicks);
     }
 
     void SamplitEditor::resized()
@@ -122,7 +143,13 @@ namespace samplit
             license.setBounds (left.removeFromBottom (150));
             left.removeFromBottom (12);
             presets.setBounds (left);
+            auto tabs = area.removeFromTop (30);
+            mixerTab.setBounds (tabs.removeFromLeft (130));
+            tabs.removeFromLeft (6);
+            picksTab.setBounds (tabs.removeFromLeft (130));
+            area.removeFromTop (8);
             mixer.setBounds (area);
+            picks.setBounds (area);
             return;
         }
 

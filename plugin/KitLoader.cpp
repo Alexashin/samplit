@@ -10,6 +10,62 @@ namespace samplit
 
     // ---------------------------------------------------------------- пресет
 
+    bool pickFromString (const juce::String& s, Pick& out)
+    {
+        if (s == "random")      out = Pick::Random;
+        else if (s == "cycle")  out = Pick::Cycle;
+        else if (s == "exact")  out = Pick::Exact;
+        else                    return false;
+        return true;
+    }
+
+    juce::String pickToString (Pick p)
+    {
+        return p == Pick::Cycle ? "cycle" : (p == Pick::Exact ? "exact" : "random");
+    }
+
+    // Правила пресета по порядку: позднее правило перекрывает раннее. Каждое правило становится переключателем
+    void applyPickRules (const Preset& preset, Kit& kit)
+    {
+        std::vector<std::vector<bool>> fromManifest;
+        for (const auto& piece : kit.pieces)
+        {
+            auto& exact = fromManifest.emplace_back();
+            for (const auto& l : piece.layers)
+                exact.push_back (l.pick == Pick::Exact);
+        }
+
+        for (const auto& rule : preset.pick)
+        {
+            const int choice = (int) kit.choices.size();
+            bool used = false;
+            for (size_t p = 0; p < kit.pieces.size(); ++p)
+            {
+                auto& piece = kit.pieces[p];
+                if (std::find (rule.pieces.begin(), rule.pieces.end(), juce::String (piece.id)) == rule.pieces.end())
+                    continue;
+                for (size_t i = 0; i < piece.layers.size(); ++i)
+                {
+                    auto& l = piece.layers[i];
+                    const bool allKeys = rule.keyLo == 0 && rule.keyHi == 127;
+                    if ((! allKeys && (l.key < rule.keyLo || l.key > rule.keyHi)) || (fromManifest[p][i] && ! rule.includeExact))
+                        continue;
+                    l.pick = rule.mode;
+                    l.choice = choice;
+                    used = true;
+                }
+            }
+            if (! used)
+                continue;   // барабанов правила нет в ките: переключатель не нужен
+
+            juce::StringArray ids;
+            for (const auto& id : rule.pieces)
+                ids.add (id);
+            const auto id = ids.joinIntoString (",") + ":" + juce::String (rule.keyLo) + "-" + juce::String (rule.keyHi);
+            kit.choices.push_back ({ id.toStdString(), rule.name.toStdString(), rule.mode });
+        }
+    }
+
     bool Preset::fromJson (const juce::String& json, Preset& out, juce::String& error)
     {
         const auto root = juce::JSON::parse (json);
@@ -49,6 +105,42 @@ namespace samplit
             }
             p.layerSpread = juce::jmax (0, (int) sel->getProperty ("layerSpread"));
             p.velocityToGain = (float) (double) sel->getProperty ("velocityToGain");
+
+            if (auto* rules = sel->getProperty ("pick").getArray())
+                for (const auto& v : *rules)
+                {
+                    auto* r = v.getDynamicObject();
+                    if (r == nullptr)
+                        continue;
+                    Preset::PickRule rule;
+                    rule.name = r->getProperty ("name").toString();
+                    if (auto* ps = r->getProperty ("pieces").getArray())
+                        for (const auto& id : *ps)
+                            rule.pieces.push_back (id.toString());
+                    if (auto* keys = r->getProperty ("keys").getArray(); keys != nullptr && keys->size() == 2)
+                    {
+                        rule.keyLo = juce::jlimit (0, 127, (int) (*keys)[0]);
+                        rule.keyHi = juce::jlimit (rule.keyLo, 127, (int) (*keys)[1]);
+                    }
+                    const auto m = r->getProperty ("mode").toString();
+                    if (! pickFromString (m, rule.mode))
+                    {
+                        error = "Пресет: неизвестный режим pick "_s + m;
+                        return false;
+                    }
+                    rule.includeExact = (bool) r->getProperty ("includeExact");
+                    if (rule.name.isEmpty() || rule.pieces.empty())
+                    {
+                        error = "Пресет: у правила pick нет name или pieces"_s;
+                        return false;
+                    }
+                    p.pick.push_back (std::move (rule));
+                }
+            if ((int) p.pick.size() > Kit::kMaxChoices)
+            {
+                error = "Пресет: правил pick больше "_s + juce::String (Kit::kMaxChoices);
+                return false;
+            }
         }
 
         if (auto* mics = obj->getProperty ("mics").getDynamicObject())
@@ -267,7 +359,7 @@ namespace samplit
                     l.velHi = ml.velHi;
                     l.label = ml.extra.getWithDefault ("label", {}).toString().toStdString();
                     l.key = (int) ml.extra.getWithDefault ("key", -1);
-                    l.pickExact = ml.extra.getWithDefault ("pick", {}).toString() == "exact";
+                    l.pick = ml.extra.getWithDefault ("pick", {}).toString() == "exact" ? Pick::Exact : Pick::Random;
                     l.peerGroup = ml.extra.getWithDefault ("peerGroup", {}).toString().toStdString();
                     l.unverified = (bool) ml.extra.getWithDefault ("unverified", false);
                     layerIndex[(size_t) p][ml.id] = (int) piece.layers.size();
@@ -317,6 +409,8 @@ namespace samplit
                     piece.hits.push_back (std::move (h));
                 }
             }
+
+        applyPickRules (preset, *kit);
 
         if (zeroFiles > 0)
             res.warnings.push_back (juce::String (zeroFiles) + " файлов из нулей пропущено"_s);

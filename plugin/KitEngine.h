@@ -39,6 +39,9 @@ namespace samplit
         void setSelectMode (HitSelect mode) noexcept { selectMode.store ((int) mode); }
         void setSpread (int layers) noexcept { spread.store (layers < 0 ? 0 : layers); }
 
+        // Message thread: режим слоёв переключателя Kit::choices[choice]. -1: как в ките
+        void setPickChoice (int choice, int pick) noexcept;
+
         // Message thread: уровень (дБ) и панорама микрофона. Панорама действует, когда микрофон идёт в Main
         void setMicMix (int mic, float levelDb, float pan) noexcept;
 
@@ -86,6 +89,8 @@ namespace samplit
             std::array<MicVoice, Kit::kMaxMics> voices {};
         };
 
+        static constexpr int kMaxCycleLayers = 16;     // слоёв на клавише со своим счётчиком круга
+
         int selectHit (const Kit&, const NoteMap&, int note, int velocity) noexcept;
         void fadeStrike (Strike&) noexcept;
         void release (int index) noexcept;
@@ -97,9 +102,11 @@ namespace samplit
         std::array<std::atomic<float>, Kit::kMaxMics> micLevel;
         std::array<std::atomic<float>, Kit::kMaxMics> micPan;
         std::array<std::atomic<int>, Kit::kMaxMics> micOut;
+        std::array<std::atomic<int>, Kit::kMaxChoices> choicePick;
         std::array<std::atomic<const Kit*>, kMaxStrikes> strikeKit {};   // != nullptr, пока удар звучит
         std::array<Strike, kMaxStrikes> strikes {};
         std::array<int, 128> lastHit;
+        std::array<std::array<uint32_t, kMaxCycleLayers>, 128> cyclePos {};   // следующий удар круга по клавише и слою
         const Kit* lastKit = nullptr;
         std::atomic<uint64_t> activeLo { 0 }, activeHi { 0 };
         uint64_t ageCounter = 0;

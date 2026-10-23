@@ -2,7 +2,7 @@
 // (подписан ТЕСТОВЫМ ключом, и проверяет его тоже тестовый ключ, не зашитый в плагин), открывает окно плагина без показа
 // на экране и сохраняет его снимки в разных состояниях. Звук не нужен, сеть не нужна.
 //
-// samplit-snapshot <папка> --installed: то же на настоящих данных этого компьютера (%APPDATA%\Samplit, боевой ключ):
+// samplit-snapshot <папка> --installed [id пресета]: то же на настоящих данных этого компьютера (%APPDATA%\Samplit, боевой ключ):
 // загружает пресет studio600-default, печатает время загрузки и объём в памяти, сохраняет снимок.
 
 #include "PluginEditor.h"
@@ -122,9 +122,11 @@ namespace
         file.replaceWithText (license::signToken (juce::var (p), secret));
     }
 
-    bool shoot (SamplitProcessor& processor, const juce::File& out, int w, int h)
+    bool shoot (SamplitProcessor& processor, const juce::File& out, int w, int h, bool picksTab = false)
     {
         std::unique_ptr<juce::AudioProcessorEditor> editor (processor.createEditor());
+        if (picksTab)
+            static_cast<SamplitEditor&> (*editor).showRightTab (true);
         editor->setSize (w, h);
         pumpUntil ([] { return false; }, 300);  // таймеры панелей успевают обновиться
         const auto image = editor->createComponentSnapshot (editor->getLocalBounds(), true, 1.0f);
@@ -169,12 +171,13 @@ int main (int argc, char** argv)
         std::cout << "license valid: " << (m->getInfo().isValid() ? "yes" : "no") << std::endl;
         processor.setLicenseManager (std::move (m));
 
+        const juce::String wanted = argc > 3 ? juce::String (argv[3]) : juce::String ("studio600-default");
         bool loaded = false, ok = false;
         const auto started = juce::Time::getMillisecondCounterHiRes();
         for (const auto& e : processor.scanPresets())
         {
             std::cout << "preset " << e.preset.id << (e.isComplete() ? " complete" : e.isPlayable() ? " partial" : " silent") << std::endl;
-            if (e.preset.id == "studio600-default")
+            if (e.preset.id == wanted)
                 processor.selectPreset (e.preset, [&] (const KitLoadResult& r)
                 {
                     loaded = true;
@@ -259,6 +262,8 @@ int main (int argc, char** argv)
         failures += shoot (processor, outDir.getChildFile ("03-kit.png"), 1180, 780) ? 0 : 1;
         failures += shoot (processor, outDir.getChildFile ("04-kit-narrow.png"), 900, 620) ? 0 : 1;
         failures += shoot (processor, outDir.getChildFile ("05-kit-wide.png"), 1600, 900) ? 0 : 1;
+        failures += shoot (processor, outDir.getChildFile ("07-picks.png"), 1180, 780, true) ? 0 : 1;
+        failures += shoot (processor, outDir.getChildFile ("08-picks-narrow.png"), 900, 620, true) ? 0 : 1;
     }
 
     root.deleteRecursively();

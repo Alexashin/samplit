@@ -25,6 +25,17 @@ namespace samplit
             bool mute = false;
         };
 
+        // Как выбирается удар на слоях барабанов (docs/preset-format.md). Каждое правило становится переключателем
+        // на экране кита. Слои с pick "exact" из манифеста правило не трогает, если не задано includeExact
+        struct PickRule
+        {
+            juce::String name;
+            std::vector<juce::String> pieces;
+            int keyLo = 0, keyHi = 127;
+            Pick mode = Pick::Random;
+            bool includeExact = false;
+        };
+
         juce::String id, name;
         std::vector<juce::String> packs;
         std::vector<juce::String> pieces;   // пусто: все барабаны пакетов
@@ -33,10 +44,18 @@ namespace samplit
         int layerSpread = 0;
         float velocityToGain = 0.0f;
         std::map<juce::String, MicSetting> mics;
+        std::vector<PickRule> pick;
 
         static bool fromJson (const juce::String& json, Preset& out, juce::String& error);
         static bool fromFile (const juce::File&, Preset& out, juce::String& error);
     };
+
+    // Режим pick в пресете: "random", "cycle", "exact"
+    bool pickFromString (const juce::String&, Pick& out);
+    juce::String pickToString (Pick);
+
+    // Расставляет слоям кита режимы и переключатели из правил пресета. Вызывается до Kit::buildIndex()
+    void applyPickRules (const Preset&, Kit&);
 
     // Уровень, панорама и глушение микрофона кита; индекс совпадает с Kit::mics
     struct MicMix

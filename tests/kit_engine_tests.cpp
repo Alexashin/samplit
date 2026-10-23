@@ -576,7 +576,7 @@ TEST_CASE ("kit: a layer with pick exact plays only the exact hit, without sprea
     const int p = b.piece ("p");
     const int soft = b.layer (p, 1, 100);
     const int exact = b.layer (p, 120, 127);
-    b.kit->pieces[(size_t) p].layers[(size_t) exact].pickExact = true;
+    b.kit->pieces[(size_t) p].layers[(size_t) exact].pick = Pick::Exact;
     b.hit (p, soft, 60, { 0.05f });
     for (int v = 120; v <= 127; ++v)
         b.hit (p, exact, 60, { 0.01f * (float) (v - 119) }, v, v);
@@ -596,6 +596,84 @@ TEST_CASE ("kit: a layer with pick exact plays only the exact hit, without sprea
     // Слой без pick по-прежнему работает по общим правилам: при разбросе 2 удар может прийти и из соседнего слоя
     r.engine.setSpread (0);
     REQUIRE (r.engine.noteOn (60, 50).layer == soft);
+}
+
+TEST_CASE ("kit: a layer with pick cycle plays its hits in velocity order and wraps around", "[kit]")
+{
+    KitBuilder b;
+    b.mic ("m", 1);
+    const int p = b.piece ("p");
+    const int soft = b.layer (p, 1, 100);
+    const int loud = b.layer (p, 120, 127);
+    b.kit->pieces[(size_t) p].layers[(size_t) loud].pick = Pick::Cycle;
+    b.hit (p, soft, 60, { 0.05f });
+    // Удары в манифесте не по порядку velocity: круг всё равно идёт от мягкого к сильному
+    for (int v : { 124, 120, 127, 122 })
+        b.hit (p, loud, 60, { 0.1f }, v, v);
+    const auto kit = b.done (HitSelect::Live, 2);   // разброс включён, но слой по кругу его игнорирует
+
+    Rig r;
+    r.engine.setKit (kit.get());
+    std::vector<int> played;
+    for (int v : { 120, 127, 111, 125, 119, 122, 127, 121 })   // velocity любая внутри и около слоя
+    {
+        const auto info = r.engine.noteOn (60, v);
+        REQUIRE (info.layer == loud);
+        played.push_back (info.hit);
+    }
+    const std::vector<int> order { 2, 4, 1, 3 };    // velocity 120, 122, 124, 127
+    for (size_t i = 0; i < played.size(); ++i)
+        REQUIRE (played[i] == order[i % order.size()]);
+
+    // Новый кит начинает круг сначала
+    r.engine.setKit (nullptr);
+    r.engine.setKit (kit.get());
+    r.engine.noteOn (0, 1);
+    const auto kit2 = b.done (HitSelect::Live, 0);
+    r.engine.setKit (kit2.get());
+    REQUIRE (r.engine.noteOn (60, 127).hit == 2);
+    REQUIRE (r.engine.noteOn (60, 127).hit == 4);
+}
+
+TEST_CASE ("kit: a pick choice switches its layers between random and cycle", "[kit]")
+{
+    KitBuilder b;
+    b.mic ("m", 1);
+    const int p = b.piece ("p");
+    const int l = b.layer (p, 112, 127);
+    b.kit->pieces[(size_t) p].layers[(size_t) l].choice = 0;
+    b.kit->choices.push_back ({ "p:60-60", "P", Pick::Random });
+    for (int v = 112; v <= 127; ++v)
+        b.hit (p, l, 60, { 0.1f }, v, v);
+    const auto kit = b.done (HitSelect::Live, 0);
+
+    Rig r;
+    r.engine.setSeed (7);
+    r.engine.setKit (kit.get());
+
+    // По умолчанию случайно: за 16 ударов круг 0, 1, 2… не получается
+    bool inOrder = true;
+    for (int i = 0; i < 16; ++i)
+        inOrder = inOrder && r.engine.noteOn (60, 120).hit == i;
+    REQUIRE_FALSE (inOrder);
+
+    r.engine.setPickChoice (0, (int) Pick::Cycle);
+    const int first = r.engine.noteOn (60, 120).hit;
+    for (int i = 1; i < 20; ++i)
+        REQUIRE (r.engine.noteOn (60, 120).hit == (first + i) % 16);
+
+    // Новый кит сбрасывает выбор пользователя к значению из кита
+    r.engine.setKit (kit.get());
+    r.engine.setPickChoice (0, -1);
+    bool cycle = true;
+    int prev = r.engine.noteOn (60, 120).hit;
+    for (int i = 0; i < 16; ++i)
+    {
+        const int h = r.engine.noteOn (60, 120).hit;
+        cycle = cycle && h == (prev + 1) % 16;
+        prev = h;
+    }
+    REQUIRE_FALSE (cycle);
 }
 
 TEST_CASE ("kit: Hermite interpolation follows a sine when the rates differ", "[kit]")
