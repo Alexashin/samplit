@@ -35,9 +35,9 @@ def ramp(name):
 
 
 role_notes = {
-    "bg": "фон окна", "surface": "панели, карточки", "pad": "пустой пэд, дорожка, неактивное",
+    "bg": "фон окна", "surface": "панели, карточки", "pad": "пустая клавиша, дорожка, неактивное",
     "line": "разделители", "text": "основной текст", "text-muted": "подписи, второстепенное",
-    "accent": "заливка главного действия, «горящий» пэд", "accent-hover": "наведение на акцент",
+    "accent": "заливка главного действия, звучащая клавиша и микрофон", "accent-hover": "наведение на акцент",
     "on-accent": "текст на акценте", "accent-soft": "фон плашки с акцентом", "accent-text": "акцентный текст и ссылки",
 }
 rows = []
@@ -119,12 +119,19 @@ for i in range(64):
     bars.append(f'<rect x="{i * 6}" y="{32 - h / 2:.1f}" width="3.4" height="{h:.1f}" rx="1.7"/>')
 wave = f'<svg viewBox="0 0 384 64" class="wave" aria-hidden="true">{"".join(bars)}</svg>'
 
-pads = []
-labels = ["KICK", "SNARE", "HAT C", "HAT O", "808", "CLAP", "PERC", "FX"]
-lit = {0, 1, 4}
-for i, lb in enumerate(labels):
-    pads.append(f'<div class="padx{" lit" if i in lit else ""}"><span>OUT {i + 1}</span><b>{lb}</b></div>')
-pads_html = "\n".join(pads)
+# mockup: drum keys (note, label) and the microphones of one snare hit (name, out, level %, enabled in the DAW)
+keys = [("A-1", "KICK"), ("C#0", "RIM"), ("D0", "SNARE"), ("F#0", "GHOST"), ("C1", "CRASH"), ("G#1", "CHINA"),
+        ("C2", "HAT"), ("E4", "PEDAL"), ("C5", "RIDE"), ("C6", "TOM 16"), ("E6", "TOM 14"), ("F#6", "TOM 10")]
+lit_keys = {2, 6}
+keys_html = "\n".join(
+    f'<div class="key{" lit" if i in lit_keys else ""}"><span>{n}</span><b>{lb}</b></div>' for i, (n, lb) in enumerate(keys))
+
+mics = [("KICK IN", 1, 12, True), ("KICK OUT", 2, 10, True), ("SN TOP", 3, 92, True), ("SN BOT", 4, 60, True),
+        ("HAT", 5, 22, True), ("OVER 1", 6, 48, True), ("OVER 2", 7, 46, False), ("ROOM MID", 8, 34, False)]
+mics_html = "\n".join(
+    f'<div class="mic"><b>{nm}</b><i class="lvl"><u style="width:{lv}%"></u></i>'
+    f'<span class="tag{"" if on else " off"}">{"OUT " + str(o) if on else "→ MAIN"}</span></div>'
+    for nm, o, lv, on in mics)
 
 html = f'''<title>Samplit Brandbook</title>
 <meta name="claude:viewport-fit-sides" content="cover">
@@ -283,12 +290,23 @@ td.n {{ font-variant-numeric: tabular-nums; font-family: var(--f-mono); }}
 .tag {{ font: 600 .6875rem/1 var(--f-mono); padding: 4px 6px; border-radius: 99px; background: var(--pad); color: var(--text-muted); }}
 .row.sel .tag {{ background: var(--accent); color: var(--on-accent); }}
 .wave {{ width: 100%; height: 56px; fill: var(--text-muted); }}
-.padgrid {{ display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }}
-.padx {{ aspect-ratio: 1; border-radius: 22%; background: var(--pad); display: grid; align-content: space-between; padding: 8% 10%; min-width: 0; }}
-.padx span {{ font: 600 .625rem/1 var(--f-mono); color: var(--text-muted); }}
-.padx b {{ font: 700 .75rem/1 var(--f-display); }}
-.padx.lit {{ background: var(--accent); color: var(--on-accent); }}
-.padx.lit span {{ color: var(--on-accent); opacity: .85; }}
+.kbd {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(56px, 1fr)); gap: 8px; }}
+.key {{ aspect-ratio: 1 / 1.1; border-radius: 12px; background: var(--pad); display: grid; align-content: space-between; padding: 10px 8px; min-width: 0; }}
+.key span {{ font: 600 .6875rem/1 var(--f-mono); color: var(--text-muted); }}
+.key b {{ font: 700 .75rem/1.1 var(--f-display); overflow-wrap: anywhere; }}
+.key.lit {{ background: var(--accent); color: var(--on-accent); }}
+.key.lit span {{ color: var(--on-accent); opacity: .85; }}
+.seg {{ display: inline-flex; border: 1px solid var(--line); border-radius: 10px; padding: 3px; gap: 2px; font-size: .8125rem; background: var(--surface); }}
+.seg span {{ padding: 6px 10px; border-radius: 7px; color: var(--text-muted); white-space: nowrap; }}
+.seg span.on {{ background: var(--accent-soft); color: var(--accent-text); font-weight: 600; }}
+.mixer {{ background: var(--surface); border-radius: 12px; padding: 6px; display: grid; gap: 2px; align-content: start; }}
+.mic {{ display: grid; grid-template-columns: minmax(64px, 88px) 1fr auto; gap: 12px; align-items: center; padding: 8px 10px; border-radius: 8px; }}
+.mic b {{ font: 600 .75rem/1 var(--f-mono); letter-spacing: .04em; }}
+.lvl {{ display: block; height: 6px; border-radius: 3px; background: var(--pad); overflow: hidden; }}
+.lvl u {{ display: block; height: 100%; background: var(--accent); }}
+.tag.off {{ background: var(--warn-soft); color: var(--warn-text); }}
+.alert {{ display: flex; gap: 10px; align-items: baseline; padding: 10px 12px; border-radius: 10px; background: var(--warn-soft); color: var(--warn-text); font-size: .8125rem; line-height: 1.45; }}
+.alert b {{ font: 700 .8125rem/1 var(--f-mono); }}
 .hint {{ font: 400 .75rem/1.4 var(--f-mono); color: var(--text-muted); }}
 
 ul.plain {{ margin: 0; padding-left: 1.1em; display: grid; gap: 8px; max-width: 68ch; }}
@@ -310,9 +328,9 @@ footer {{ padding-block: 56px 80px; color: var(--text-muted); font-size: .875rem
 
 <div class="hero">
   <div class="mark">{LA("mark-color","sw-l")}{LA("mark-on-dark","sw-d")}</div>
-  <h1>Один звук, <br>разные выходы</h1>
-  <p class="lead">Samplit собирается из двух слов: sample и split. Знак показывает это буквально: пэд, разрезанный волной. Верхняя половина горит, нижняя ждёт. Так же работает плагин: один сэмпл, и каждый пэд уходит на свою дорожку.</p>
-  <div class="facts"><span class="fact lit">v1.0 · брендбук</span><span class="fact">офлайн</span><span class="fact">VST3 · AU · Standalone</span><span class="fact">Geologica + JetBrains Mono</span></div>
+  <h1>Один удар, <br>разные выходы</h1>
+  <p class="lead">Samplit собирается из двух слов: sample и split. Знак показывает это буквально: пэд, разрезанный волной. Верхняя половина горит, нижняя ждёт. Так же работает плагин: один удар барабана записан на несколько микрофонов, и каждый микрофон уходит на свою дорожку.</p>
+  <div class="facts"><span class="fact lit">v1.0 · брендбук</span><span class="fact">офлайн</span><span class="fact">Main + 16 выходов</span><span class="fact">VST3 · AU · Standalone</span><span class="fact">Geologica + JetBrains Mono</span></div>
 </div>
 
 <!-- ======== ЛОГОТИП ======== -->
@@ -393,7 +411,7 @@ footer {{ padding-block: 56px 80px; color: var(--text-muted); font-size: .875rem
   <div class="sdiv">{div_b}</div>
   <span class="eyebrow">Цвет</span>
   <h2>Графит, бумага и один горящий цвет</h2>
-  <p class="lead">Основа спокойная, холодная. Акцент один, ультрамарин: его нет ни у одной из DAW, в которых живёт плагин. Он включается там, где что-то «горит»: активный пэд, главное действие, выбранная строка.</p>
+  <p class="lead">Основа спокойная, холодная. Акцент один, ультрамарин: его нет ни у одной из DAW, в которых живёт плагин. Он включается там, где что-то «горит»: звучащая клавиша, главное действие, выбранный пресет.</p>
   <div class="stack">
     <div class="panel">
       <div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:12px"><h3>Акцент · ультрамарин</h3><span class="mono muted">oklch, оттенок 268</span></div>
@@ -410,7 +428,7 @@ footer {{ padding-block: 56px 80px; color: var(--text-muted); font-size: .875rem
           <i style="width:70%;background:var(--paper)"></i><i style="width:22%;background:var(--ink)"></i><i style="width:8%;background:var(--accent-fixed)"></i>
         </div>
         <div style="display:flex;justify-content:space-between;margin-top:8px" class="mono muted"><span>70% бумага</span><span>22% графит</span><span>8% акцент</span></div>
-        <p style="margin-top:20px"><b>Один цвет — одно значение.</b> Ультрамарин значит «активно» или «главное». Для статусов отдельные цвета, они не пересекаются с акцентом по оттенку: зелёный, янтарный, красный.</p>
+        <p style="margin-top:20px"><b>Один цвет, одно значение.</b> Ультрамарин значит «активно» или «главное». Для статусов отдельные цвета, они не пересекаются с акцентом по оттенку: зелёный, янтарный, красный.</p>
       </div>
       <div class="panel">
         <h3>Контраст, измеренный</h3>
@@ -447,19 +465,19 @@ footer {{ padding-block: 56px 80px; color: var(--text-muted); font-size: .875rem
     </div>
     <div class="panel">
       <div class="spec">
-        <div><span class="k">Display · 800 · 1.05</span><span class="s" style="font:800 2.5rem/1.05 var(--f-display);letter-spacing:-.02em">Найти по описанию</span></div>
+        <div><span class="k">Display · 800 · 1.05</span><span class="s" style="font:800 2.5rem/1.05 var(--f-display);letter-spacing:-.02em">Выберите пресет</span></div>
         <div><span class="k">H2 · 700 · 1.2 · −0.015em</span><span class="s" style="font:700 1.75rem/1.2 var(--f-display);letter-spacing:-.015em">Мульти-аут в DAW</span></div>
-        <div><span class="k">H3 · 600 · 1.3</span><span class="s" style="font:600 1.0625rem/1.3 var(--f-display)">Пэды и выходы</span></div>
-        <div><span class="k">Текст · 400 · 1.6 · 16px</span><span class="s">Плагин сам индексирует папки, расставляет теги и находит звук по описанию словами.</span></div>
-        <div><span class="k">Мелкий · 400 · 1.5 · 14px</span><span class="s" style="font-size:.875rem">Индексация идёт в фоне, DAW не подвисает.</span></div>
-        <div><span class="k">Данные · mono 600 · 12px</span><span class="s mono" style="font-weight:600;font-size:.75rem;letter-spacing:.06em;text-transform:uppercase">OUT 3 · 808 · 124 BPM · C#2</span></div>
+        <div><span class="k">H3 · 600 · 1.3</span><span class="s" style="font:600 1.0625rem/1.3 var(--f-display)">Микрофоны и выходы</span></div>
+        <div><span class="k">Текст · 400 · 1.6 · 16px</span><span class="s">Каждый микрофон удара звучит на своём выходе, а в Main идёт общий микс.</span></div>
+        <div><span class="k">Мелкий · 400 · 1.5 · 14px</span><span class="s" style="font-size:.875rem">Пакет загружается в фоне, DAW не подвисает.</span></div>
+        <div><span class="k">Данные · mono 600 · 12px</span><span class="s mono" style="font-weight:600;font-size:.75rem;letter-spacing:.06em;text-transform:uppercase">OUT 3 · SN TOP · D0 · 120–127</span></div>
       </div>
     </div>
     <ul class="plain">
       <li>Размеры только из шкалы: 12 · 14 · 16 · 17 · 28 · 40+. Заголовки идут по убыванию, ни один не мельче текста.</li>
       <li>Межстрочный интервал безразмерный. Подписи и теги короче одной строки, поэтому там 1.2–1.3, всё, что переносится, не ниже 1.4.</li>
       <li>Длина строки в тексте до 68 символов. Заголовки с <code>text-wrap: balance</code>, абзацы с <code>pretty</code>.</li>
-      <li>Цифры, которые меняются (время, BPM, число сэмплов), набираем с <code>tabular-nums</code>.</li>
+      <li>Цифры, которые меняются (время, velocity, число ударов), набираем с <code>tabular-nums</code>.</li>
       <li>В плагине минимальный размер 11 px, только для моно-меток. Основной текст интерфейса 13–14 px.</li>
     </ul>
   </div>
@@ -501,10 +519,10 @@ footer {{ padding-block: 56px 80px; color: var(--text-muted); font-size: .875rem
     </div>
     <div class="panel">
       <h3>Мотив разреза: фон</h3>
-      <p class="muted" style="margin-top:8px">Тот же разрез как поверхность: две тонировки, между ними полоска фона. Применяем сдержанно: пустые состояния, заставки, редкие широкие полосы. Не на первом экране и не в рабочих местах плагина (список, пэды), где фон остаётся ровным.</p>
+      <p class="muted" style="margin-top:8px">Тот же разрез как поверхность: две тонировки, между ними полоска фона. Применяем сдержанно: пустые состояния, заставки, редкие широкие полосы. Не на первом экране и не в рабочих местах плагина (клавиатура, микшер микрофонов), где фон остаётся ровным.</p>
       <div class="cols" style="margin-top:20px">
-        <div class="demo">{split_bg(0.30, 0.66, 0.02, 600, 300)}<div><b>Ничего не нашлось</b><span class="muted">Опишите звук иначе, например «мягкий кик» или «808 с длинным хвостом».</span></div></div>
-        <div class="demo">{split_bg(0.62, 0.38, 0.02, 600, 300)}<div><b>Перетащите папку сюда</b><span class="muted">Samplit просканирует её в фоне, DAW не зависнет.</span></div></div>
+        <div class="demo">{split_bg(0.30, 0.66, 0.02, 600, 300)}<div><b>Пресет не выбран</b><span class="muted">Выберите пресет в списке. Клавиши заиграют, когда пакет загрузится.</span></div></div>
+        <div class="demo">{split_bg(0.62, 0.38, 0.02, 600, 300)}<div><b>Пакет «Тарелки» не установлен</b><span class="muted">Положите файл пакета в папку Packs и перезапустите проект. Остальные барабаны уже играют.</span></div></div>
       </div>
     </div>
   </div>
@@ -515,32 +533,34 @@ footer {{ padding-block: 56px 80px; color: var(--text-muted); font-size: .875rem
   <div class="sdiv">{div_b}</div>
   <span class="eyebrow">Интерфейс</span>
   <h2>Плагин живёт в тёмной теме</h2>
-  <p class="lead">DAW почти всегда тёмные, поэтому плагин по умолчанию тёмный, светлая тема опциональна. Эскиз ниже показывает, как работает система: горит то, что выбрано или играет.</p>
+  <p class="lead">DAW почти всегда тёмные, поэтому плагин по умолчанию тёмный, светлая тема опциональна. Эскиз ниже показывает, как работает система: пользователь выбирает пресет, играет по клавишам и видит, какие микрофоны звучат и на какие выходы они уходят. Горит то, что звучит или выбрано.</p>
   <div class="stack">
-    <div class="dark-scope plug" role="img" aria-label="Эскиз окна плагина: поиск, список сэмплов, волна и сетка пэдов">
+    <div class="dark-scope plug" role="img" aria-label="Эскиз окна плагина: выбор пресета, клавиатура с названиями барабанов, список пресетов и микшер микрофонов с выходами">
       <div class="plug-top">{L("lockup-h-on-dark")}
-        <div class="search"><span>⌕</span><b style="font-weight:500">драйвовый 808 с длинным хвостом</b></div>
+        <div class="search"><span>⌕</span><b style="font-weight:500">Studio600 · Ahead Live</b></div>
+        <div class="seg" aria-label="Выбор удара"><span>Как в Kontakt</span><span class="on">Живой</span></div>
       </div>
+      <div class="kbd">{keys_html}</div>
       <div class="plug-body">
         <div style="display:grid;gap:12px;align-content:start">
           <div class="list">
-            <div class="row sel"><b>808_Dirty_Long_F#1.wav</b><span class="tags"><span class="tag">808</span><span class="tag">dark</span></span></div>
-            <div class="row"><b>808_Sub_Clean_E1.wav</b><span class="tags"><span class="tag">808</span></span></div>
-            <div class="row"><b>Kick_Punch_Dist_03.wav</b><span class="tags"><span class="tag">kick</span><span class="tag">dist</span></span></div>
-            <div class="row"><b>Bass_Growl_Long_A1.wav</b><span class="tags"><span class="tag">bass</span></span></div>
+            <div class="row sel"><b>Studio600 · Ahead Live</b><span class="tags"><span class="tag">base</span><span class="tag">cymbals</span></span></div>
+            <div class="row"><b>Studio600 · Ahead Low</b><span class="tags"><span class="tag">base</span></span></div>
+            <div class="row"><b>Studio600 · Ambasador Hi</b><span class="tags"><span class="tag">base</span><span class="tag">large</span></span></div>
           </div>
-          <div class="list" style="padding:12px">{wave}<div class="hint" style="margin-top:6px">1.84 s · 44.1 kHz · пик −1.2 dB</div></div>
+          <div class="list" style="padding:12px">{wave}<div class="hint" style="margin-top:6px">SN TOP · 0.82 s · 44.1 kHz · пик −3.4 dB</div></div>
         </div>
         <div style="display:grid;gap:10px;align-content:start">
-          <div class="padgrid">{pads_html}</div>
-          <div class="hint">Горящие пэды играют. Каждый уходит на свой выход: пэд N → OUT N.</div>
+          <div class="mixer">{mics_html}</div>
+          <div class="alert" role="note"><b>!</b><span>OUT 7 и OUT 8 выключены в DAW: OVER 2 и ROOM MID играют в Main.</span></div>
+          <div class="hint">Микрофон N → OUT N. Один удар играет всеми своими микрофонами сразу.</div>
         </div>
       </div>
     </div>
     <div class="cols">
-      <div class="rule"><h3><span class="pillok">1</span> Горит только активное</h3><p class="muted">Заливка акцентом у играющих пэдов, выбранной строки и одного главного действия на экране. Остальное нейтральное.</p></div>
-      <div class="rule"><h3><span class="pillok">2</span> Состояние видно без цвета</h3><p class="muted">Горящий пэд ещё и подписан, выбранная строка отличается плашкой. Цвет не единственный носитель смысла.</p></div>
-      <div class="rule"><h3><span class="pillok">3</span> Часто нажимаемое не анимируем</h3><p class="muted">Пэды и строки отвечают мгновенно. Анимация ≤ 150 мс и только для прозрачности и цвета.</p></div>
+      <div class="rule"><h3><span class="pillok">1</span> Горит только активное</h3><p class="muted">Заливка акцентом у звучащих клавиш, выбранного пресета и одного главного действия на экране. Остальное нейтральное.</p></div>
+      <div class="rule"><h3><span class="pillok">2</span> Состояние видно без цвета</h3><p class="muted">Выход микрофона подписан (OUT 3), выключенный в DAW помечен текстом «→ MAIN» и пояснением внизу, выбранный пресет отличается плашкой. Цвет не единственный носитель смысла.</p></div>
+      <div class="rule"><h3><span class="pillok">3</span> Часто нажимаемое не анимируем</h3><p class="muted">Клавиши и строки отвечают мгновенно. Анимация ≤ 150 мс и только для прозрачности и цвета.</p></div>
     </div>
   </div>
 </section>
@@ -550,16 +570,17 @@ footer {{ padding-block: 56px 80px; color: var(--text-muted); font-size: .875rem
   <div class="sdiv">{div_b}</div>
   <span class="eyebrow">Голос</span>
   <h2>Коротко и по делу</h2>
-  <p class="lead">Говорим как знающий коллега: прямо, без пафоса. Называем вещи так, как их называет продюсер.</p>
+  <p class="lead">Говорим как знающий коллега: прямо, без пафоса. Называем вещи так, как их называют барабанщик и звукорежиссёр.</p>
   <div class="stack">
     <div class="cols">
-      <div class="panel"><h3>Да</h3><ul class="plain" style="margin-top:12px"><li>«Добавить папку», «Найти похожие», «Всё в Main».</li><li>«Нашлось 128 сэмплов. Показаны первые 50.»</li><li>«Не нашлось. Попробуйте описать звук иначе, например „мягкий кик“.»</li></ul></div>
-      <div class="panel"><h3>Нет</h3><ul class="plain" style="margin-top:12px"><li>«Произвести индексацию медиатеки».</li><li>«Ой! Что-то пошло не так».</li><li>«Нейросеть магическим образом подберёт идеальный звук».</li></ul></div>
+      <div class="panel"><h3>Да</h3><ul class="plain" style="margin-top:12px"><li>«Выбрать пресет», «Всё в Main», «Микрофоны по выходам».</li><li>«Загружено 6 из 8 микрофонов. Играть можно.»</li><li>«OUT 7 выключен в DAW. OVER 2 играет в Main.»</li></ul></div>
+      <div class="panel"><h3>Нет</h3><ul class="plain" style="margin-top:12px"><li>«Произвести инициализацию мультиканальной конфигурации».</li><li>«Ой! Что-то пошло не так».</li><li>«Нейросеть магическим образом подберёт идеальный звук».</li></ul></div>
     </div>
     <ul class="plain">
       <li>Кнопка называет действие глаголом, после нажатия сообщение говорит о результате.</li>
       <li>Ошибка объясняет, что случилось и что делать. Без извинений.</li>
-      <li>Термины продюсеров оставляем как есть: kick, snare, 808, one-shot, loop, choke.</li>
+      <li>Термины оставляем как есть: kick, snare, overhead, room, velocity, choke.</li>
+      <li>Словарь продукта: пресет, удар, микрофон, выход. «Сэмпл» только про отдельный файл.</li>
       <li>Единицы и числа с неразрывным пробелом: 1,84&nbsp;с, 44,1&nbsp;кГц, −1,2&nbsp;дБ.</li>
     </ul>
   </div>
