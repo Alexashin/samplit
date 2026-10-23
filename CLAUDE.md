@@ -53,15 +53,14 @@ docs/
 - Маппинг берём только из `.nki` (`tools/nki_extract.py`, порт ConvertWithMoss под LGPL-3.0, в git пока не добавлен: сначала оформить лицензию файла отдельно от `LICENSE`). Удар по совпадению имён файлов не собираем: у HAT на крэшах и на снейре `Ahead-LIVE` номера сдвинуты.
 - Не сделано: загрузчик пакетов в плагине (расшифровка, FLAC, сборка `Kit`, `setKit`), экран пресетов и микшер микрофонов, служебный режим скрыть в релизе, подключение лицензии в плагин (проверка, продление в фоне, ключи пакетов), первые настоящие пакеты (запуск `mark_kit.py` и `samplit-packer`), боевой ключ подписи, отпечаток машины на macOS, проверка в Cubase 15 и Reaper на живом хосте, проверка HTTPS-продления.
 - Вопросы к Пачевскому: какая папка кика какая клавиша; смысл групп `-D` и клавиш малого A0, A#0, B0 и тарелок C7–G#7; какой из трёх малых основной; как считается обрезка конца зоны в `.nki`; два повреждённых файла `TOMS-Pearl-Masters/A2/0-397.wav` и `0-398.wav`; остаётся ли в ТЗ ВКР интеллектуальный поиск.
-- `docs/architecture.md` и `docs/demo-kt0.md` описывают старую модель пэдов, перед запиской обновить.
+- `docs/architecture.md` и `docs/development.md` (разделы про пэды) описывают старую модель, перед запиской обновить.
 
 ## Сборка и проверка
 
 - Сборка: `.\tools\build.ps1` (Debug), `-Config Release`. Перед сборкой закрыть Reaper и Samplit.exe: Windows не даёт перезаписать загруженный плагин.
 - Тесты: `ctest --test-dir build\Debug --output-on-failure` или `build\Debug\tests\SamplitTests_artefacts\Debug\SamplitTests.exe`.
 - pluginval: `~/tools/pluginval/pluginval.exe --strictness-level 5 --skip-gui-tests --validate <путь к Samplit.vst3>`.
-- Устройство кода простым языком: `docs/architecture.md`, сборка и правила: `docs/development.md`, сценарий показа: `docs/demo-kt0.md`, обзор рынка: `docs/research/market.html`.
-- Офлайн-набор страниц для показа: `tools/make_offline_pages.py`.
+- Устройство кода простым языком: `docs/architecture.md`, сборка и правила: `docs/development.md`, обзор рынка: `docs/research/market.html`.
 - Репозиторий на GitHub только на личном аккаунте владельца, организации вуза не трогаем.
 
 ## Инструменты
