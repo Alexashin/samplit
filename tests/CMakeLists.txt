@@ -13,12 +13,14 @@ juce_add_console_app(SamplitTests PRODUCT_NAME "SamplitTests")
 target_sources(SamplitTests PRIVATE
     ${CMAKE_SOURCE_DIR}/plugin/SamplerEngine.cpp
     ${CMAKE_SOURCE_DIR}/plugin/KitEngine.cpp
+    ${CMAKE_SOURCE_DIR}/plugin/KitLoader.cpp
     ${CMAKE_SOURCE_DIR}/plugin/PluginProcessor.cpp
     editor_stub.cpp
     juce_setup.cpp
     test_helpers.h
     sampler_engine_tests.cpp
     kit_engine_tests.cpp
+    kit_loader_tests.cpp
     processor_tests.cpp
     core_tests.cpp
     pack_tests.cpp

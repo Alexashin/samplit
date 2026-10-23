@@ -34,6 +34,8 @@ target_sources(Samplit PRIVATE
     SamplerEngine.h
     SamplerEngine.cpp
     Kit.h
+    KitLoader.h
+    KitLoader.cpp
     KitEngine.h
     KitEngine.cpp
     PluginProcessor.h
@@ -61,6 +63,7 @@ target_compile_definitions(Samplit PUBLIC
 target_link_libraries(Samplit
     PRIVATE
         SamplitAssets
+        samplit_core
         juce::juce_audio_utils
         juce::juce_audio_formats
         juce::juce_gui_basics
