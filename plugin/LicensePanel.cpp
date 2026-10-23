@@ -41,8 +41,46 @@ namespace samplit
             refresh();
         };
 
-        for (auto* c : std::initializer_list<juce::Component*> { &title, &renewButton, &code, &activateButton })
-            addAndMakeVisible (c);
+       #if SAMPLIT_OFFLINE_LICENSE
+        offline = true;
+       #endif
+
+        copyCodeButton.setButtonText (utf8 ("Скопировать код"));
+        copyCodeButton.setTooltip (utf8 ("Отправьте этот код владельцу лицензий: по нему выпускают файл лицензии для этого компьютера"));
+        copyCodeButton.onClick = [this]
+        {
+            juce::SystemClipboard::copyTextToClipboard (license.getMachineCode());
+            copyCodeButton.setButtonText (utf8 ("Код скопирован"));
+            juce::Timer::callAfterDelay (2000, [safe = juce::Component::SafePointer<LicensePanel> (this)]
+            {
+                if (safe != nullptr)
+                    safe->copyCodeButton.setButtonText (utf8 ("Скопировать код"));
+            });
+        };
+
+        loadFileButton.setButtonText (utf8 ("Загрузить лицензию"));
+        loadFileButton.setTooltip (utf8 ("Файл license.token, который вам прислали"));
+        loadFileButton.onClick = [this]
+        {
+            chooser = std::make_unique<juce::FileChooser> (utf8 ("Файл лицензии Samplit"),
+                                                           juce::File::getSpecialLocation (juce::File::userHomeDirectory),
+                                                           "*.token;*.json");
+            chooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
+                                  [this] (const juce::FileChooser& fc)
+                                  {
+                                      const auto file = fc.getResult();
+                                      if (file.existsAsFile())
+                                      {
+                                          license.importTokenFile (file);
+                                          refresh();
+                                      }
+                                  });
+        };
+
+        for (auto* c : std::initializer_list<juce::Component*> { &title, &renewButton, &code, &activateButton,
+                                                                 &copyCodeButton, &loadFileButton })
+            addChildComponent (c);
+        title.setVisible (true);
 
         refresh();
         startTimerHz (4);
@@ -58,7 +96,7 @@ namespace samplit
         switch (info.status)
         {
             case Status::Valid:
-                statusText = utf8 ("Действует до ") + dateText (info.expires);
+                statusText = info.expires == 0 ? utf8 ("Бессрочная лицензия") : utf8 ("Действует до ") + dateText (info.expires);
                 if (info.user.isNotEmpty())
                     statusText << utf8 ("  ·  ") << info.user;
                 hintText = {};
@@ -69,11 +107,13 @@ namespace samplit
                 break;
             case Status::NoToken:
                 statusText = utf8 ("Лицензии нет, пакеты закрыты");
-                hintText = utf8 ("Введите код лицензии и нажмите «Активировать».");
+                hintText = offline ? utf8 ("Отправьте код компьютера, в ответ придёт файл лицензии.")
+                                   : utf8 ("Введите код лицензии и нажмите «Активировать».");
                 break;
             case Status::WrongMachine:
                 statusText = utf8 ("Лицензия выписана на другой компьютер");
-                hintText = utf8 ("Активируйте её на этом компьютере своим кодом.");
+                hintText = offline ? utf8 ("Отправьте код этого компьютера, в ответ придёт файл лицензии для него.")
+                                   : utf8 ("Активируйте её на этом компьютере своим кодом.");
                 break;
             case Status::ClockRollback:
                 statusText = utf8 ("Часы компьютера отстают от последнего запуска");
@@ -86,7 +126,7 @@ namespace samplit
             case Status::BadSignature:
             case Status::Malformed:
                 statusText = utf8 ("Файл лицензии повреждён");
-                hintText = utf8 ("Активируйте лицензию заново своим кодом.");
+                hintText = offline ? utf8 ("Загрузите файл лицензии заново.") : utf8 ("Активируйте лицензию заново своим кодом.");
                 break;
         }
 
@@ -95,10 +135,15 @@ namespace samplit
         else if (info.lastError.isNotEmpty())
             hintText = info.lastError + (ok ? utf8 (". Плагин работает до окончания срока.") : juce::String());
 
+        const bool perpetual = ok && info.expires == 0;
         renewButton.setEnabled (! info.busy);
+        renewButton.setVisible (! perpetual);
         activateButton.setEnabled (! info.busy);
-        code.setVisible (! ok);
-        activateButton.setVisible (! ok);
+        code.setVisible (! ok && ! offline);
+        activateButton.setVisible (! ok && ! offline);
+        copyCodeButton.setVisible (! ok && offline);
+        loadFileButton.setVisible (! ok && offline);
+        loadFileButton.setEnabled (! info.busy);
         resized();
         repaint();
     }
@@ -144,9 +189,18 @@ namespace samplit
         if (! ok)
         {
             auto row = area.removeFromBottom (30);
-            activateButton.setBounds (row.removeFromRight (120));
-            row.removeFromRight (6);
-            code.setBounds (row);
+            if (offline)
+            {
+                copyCodeButton.setBounds (row.removeFromLeft (row.getWidth() / 2 - 3));
+                row.removeFromLeft (6);
+                loadFileButton.setBounds (row);
+            }
+            else
+            {
+                activateButton.setBounds (row.removeFromRight (120));
+                row.removeFromRight (6);
+                code.setBounds (row);
+            }
             area.removeFromBottom (6);
         }
         textArea = area;

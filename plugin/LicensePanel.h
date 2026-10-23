@@ -4,6 +4,8 @@
 
 #include <juce_gui_basics/juce_gui_basics.h>
 
+#include <memory>
+
 namespace samplit
 {
     // Состояние лицензии: до какого числа действует, что делать, если не действует. Кнопка «Обновить»
@@ -29,6 +31,11 @@ namespace samplit
         juce::Label title;
         juce::TextButton renewButton, activateButton;
         juce::TextEditor code;
+
+        // Локальная лицензия без сервера: код компьютера и загрузка файла лицензии
+        juce::TextButton copyCodeButton, loadFileButton;
+        std::unique_ptr<juce::FileChooser> chooser;
+        bool offline = false;
         juce::Rectangle<int> textArea;
         juce::String statusText, hintText;
         bool ok = false;

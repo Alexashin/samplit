@@ -84,7 +84,8 @@ def verify_token(token: dict, public_key: bytes) -> dict:
 
 
 def build_payload(license_id: str, user: str, fingerprint: str, packs: dict[str, bytes],
-                  not_before: int | None = None, valid_seconds: int = 7 * 86400) -> dict:
+                  not_before: int | None = None, valid_seconds: int | None = 7 * 86400) -> dict:
+    """valid_seconds=None: бессрочная лицензия, в токене expires = 0 (плагин не проверяет срок и не продлевает)."""
     now = int(time.time())
     nb = now if not_before is None else not_before
     return {
@@ -92,6 +93,6 @@ def build_payload(license_id: str, user: str, fingerprint: str, packs: dict[str,
         "user": user,
         "machine": machine_id(fingerprint),
         "notBefore": nb,
-        "expires": nb + valid_seconds,
+        "expires": 0 if valid_seconds is None else nb + valid_seconds,
         "packs": {pid: wrap_pack_key(pid, key, fingerprint) for pid, key in sorted(packs.items())},
     }

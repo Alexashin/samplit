@@ -157,10 +157,49 @@ namespace samplit
         });
     }
 
+    void LicenseManager::importTokenFile (const juce::File& source)
+    {
+        const auto target = getTokenFile();
+        run ([source, target] (const license::Options& o)
+        {
+            license::ClientResult r;
+            const auto checked = license::verifyTokenFile (source, o);
+            r.status = checked.status;
+
+            using license::Status;
+            switch (checked.status)
+            {
+                case Status::Valid:         break;
+                case Status::WrongMachine:  r.error = "Этот файл лицензии выписан на другой компьютер"_s; return r;
+                case Status::Expired:       r.error = "Срок этого файла лицензии уже истёк"_s; return r;
+                case Status::NotYetValid:   r.error = "Этот файл лицензии ещё не начал действовать"_s; return r;
+                case Status::ClockRollback: r.error = "Часы компьютера отстают от последнего запуска"_s; return r;
+                case Status::BadSignature:
+                case Status::Malformed:
+                case Status::NoToken:       r.error = "Это не файл лицензии Samplit или он повреждён"_s; return r;
+            }
+
+            // Замена через временный файл: прежняя лицензия не теряется, если запись оборвётся
+            target.getParentDirectory().createDirectory();
+            const auto tmp = target.getSiblingFile (target.getFileName() + ".new");
+            if (! source.copyFileTo (tmp) || ! tmp.replaceFileIn (target))
+            {
+                tmp.deleteFile();
+                r.error = "Не удалось сохранить лицензию в "_s + target.getFullPathName();
+                return r;
+            }
+            r.ok = true;
+            return r;
+        });
+    }
+
     void LicenseManager::timerCallback()
     {
         startTimer (60 * 60 * 1000);
-        const auto status = getInfo().status;
+        const auto info = getInfo();
+        const auto status = info.status;
+        if (info.isValid() && info.expires == 0)
+            return;     // бессрочная лицензия не продлевается
         const bool hasToken = status != license::Status::NoToken && status != license::Status::Malformed;
         if (config.serverUrl.isNotEmpty() && hasToken && now() - lastRenewTry >= (int64_t) config.renewIntervalHours * 3600)
             renew();

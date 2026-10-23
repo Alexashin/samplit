@@ -119,7 +119,7 @@ namespace samplit
         {
             auto left = area.removeFromLeft (juce::jlimit (300, 400, area.getWidth() * 3 / 10));
             area.removeFromLeft (20);
-            license.setBounds (left.removeFromBottom (128));
+            license.setBounds (left.removeFromBottom (150));
             left.removeFromBottom (12);
             presets.setBounds (left);
             mixer.setBounds (area);

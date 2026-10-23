@@ -421,3 +421,63 @@ TEST_CASE ("service mode silences the kit and gives notes back to the sampler", 
     p.setServiceMode (false);
     CHECK (renderNote() > 0.0f);
 }
+
+TEST_CASE ("a perpetual licence has no end date and ignores the clock", "[licmgr]")
+{
+    Env env;
+    const auto key = pack::generateKey();
+    env.writeToken ({ { "kick", key } }, 0);
+    env.clockNow = kNow + 3650 * kDay;
+
+    auto m = started (env);
+    CHECK (m->getInfo().isValid());
+    CHECK (m->getInfo().expires == 0);
+    pack::PackKey got;
+    CHECK (m->keyFor ("kick", got));
+
+    // Часы назад: срочная лицензия закрылась бы, бессрочная работает
+    env.clockNow = kNow - 30 * kDay;
+    int changes = 0;
+    m->onChange = [&] { ++changes; };
+    m->check();
+    REQUIRE (pumpUntil ([&] { return changes > 0; }));
+    CHECK (m->getInfo().isValid());
+}
+
+TEST_CASE ("a licence file can be imported without a server", "[licmgr]")
+{
+    Env env;
+    auto m = started (env);
+    REQUIRE (m->getInfo().status == Status::NoToken);
+    CHECK (m->getMachineCode() == kFingerprint);
+
+    int changes = 0;
+    m->onChange = [&] { ++changes; };
+    const auto incoming = env.dir.getChildFile ("incoming.token");
+    const auto installed = m->getTokenFile();
+
+    SECTION ("годный файл ставится")
+    {
+        const auto key = pack::generateKey();
+        env.writeToken ({ { "kick", key } });
+        REQUIRE (installed.moveFileTo (incoming));
+
+        m->importTokenFile (incoming);
+        REQUIRE (pumpUntil ([&] { return changes > 0; }));
+        CHECK (m->getInfo().isValid());
+        CHECK (m->getInfo().lastError.isEmpty());
+        CHECK (installed.existsAsFile());
+        pack::PackKey got;
+        CHECK (m->keyFor ("kick", got));
+    }
+
+    SECTION ("чужой файл не ставится и прежнюю лицензию не трогает")
+    {
+        incoming.replaceWithText ("{ \"payload\": {}, \"sig\": \"AAAA\" }");
+        m->importTokenFile (incoming);
+        REQUIRE (pumpUntil ([&] { return changes > 0; }));
+        CHECK_FALSE (m->getInfo().isValid());
+        CHECK (m->getInfo().lastError.isNotEmpty());
+        CHECK_FALSE (installed.existsAsFile());
+    }
+}

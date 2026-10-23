@@ -66,7 +66,10 @@ target_compile_options(Samplit PRIVATE $<$<CXX_COMPILER_ID:MSVC>:/utf-8>)
 
 # Служебный режим (ручная раскладка сэмплов) есть в Debug всегда, в Release только по опции
 option(SAMPLIT_SERVICE_MODE "Show the service (manual mapping) screen in Release builds" OFF)
+# Локальная лицензия без сервера (код компьютера и файл лицензии). Временно, пока нет сервера: в проде выключить
+option(SAMPLIT_OFFLINE_LICENSE "Offline licence: machine code and licence file import" ON)
 target_compile_definitions(Samplit PRIVATE
+    SAMPLIT_OFFLINE_LICENSE=$<BOOL:${SAMPLIT_OFFLINE_LICENSE}>
     SAMPLIT_SERVICE_MODE=$<IF:$<OR:$<CONFIG:Debug>,$<BOOL:${SAMPLIT_SERVICE_MODE}>>,1,0>)
 
 target_compile_definitions(Samplit PUBLIC

@@ -219,3 +219,22 @@ def test_make_token_offline(tmp_path, store, config, monkeypatch):
     assert payload["expires"] - payload["notBefore"] == 120 * 86400
     assert payload["machine"] == lc.machine_id(FINGERPRINT)
     assert lc.unwrap_pack_key("kick", payload["packs"]["kick"], FINGERPRINT) == PACK_KEYS["kick"]
+
+
+def test_make_token_perpetual_all_packs(tmp_path, store, config, monkeypatch):
+    import importlib.util
+    import pathlib
+    import sys
+
+    spec = importlib.util.spec_from_file_location(
+        "make_token", pathlib.Path(__file__).resolve().parents[2] / "make_token.py")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+
+    out = tmp_path / "license.token"
+    monkeypatch.setattr(sys, "argv", ["make_token.py", "--dir", str(config.directory), "--fingerprint", FINGERPRINT,
+                                      "--perpetual", "--out", str(out)])
+    assert mod.main() == 0
+    payload = lc.verify_token(json.loads(out.read_text(encoding="utf-8")), config.signer.public_key)
+    assert payload["expires"] == 0
+    assert sorted(payload["packs"]) == sorted(store.pack_ids())

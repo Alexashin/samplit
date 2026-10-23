@@ -38,7 +38,8 @@ namespace samplit::license
         juce::String licenseId;
         juce::String user;
         int64_t notBefore = 0;
-        int64_t expires = 0;      // Unix, секунды
+        int64_t expires = 0;      // Unix, секунды; 0 = бессрочная лицензия
+        bool isPerpetual() const noexcept { return expires == 0; }
         std::vector<PackKey> packs;  // заполнен только при Status::Valid
 
         bool isValid() const noexcept { return status == Status::Valid; }

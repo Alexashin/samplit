@@ -296,9 +296,12 @@ namespace samplit::license
         result.notBefore = notBefore;
         result.expires = expires;
 
+        // expires == 0: бессрочная лицензия. Начало, срок и перевод часов для неё не проверяются
+        const bool perpetual = expires == 0;
+
         // Часы: не пускаем назад дальше допуска, иначе обновляем «последнее увиденное»
         const auto lastSeen = loadLastSeen (options.clockStateFile);
-        if (options.now + options.rollbackToleranceSeconds < lastSeen)
+        if (! perpetual && options.now + options.rollbackToleranceSeconds < lastSeen)
             return fail (Status::ClockRollback);
         if (options.now > lastSeen)
             storeLastSeen (options.clockStateFile, options.now);
@@ -306,9 +309,9 @@ namespace samplit::license
         if (options.fingerprint.isEmpty() || machine.toString() != machineId (options.fingerprint))
             return fail (Status::WrongMachine);
 
-        if (options.now + options.clockSkewSeconds < notBefore)
+        if (! perpetual && options.now + options.clockSkewSeconds < notBefore)
             return fail (Status::NotYetValid);
-        if (options.now > expires + options.expiryGraceSeconds)
+        if (! perpetual && options.now > expires + options.expiryGraceSeconds)
             return fail (Status::Expired);
 
         std::vector<PackKey> keys;

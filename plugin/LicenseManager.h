@@ -63,6 +63,14 @@ namespace samplit
         void activate (const juce::String& licenseCode);
         void renew();
 
+        // Код этого компьютера (отпечаток): по нему выпускают файл лицензии без сервера
+        juce::String getMachineCode() const { return config.fingerprint; }
+
+        // Локальная лицензия без сервера (временно, до запуска сервера; в проде SAMPLIT_OFFLINE_LICENSE=OFF).
+        // Проверяет присланный файл: подпись, этот компьютер, срок. Годный файл заменяет текущий токен,
+        // негодный не трогает его, причина попадает в Info::lastError
+        void importTokenFile (const juce::File&);
+
         // Зовётся в message thread после каждого изменения Info (проверка, активация, продление)
         std::function<void()> onChange;
 
