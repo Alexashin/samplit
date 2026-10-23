@@ -211,7 +211,7 @@ namespace samplit
         processor.triggerNote (key, velocity);
         info = noteName (key) + utf8 ("  ·  velocity ") + juce::String (velocity);
         if (kit != nullptr)
-            info << "  ·  " << (pieceAt[(size_t) key] >= 0 ? pieceName (key) : utf8 ("пусто"));
+            info << utf8 ("  ·  ") << (pieceAt[(size_t) key] >= 0 ? pieceName (key) : utf8 ("пусто"));
         infoSince = juce::Time::getMillisecondCounter();
         repaint();
     }
@@ -334,7 +334,7 @@ namespace samplit
         if (kit != nullptr)
         {
             const auto name = pieceName (selectedKey);
-            return noteName (selectedKey) + (name.isNotEmpty() ? "  ·  " + name : juce::String())
+            return noteName (selectedKey) + (name.isNotEmpty() ? utf8 ("  ·  ") + name : juce::String())
                    + utf8 ("  ·  клик играет барабан, ниже = громче  ·  ←/→ выбор клавиши, пробел играет");
         }
 

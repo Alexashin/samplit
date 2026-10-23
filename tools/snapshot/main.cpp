@@ -1,6 +1,9 @@
 // samplit-snapshot <папка>: собирает во временной папке тестовый пакет на 15 микрофонов, пресет и токен
-// (подписан ТЕСТОВЫМ ключом, тем же, что зашит в отладочную сборку), открывает окно плагина без показа
+// (подписан ТЕСТОВЫМ ключом, и проверяет его тоже тестовый ключ, не зашитый в плагин), открывает окно плагина без показа
 // на экране и сохраняет его снимки в разных состояниях. Звук не нужен, сеть не нужна.
+//
+// samplit-snapshot <папка> --installed: то же на настоящих данных этого компьютера (%APPDATA%\Samplit, боевой ключ):
+// загружает пресет studio600-default, печатает время загрузки и объём в памяти, сохраняет снимок.
 
 #include "PluginEditor.h"
 
@@ -89,13 +92,19 @@ namespace
         return w->finish (m, error);
     }
 
-    void writeToken (const juce::File& file, const pack::PackKey& key, const juce::String& fingerprint)
+    // Тестовый ключ подписи (сид 00 01 .. 1f, как в tests/): боевой ключ здесь не нужен
+    std::array<uint8_t, 64> testSecret (license::Key32& pub)
     {
         license::Key32 seed {};
         for (size_t i = 0; i < seed.size(); ++i)
             seed[i] = (uint8_t) i;
+        return license::secretKeyFromSeed (seed, pub);
+    }
+
+    void writeToken (const juce::File& file, const pack::PackKey& key, const juce::String& fingerprint)
+    {
         license::Key32 pub;
-        const auto secret = license::secretKeyFromSeed (seed, pub);
+        const auto secret = testSecret (pub);
 
         std::array<uint8_t, 24> nonce {};
         pack::fillRandom (nonce.data(), nonce.size());
@@ -131,7 +140,7 @@ namespace
     {
         LicenseManager::Config c;
         c.dataDir = dataDir;
-        c.publicKey = license::embeddedPublicKey();
+        testSecret (c.publicKey);
         c.fingerprint = fingerprint;
         auto m = std::make_unique<LicenseManager> (c);
         pumpUntil ([&] { return ! m->getInfo().busy; });
@@ -150,6 +159,47 @@ int main (int argc, char** argv)
     }
     const juce::File outDir (juce::File::getCurrentWorkingDirectory().getChildFile (juce::String::fromUTF8 (argv[1])));
     outDir.createDirectory();
+
+    if (argc > 2 && juce::String (argv[2]) == "--installed")
+    {
+        SamplitProcessor processor;
+        processor.prepareToPlay (48000.0, 512);
+        auto m = std::make_unique<LicenseManager> (LicenseManager::defaultConfig());
+        pumpUntil ([&] { return ! m->getInfo().busy; });
+        std::cout << "license valid: " << (m->getInfo().isValid() ? "yes" : "no") << std::endl;
+        processor.setLicenseManager (std::move (m));
+
+        bool loaded = false, ok = false;
+        const auto started = juce::Time::getMillisecondCounterHiRes();
+        for (const auto& e : processor.scanPresets())
+        {
+            std::cout << "preset " << e.preset.id << (e.isComplete() ? " complete" : e.isPlayable() ? " partial" : " silent") << std::endl;
+            if (e.preset.id == "studio600-default")
+                processor.selectPreset (e.preset, [&] (const KitLoadResult& r)
+                {
+                    loaded = true;
+                    ok = r.ok();
+                    std::cout << (ok ? "loaded" : "FAILED: ") << r.error << ", " << (r.memoryBytes >> 20) << " MB, "
+                              << r.warnings.size() << " warnings, " << r.missingPacks.size() << " missing packs" << std::endl;
+                    for (const auto& w : r.warnings)
+                        std::cout << "  " << w << std::endl;
+                });
+        }
+        if (! pumpUntil ([&] { return loaded; }, 600000))
+        {
+            std::cout << "load timeout" << std::endl;
+            return 1;
+        }
+        std::cout << "load time " << juce::roundToInt ((juce::Time::getMillisecondCounterHiRes() - started) / 1000.0) << " s" << std::endl;
+        if (const auto kit = processor.getKit())
+        {
+            int hits = 0;
+            for (const auto& piece : kit->pieces)
+                hits += (int) piece.hits.size();
+            std::cout << kit->pieces.size() << " pieces, " << hits << " hits, " << kit->mics.size() << " mics" << std::endl;
+        }
+        return ok && shoot (processor, outDir.getChildFile ("06-installed.png"), 1180, 780) ? 0 : 1;
+    }
 
     const auto root = juce::File::getSpecialLocation (juce::File::tempDirectory).getChildFile ("samplit-snapshot");
     root.deleteRecursively();

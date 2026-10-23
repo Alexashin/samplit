@@ -30,7 +30,7 @@ namespace samplit
                 parts.add (utf8 ("нет лицензии: ") + s);
             if (const auto s = joinPacks (e, PackState::NotInstalled); s.isNotEmpty())
                 parts.add (utf8 ("не установлены: ") + s);
-            const auto text = parts.joinIntoString ("  ·  ");
+            const auto text = parts.joinIntoString (utf8 ("  ·  "));
             return (e.isPlayable() ? utf8 ("Часть барабанов молчит, ") : utf8 ("Не зазвучит, ")) + text;
         }
 

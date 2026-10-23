@@ -69,4 +69,4 @@ JSON `{ "payload": {...}, "sig": "<base64 Ed25519>" }`. Подпись на SHA-
 - Клиент отправляет серверу сырой отпечаток машины. В токене `machine` = hex BLAKE2b-256(`"samplit-machine-id-v1"` + отпечаток). Ключ обёртки `machineKey` = BLAKE2b-256(`"samplit-machine-key-v1"` + отпечаток) в токен не попадает.
 - Обёртка ключа пакета: `base64(nonce24 | шифртекст32 | тег16)`, XChaCha20-Poly1305, AD = `"samplit-packkey-v1:" + packId`.
 - Порядок проверок: NoToken, Malformed, BadSignature, ClockRollback, WrongMachine, NotYetValid, Expired.
-- Тестовый публичный ключ в `core/src/LicenseKey.cpp` заменить боевым (`tools/license_server/admin.py init`) до выпуска сборки.
+- В `core/src/LicenseKey.cpp` зашит боевой публичный ключ (`tools/license_server/admin.py init`). Тесты подписывают токены своим тестовым ключом.

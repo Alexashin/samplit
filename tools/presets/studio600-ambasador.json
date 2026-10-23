@@ -1,0 +1,41 @@
+{
+  "format": 1,
+  "id": "studio600-ambasador",
+  "name": "Studio600: Ambasador Hi",
+  "comment": "Стартовые уровни и панорамы, подстроить на слух. Формат описан в docs/preset-format.md",
+  "packs": [
+    "studio600-core",
+    "studio600-snare-hi",
+    "studio600-hat",
+    "studio600-ride",
+    "studio600-cymbals"
+  ],
+  "pieces": [
+    "kick", "snare_hi", "tom_10", "tom_14", "tom_16m", "tom_16l",
+    "hat", "ride", "crash_a", "crash_b", "china", "splash"
+  ],
+  "includeUnverified": false,
+  "select": {
+    "mode": "live",
+    "layerSpread": 1,
+    "noRepeat": true,
+    "velocityToGain": 0.0
+  },
+  "mics": {
+    "kick_in":  { "level": 0.0,  "pan": 0.0,   "out": 1,  "mute": false },
+    "kick_out": { "level": -3.0, "pan": 0.0,   "out": 2,  "mute": false },
+    "sn_top":   { "level": 0.0,  "pan": 0.0,   "out": 3,  "mute": false },
+    "sn_bot":   { "level": -6.0, "pan": 0.0,   "out": 4,  "mute": false },
+    "oh_1":     { "level": -2.0, "pan": -0.8,  "out": 5,  "mute": false },
+    "oh_2":     { "level": -2.0, "pan": 0.8,   "out": 6,  "mute": false },
+    "room_1":   { "level": -6.0, "pan": -0.6,  "out": 7,  "mute": false },
+    "room_2":   { "level": -6.0, "pan": 0.6,   "out": 8,  "mute": false },
+    "room_mid": { "level": -6.0, "pan": 0.0,   "out": 9,  "mute": false },
+    "hat":      { "level": -3.0, "pan": -0.35, "out": 10, "mute": false },
+    "ride":     { "level": -3.0, "pan": 0.4,   "out": 11, "mute": false },
+    "tom_a1":   { "level": 0.0,  "pan": -0.3,  "out": 12, "mute": false },
+    "tom_a2":   { "level": 0.0,  "pan": -0.05, "out": 13, "mute": false },
+    "tom_a3":   { "level": 0.0,  "pan": 0.35,  "out": 14, "mute": false },
+    "tom_a4":   { "level": 0.0,  "pan": 0.55,  "out": 15, "mute": false }
+  }
+}

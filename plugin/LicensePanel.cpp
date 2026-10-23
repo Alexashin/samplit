@@ -60,7 +60,7 @@ namespace samplit
             case Status::Valid:
                 statusText = utf8 ("Действует до ") + dateText (info.expires);
                 if (info.user.isNotEmpty())
-                    statusText << "  ·  " << info.user;
+                    statusText << utf8 ("  ·  ") << info.user;
                 hintText = {};
                 break;
             case Status::Expired:

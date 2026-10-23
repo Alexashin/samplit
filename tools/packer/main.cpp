@@ -7,9 +7,12 @@
 //     Файлы из одних нулей считаются повреждёнными и останавливают сборку, если нет --allow-silent.
 //   samplit-packer verify <файл.splpack> (--key <hex64> | --key-file <файл>) [--deep]
 //   samplit-packer info <файл.splpack> [--key <hex64> | --key-file <файл>]
+//   samplit-packer fingerprint
+//     Отпечаток этой машины: его принимает tools/make_token.py, чтобы выпустить токен лицензии на этот компьютер.
 //
 // Коды возврата: 0 успех, 1 ошибка в данных (проверка не прошла, сборка не удалась), 2 неверные аргументы.
 
+#include "samplit/core/License.h"
 #include "samplit/core/Pack.h"
 
 #include <juce_audio_formats/juce_audio_formats.h>
@@ -34,7 +37,8 @@ namespace
                 "  samplit-packer build <манифест.json> --root <папка> --out <файл.splpack> (--key <hex64> | --key-file <файл> | --gen-key <файл>)\n"_s
                 "                       [--trim-db <дБ, по умолчанию -60>] [--no-trim] [--allow-silent]\n"_s
                 "  samplit-packer verify <файл.splpack> (--key <hex64> | --key-file <файл>) [--deep]\n"_s
-                "  samplit-packer info <файл.splpack> [--key <hex64> | --key-file <файл>]"_s);
+                "  samplit-packer info <файл.splpack> [--key <hex64> | --key-file <файл>]\n"_s
+                "  samplit-packer fingerprint"_s);
         return 2;
     }
 
@@ -373,5 +377,16 @@ int main (int argc, char** argv)
         return verify (parsed);
     if (args[0] == "info")
         return info (parsed);
+    if (args[0] == "fingerprint")
+    {
+        const auto fp = samplit::license::machineFingerprint();
+        if (fp.isEmpty())
+        {
+            sayErr ("не удалось получить отпечаток машины"_s);
+            return 1;
+        }
+        say (fp);
+        return 0;
+    }
     return usage();
 }

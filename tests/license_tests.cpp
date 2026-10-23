@@ -299,7 +299,7 @@ TEST_CASE ("token signed by Python verifies in C++", "[license]")
     const auto token = fixture["token"];
     REQUIRE (canonicalJson (token["payload"]) == fixture["canonicalPayload"].toString().toStdString());
     REQUIRE (machineId (o.fingerprint) == fixture["machineId"].toString());
-    REQUIRE (o.publicKey == embeddedPublicKey());  // зашитый ключ сейчас тестовый
+    REQUIRE (o.publicKey != embeddedPublicKey());  // в плагин зашит боевой ключ, тестовый туда не попадает
 
     const auto r = verifyToken (juce::JSON::toString (token, true), o);
     REQUIRE (r.status == Status::Valid);

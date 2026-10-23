@@ -303,7 +303,7 @@ namespace samplit
         const int count = (int) rows.size();
         g.setColour (brand::text);
         g.setFont (juce::FontOptions (16.0f, juce::Font::bold));
-        g.drawText (utf8 ("Клавиша ") + noteName (key) + juce::String ("  ·  ") + juce::String (count) + utf8 (" зон"),
+        g.drawText (utf8 ("Клавиша ") + noteName (key) + utf8 ("  ·  ") + juce::String (count) + utf8 (" зон"),
                     titleArea, juce::Justification::centredLeft);
 
         if (rows.empty())
