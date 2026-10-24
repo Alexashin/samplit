@@ -43,3 +43,6 @@ brand/round2/
 brand/type/specimen.*
 
 sample_library/
+
+# архив проекта для передачи
+/proj.zip
