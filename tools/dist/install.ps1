@@ -17,7 +17,7 @@ if ($running) {
     exit 1
 }
 
-New-Item -ItemType Directory -Force $vst3Dir, $appDir, (Join-Path $data 'packs'), (Join-Path $data 'presets') | Out-Null
+New-Item -ItemType Directory -Force $vst3Dir, $appDir, (Join-Path $data 'packs'), (Join-Path $data 'presets'), (Join-Path $data 'presets\mixes') | Out-Null
 
 Write-Host '1/4  Плагин VST3'
 $vst3 = Join-Path $vst3Dir 'Samplit.vst3'
@@ -35,6 +35,7 @@ $link.Save()
 Write-Host '3/4  Пакеты с сэмплами и пресеты (около 1 ГБ, подождите)'
 Copy-Item (Join-Path $src 'Data\packs\*.splpack') (Join-Path $data 'packs') -Force
 Copy-Item (Join-Path $src 'Data\presets\*.json') (Join-Path $data 'presets') -Force
+Copy-Item (Join-Path $src 'Data\presets\mixes\*.json') (Join-Path $data 'presets\mixes') -Force
 
 Write-Host '4/4  Лицензия'
 $token = Join-Path $src 'license.token'
@@ -43,8 +44,9 @@ if (Test-Path $token) {
     Write-Host '     файл лицензии из папки установлен'
 }
 else {
-    Write-Host '     Откройте Samplit и вставьте присланный ключ лицензии в окно лицензии (поле «Ключ лицензии»).'
-    Write-Host '     Если вместо ключа прислали файл license.token, нажмите там «Выбрать файл».'
+    Write-Host '     Лицензия вводится в плагине вручную. Откройте Samplit (окно лицензии откроется само) и либо'
+    Write-Host '     вставьте ключ из файла license.key.txt в поле «Ключ лицензии», либо нажмите «Выбрать файл»'
+    Write-Host '     и укажите license.token. Оба файла лежат в папке «Лицензия» рядом с установщиком.'
 }
 
 Write-Host ''

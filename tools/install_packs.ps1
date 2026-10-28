@@ -10,7 +10,7 @@
 #   1. samplit-packer build: пакет .splpack в %APPDATA%\Samplit\packs. Ключ пакета создаётся при первой сборке
 #      и лежит в каталоге секретов сервера лицензий (~\.samplit-license\packs), дальше переиспользуется.
 #   2. admin.py add-pack-key: ключ регистрируется на сервере лицензий (сервер выдаёт его в токенах).
-#   3. Пресеты из tools\presets в %APPDATA%\Samplit\presets.
+#   3. Пресеты из tools\presets и миксы из tools\presets\mixes в %APPDATA%\Samplit\presets.
 #   4. make_token.py: токен на этот компьютер на все установленные пакеты, в %APPDATA%\Samplit\license.token.
 #
 # Нужно: собранный Release (.\tools\build.ps1 -Config Release), каталог секретов (admin.py init), venv сервера
@@ -70,6 +70,8 @@ foreach ($m in $manifests) {
 }
 
 Copy-Item (Join-Path $root 'tools\presets\*.json') (Join-Path $data 'presets') -Force
+New-Item -ItemType Directory -Force (Join-Path $data 'presets\mixes') | Out-Null
+Copy-Item (Join-Path $root 'tools\presets\mixes\*.json') (Join-Path $data 'presets\mixes') -Force
 
 # Токен на все пакеты, которые лежат в папке и чей ключ есть в секретах
 $installed = Get-ChildItem (Join-Path $data 'packs') -Filter '*.splpack' |

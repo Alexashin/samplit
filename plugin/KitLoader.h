@@ -36,7 +36,8 @@ namespace samplit
             bool includeExact = false;
         };
 
-        juce::String id, name;
+        juce::String id, name, comment;
+        juce::String mixId;                 // микс по умолчанию (файл в папке mixes), пусто: берётся блок mics
         std::vector<juce::String> packs;
         std::vector<juce::String> pieces;   // пусто: все барабаны пакетов
         bool includeUnverified = false;
@@ -48,6 +49,21 @@ namespace samplit
 
         static bool fromJson (const juce::String& json, Preset& out, juce::String& error);
         static bool fromFile (const juce::File&, Preset& out, juce::String& error);
+
+        // Пресет как JSON (формат docs/preset-format.md): так сохраняется «Сохранить как…»
+        juce::String toJson() const;
+    };
+
+    // Микс микрофонов: уровень, панорама, выход и mute по id микрофона. Применяется к загруженному киту без перезагрузки.
+    // Файл в папке mixes рядом с пресетами (docs/preset-format.md)
+    struct Mix
+    {
+        juce::String id, name, comment;
+        std::map<juce::String, Preset::MicSetting> mics;
+
+        static bool fromJson (const juce::String& json, Mix& out, juce::String& error);
+        static bool fromFile (const juce::File&, Mix& out, juce::String& error);
+        juce::String toJson() const;
     };
 
     // Режим pick в пресете: "random", "cycle", "exact"

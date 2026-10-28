@@ -129,9 +129,7 @@ TEST_CASE ("Preset parses the default preset file", "[loader]")
     CHECK (p.mode == HitSelect::Live);
     CHECK (p.layerSpread == 1);
     CHECK (p.velocityToGain == 0.0f);
-    REQUIRE (p.mics.count ("oh_1") == 1);
-    CHECK (p.mics["oh_1"].out == 5);
-    CHECK (p.mics["oh_1"].pan == -0.8f);
+    CHECK (p.mixId == "mix-balanced-main");   // микс микрофонов лежит в tools/presets/mixes
     CHECK (! p.includeUnverified);
 }
 
@@ -168,6 +166,7 @@ TEST_CASE ("loadKit applies pick rules: the layer follows the rule and becomes a
     REQUIRE (res.ok());
     REQUIRE (res.kit->choices.size() == 1);   // правило без барабанов в ките переключателя не даёт
     CHECK (res.kit->choices[0].pick == Pick::Cycle);
+    CHECK (res.kit->choices[0].pieces == std::vector<int> { 0 });
     CHECK (res.kit->pieces[0].layers[0].pick == Pick::Cycle);
     CHECK (res.kit->pieces[0].layers[0].choice == 0);
 
@@ -180,6 +179,73 @@ TEST_CASE ("loadKit applies pick rules: the layer follows the rule and becomes a
     CHECK (a != b);
     CHECK (a == c);
     engine.setKit (nullptr);
+}
+
+TEST_CASE ("Preset survives a round trip through toJson (saving a user preset)", "[loader]")
+{
+    Preset p;
+    p.id = "user-mine";
+    p.name = "Мой пресет";
+    p.comment = "комментарий";
+    p.packs = { "a", "b" };
+    p.includeUnverified = true;
+    p.layerSpread = 1;
+    p.mics["oh"] = { -4.5f, 0.25f, 7, true };
+    p.pick.push_back ({ "Хэт", { "hat" }, 48, 78, Pick::Cycle, true });
+    p.pick.push_back ({ "Бочка", { "kick" }, 0, 127, Pick::Exact, false });
+
+    Preset q;
+    juce::String error;
+    REQUIRE (Preset::fromJson (p.toJson(), q, error));
+    CHECK (q.id == p.id);
+    CHECK (q.name == p.name);
+    CHECK (q.comment == p.comment);
+    CHECK (q.packs == p.packs);
+    CHECK (q.includeUnverified);
+    CHECK (q.layerSpread == 1);
+    REQUIRE (q.mics.count ("oh") == 1);
+    CHECK (q.mics["oh"].levelDb == -4.5f);
+    CHECK (q.mics["oh"].pan == 0.25f);
+    CHECK (q.mics["oh"].out == 7);
+    CHECK (q.mics["oh"].mute);
+    REQUIRE (q.pick.size() == 2);
+    CHECK (q.pick[0].keyLo == 48);
+    CHECK (q.pick[0].keyHi == 78);
+    CHECK (q.pick[0].mode == Pick::Cycle);
+    CHECK (q.pick[0].includeExact);
+    CHECK (q.pick[1].mode == Pick::Exact);
+    CHECK (q.pick[1].keyLo == 0);
+    CHECK (q.pick[1].keyHi == 127);
+}
+
+TEST_CASE ("shipped mixes and kit presets are consistent", "[loader]")
+{
+    const auto root = juce::File (SAMPLIT_TEST_FIXTURES).getParentDirectory().getParentDirectory().getChildFile ("tools/presets");
+    Mix main, multi;
+    juce::String error;
+    REQUIRE (Mix::fromFile (root.getChildFile ("mixes/mix-balanced-main.json"), main, error));
+    REQUIRE (Mix::fromFile (root.getChildFile ("mixes/mix-multiout.json"), multi, error));
+    REQUIRE (main.mics.size() == 15);
+    REQUIRE (multi.mics.size() == 15);
+    for (const auto& [id, m] : main.mics)
+    {
+        CHECK (m.out == 0);
+        REQUIRE (multi.mics.count (id) == 1);
+        CHECK (multi.mics[id].levelDb == m.levelDb);
+        CHECK (multi.mics[id].pan == m.pan);
+        CHECK (multi.mics[id].out >= 1);
+    }
+    CHECK (multi.mics["oh_1"].out == 5);
+    CHECK (multi.mics["oh_1"].pan == -0.8f);
+
+    for (const auto& name : { "studio600-default.json", "studio600-ahead-low.json", "studio600-ambasador.json" })
+    {
+        Preset p;
+        REQUIRE (Preset::fromFile (root.getChildFile (name), p, error));
+        CHECK (p.mixId == "mix-balanced-main");
+        CHECK (p.mics.empty());
+        CHECK (p.comment.isNotEmpty());
+    }
 }
 
 TEST_CASE ("Preset rejects broken json", "[loader]")

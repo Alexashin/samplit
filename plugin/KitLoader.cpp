@@ -39,6 +39,7 @@ namespace samplit
         {
             const int choice = (int) kit.choices.size();
             bool used = false;
+            std::vector<int> usedPieces;
             for (size_t p = 0; p < kit.pieces.size(); ++p)
             {
                 auto& piece = kit.pieces[p];
@@ -53,6 +54,8 @@ namespace samplit
                     l.pick = rule.mode;
                     l.choice = choice;
                     used = true;
+                    if (std::find (usedPieces.begin(), usedPieces.end(), (int) p) == usedPieces.end())
+                        usedPieces.push_back ((int) p);
                 }
             }
             if (! used)
@@ -62,7 +65,48 @@ namespace samplit
             for (const auto& id : rule.pieces)
                 ids.add (id);
             const auto id = ids.joinIntoString (",") + ":" + juce::String (rule.keyLo) + "-" + juce::String (rule.keyHi);
-            kit.choices.push_back ({ id.toStdString(), rule.name.toStdString(), rule.mode });
+            kit.choices.push_back ({ id.toStdString(), rule.name.toStdString(), rule.mode, std::move (usedPieces) });
+        }
+    }
+
+    namespace
+    {
+        using MicMap = std::map<juce::String, Preset::MicSetting>;
+
+        void readMics (const juce::DynamicObject& obj, MicMap& out)
+        {
+            auto* mics = obj.getProperty ("mics").getDynamicObject();
+            if (mics == nullptr)
+                return;
+            for (const auto& prop : mics->getProperties())
+            {
+                auto* m = prop.value.getDynamicObject();
+                if (m == nullptr)
+                    continue;
+                Preset::MicSetting s;
+                s.levelDb = juce::jlimit (-60.0f, 12.0f, (float) (double) m->getProperty ("level"));
+                s.pan = juce::jlimit (-1.0f, 1.0f, (float) (double) m->getProperty ("pan"));
+                if (m->hasProperty ("out"))
+                    s.out = juce::jlimit (0, kNumOutputs, (int) m->getProperty ("out"));
+                s.mute = (bool) m->getProperty ("mute");
+                out[prop.name.toString()] = s;
+            }
+        }
+
+        juce::var micsToVar (const MicMap& mics)
+        {
+            auto* micsObj = new juce::DynamicObject();
+            for (const auto& [micId, m] : mics)
+            {
+                auto* o = new juce::DynamicObject();
+                o->setProperty ("level", (double) m.levelDb);
+                o->setProperty ("pan", (double) m.pan);
+                if (m.out >= 0)
+                    o->setProperty ("out", m.out);
+                o->setProperty ("mute", m.mute);
+                micsObj->setProperty (micId, juce::var (o));
+            }
+            return juce::var (micsObj);
         }
     }
 
@@ -79,6 +123,8 @@ namespace samplit
         Preset p;
         p.id = obj->getProperty ("id").toString();
         p.name = obj->getProperty ("name").toString();
+        p.comment = obj->getProperty ("comment").toString();
+        p.mixId = obj->getProperty ("mix").toString();
         if (p.id.isEmpty())
         {
             error = "Пресет: нет id"_s;
@@ -143,23 +189,109 @@ namespace samplit
             }
         }
 
-        if (auto* mics = obj->getProperty ("mics").getDynamicObject())
-            for (const auto& prop : mics->getProperties())
-            {
-                auto* m = prop.value.getDynamicObject();
-                if (m == nullptr)
-                    continue;
-                MicSetting s;
-                s.levelDb = (float) (double) m->getProperty ("level");
-                s.pan = juce::jlimit (-1.0f, 1.0f, (float) (double) m->getProperty ("pan"));
-                if (m->hasProperty ("out"))
-                    s.out = juce::jlimit (0, kNumOutputs, (int) m->getProperty ("out"));
-                s.mute = (bool) m->getProperty ("mute");
-                p.mics[prop.name.toString()] = s;
-            }
+        readMics (*obj, p.mics);
 
         out = std::move (p);
         return true;
+    }
+
+    juce::String Preset::toJson() const
+    {
+        const auto strings = [] (const std::vector<juce::String>& v)
+        {
+            juce::Array<juce::var> a;
+            for (const auto& x : v)
+                a.add (x);
+            return juce::var (a);
+        };
+
+        auto* root = new juce::DynamicObject();
+        juce::var result (root);
+        root->setProperty ("format", 1);
+        root->setProperty ("id", id);
+        root->setProperty ("name", name);
+        if (comment.isNotEmpty())
+            root->setProperty ("comment", comment);
+        if (mixId.isNotEmpty())
+            root->setProperty ("mix", mixId);
+        root->setProperty ("packs", strings (packs));
+        if (! pieces.empty())
+            root->setProperty ("pieces", strings (pieces));
+        root->setProperty ("includeUnverified", includeUnverified);
+
+        auto* sel = new juce::DynamicObject();
+        sel->setProperty ("mode", mode == HitSelect::Kontakt ? "kontakt" : "live");
+        sel->setProperty ("layerSpread", layerSpread);
+        sel->setProperty ("noRepeat", true);
+        sel->setProperty ("velocityToGain", (double) velocityToGain);
+        juce::Array<juce::var> rules;
+        for (const auto& r : pick)
+        {
+            auto* o = new juce::DynamicObject();
+            o->setProperty ("name", r.name);
+            o->setProperty ("pieces", strings (r.pieces));
+            if (r.keyLo != 0 || r.keyHi != 127)
+                o->setProperty ("keys", juce::Array<juce::var> { r.keyLo, r.keyHi });
+            o->setProperty ("mode", pickToString (r.mode));
+            if (r.includeExact)
+                o->setProperty ("includeExact", true);
+            rules.add (juce::var (o));
+        }
+        sel->setProperty ("pick", rules);
+        root->setProperty ("select", juce::var (sel));
+        root->setProperty ("mics", micsToVar (mics));
+        return juce::JSON::toString (result);
+    }
+
+    bool Mix::fromJson (const juce::String& json, Mix& out, juce::String& error)
+    {
+        const auto root = juce::JSON::parse (json);
+        auto* obj = root.getDynamicObject();
+        if (obj == nullptr)
+        {
+            error = "Микс: ожидался JSON-объект"_s;
+            return false;
+        }
+        Mix m;
+        m.id = obj->getProperty ("id").toString();
+        m.name = obj->getProperty ("name").toString();
+        m.comment = obj->getProperty ("comment").toString();
+        if (m.id.isEmpty())
+        {
+            error = "Микс: нет id"_s;
+            return false;
+        }
+        readMics (*obj, m.mics);
+        if (m.mics.empty())
+        {
+            error = "Микс: нет микрофонов"_s;
+            return false;
+        }
+        out = std::move (m);
+        return true;
+    }
+
+    bool Mix::fromFile (const juce::File& file, Mix& out, juce::String& error)
+    {
+        if (! file.existsAsFile())
+        {
+            error = "Нет файла микса: "_s + file.getFullPathName();
+            return false;
+        }
+        return fromJson (file.loadFileAsString(), out, error);
+    }
+
+    juce::String Mix::toJson() const
+    {
+        auto* root = new juce::DynamicObject();
+        juce::var result (root);
+        root->setProperty ("format", 1);
+        root->setProperty ("id", id);
+        root->setProperty ("name", name);
+        if (comment.isNotEmpty())
+            root->setProperty ("comment", comment);
+        root->setProperty ("mics", micsToVar (mics));
+        return juce::JSON::toString (result);
     }
 
     bool Preset::fromFile (const juce::File& file, Preset& out, juce::String& error)

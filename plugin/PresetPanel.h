@@ -4,6 +4,8 @@
 
 #include <juce_gui_basics/juce_gui_basics.h>
 
+#include <functional>
+#include <memory>
 #include <vector>
 
 namespace samplit
@@ -24,6 +26,12 @@ namespace samplit
         // Пересканировать папку пресетов и пакеты (после смены лицензии, по кнопке)
         void rescan();
 
+        // Выбран пресет, который запущен на загрузку (окно закрывает выпадающий список)
+        std::function<void()> onPicked;
+
+        // Соседний пресет в списке по кругу: стрелки в шапке окна
+        void step (int delta);
+
         void paint (juce::Graphics&) override;
 
         // Над строкой статуса: её полный текст (в узком окне он обрезается)
@@ -33,7 +41,14 @@ namespace samplit
     private:
         int getNumRows() override { return (int) presets.size(); }
         void paintListBoxItem (int row, juce::Graphics&, int width, int height, bool selected) override;
-        void listBoxItemClicked (int row, const juce::MouseEvent&) override { load (row); }
+        void listBoxItemClicked (int row, const juce::MouseEvent& e) override
+        {
+            if (e.mods.isPopupMenu())
+                showRowMenu (row);
+            else
+                load (row);
+        }
+        void showRowMenu (int row);
         void returnKeyPressed (int row) override { load (row); }
         juce::String getTooltipForRow (int row) override;
 
@@ -47,7 +62,12 @@ namespace samplit
         juce::String loadingName;
 
         juce::Label title;
-        juce::TextButton rescanButton, folderButton;
+        juce::TextButton rescanButton, folderButton, packFolderButton, addPackButton, saveButton;
+        std::unique_ptr<juce::FileChooser> chooser;
+        juce::Label intro;
+        void saveAs();
+        void addPack();
+        void updateIntro();
         juce::ListBox list;
         juce::Label emptyText;
         juce::Rectangle<int> statusArea;

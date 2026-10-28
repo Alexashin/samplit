@@ -122,12 +122,20 @@ namespace
         file.replaceWithText (license::signToken (juce::var (p), secret));
     }
 
-    bool shoot (SamplitProcessor& processor, const juce::File& out, int w, int h, bool picksTab = false)
+    // tab: схема установки или микшер; over: список пресетов или лицензия, открытые поверх окна
+    enum class Tab { Kit, Mixer };
+    enum class Over { None, Presets, License };
+
+    bool shoot (SamplitProcessor& processor, const juce::File& out, int w, int h, Tab tab = Tab::Kit, Over over = Over::None)
     {
         std::unique_ptr<juce::AudioProcessorEditor> editor (processor.createEditor());
-        if (picksTab)
-            static_cast<SamplitEditor&> (*editor).showRightTab (true);
+        auto& samplitEditor = static_cast<SamplitEditor&> (*editor);
+        samplitEditor.showMainTab (tab == Tab::Mixer);
         editor->setSize (w, h);
+        if (over == Over::Presets)
+            samplitEditor.openPresets();
+        else if (over == Over::License)
+            samplitEditor.openLicense();
         pumpUntil ([] { return false; }, 300);  // таймеры панелей успевают обновиться
         const auto image = editor->createComponentSnapshot (editor->getLocalBounds(), true, 1.0f);
         out.deleteFile();
@@ -222,6 +230,7 @@ int main (int argc, char** argv)
             return 1;
         }
         presetSource.copyFileTo (dir.getChildFile ("presets/studio600-default.json"));
+        presetSource.getParentDirectory().getChildFile ("mixes").copyDirectoryTo (dir.getChildFile ("presets/mixes"));
         dir.getChildFile ("presets/studio600-full.json").replaceWithText (
             R"json({ "format": 1, "id": "studio600-full", "name": "Studio600: Full (все пакеты)", "packs": ["studio600-core", "studio600-snare-live", "studio600-hat", "studio600-ride", "studio600-cymbals", "studio600-unverified"], "includeUnverified": true })json"_s);
     }
@@ -262,8 +271,10 @@ int main (int argc, char** argv)
         failures += shoot (processor, outDir.getChildFile ("03-kit.png"), 1180, 780) ? 0 : 1;
         failures += shoot (processor, outDir.getChildFile ("04-kit-narrow.png"), 900, 620) ? 0 : 1;
         failures += shoot (processor, outDir.getChildFile ("05-kit-wide.png"), 1600, 900) ? 0 : 1;
-        failures += shoot (processor, outDir.getChildFile ("07-picks.png"), 1180, 780, true) ? 0 : 1;
-        failures += shoot (processor, outDir.getChildFile ("08-picks-narrow.png"), 900, 620, true) ? 0 : 1;
+        failures += shoot (processor, outDir.getChildFile ("07-mixer.png"), 1180, 780, Tab::Mixer) ? 0 : 1;
+        failures += shoot (processor, outDir.getChildFile ("08-mixer-narrow.png"), 900, 620, Tab::Mixer) ? 0 : 1;
+        failures += shoot (processor, outDir.getChildFile ("09-presets.png"), 1180, 780, Tab::Kit, Over::Presets) ? 0 : 1;
+        failures += shoot (processor, outDir.getChildFile ("10-license.png"), 1180, 780, Tab::Kit, Over::License) ? 0 : 1;
     }
 
     root.deleteRecursively();

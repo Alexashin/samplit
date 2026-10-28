@@ -1,4 +1,5 @@
 #include "PluginProcessor.h"
+#include "Brand.h"
 
 #include <algorithm>
 
@@ -29,11 +30,30 @@ namespace samplit
         license = std::make_unique<LicenseManager> (LicenseManager::defaultConfig());
         model.groups.push_back ({ "Group 1", 1 });
         publish();
+
+        // Параметры автоматизации: имена общие, потому что микрофоны зависят от кита (Mic 1 = первый микрофон кита)
+        for (int i = 0; i < kAutomatedMics; ++i)
+        {
+            const auto n = juce::String (i + 1).paddedLeft ('0', 2);
+            levelParams[(size_t) i] = new juce::AudioParameterFloat (juce::ParameterID { "mic" + n + "_level", 1 }, "Mic " + n + " level",
+                                                                     juce::NormalisableRange<float> (-60.0f, 12.0f, 0.1f), 0.0f);
+            panParams[(size_t) i] = new juce::AudioParameterFloat (juce::ParameterID { "mic" + n + "_pan", 1 }, "Mic " + n + " pan",
+                                                                   juce::NormalisableRange<float> (-1.0f, 1.0f, 0.01f), 0.0f);
+            addParameter (levelParams[(size_t) i]);
+            addParameter (panParams[(size_t) i]);
+            levelParams[(size_t) i]->addListener (this);
+            panParams[(size_t) i]->addListener (this);
+        }
         startTimer (1000);
     }
 
     SamplitProcessor::~SamplitProcessor()
     {
+        for (auto* p : levelParams)
+            p->removeListener (this);
+        for (auto* p : panParams)
+            p->removeListener (this);
+        cancelPendingUpdate();
         stopTimer();
         lifeToken.reset();
         cancelKitLoad();
@@ -498,6 +518,7 @@ namespace samplit
                     }
                     mixer = std::move (fresh);
                     applyMixer();
+                    pushAllParams();
                     setKit (result->kit);
 
                     // Выбор удара: как в пресете, а при восстановлении проекта сохранённый (по id переключателя)
@@ -512,6 +533,19 @@ namespace samplit
                             savedPicks[juce::String (choices[i].id)] = picks[i];
                     }
                     applyPicks();
+
+                    // Громкость барабанов: как в проекте при восстановлении, иначе 0 дБ
+                    {
+                        const juce::ScopedLock sl (stateLock);
+                        pieceLevels.assign (result->kit->pieces.size(), 0.0f);
+                        for (size_t i = 0; i < pieceLevels.size(); ++i)
+                            if (const auto saved = savedPieces.find (juce::String (result->kit->pieces[i].id)); keepMix && saved != savedPieces.end())
+                                pieceLevels[i] = saved->second;
+                        savedPieces.clear();
+                        for (size_t i = 0; i < pieceLevels.size(); ++i)
+                            savedPieces[juce::String (result->kit->pieces[i].id)] = pieceLevels[i];
+                    }
+                    applyPieceLevels();
                 }
 
                 lastLoad = *result;
@@ -533,7 +567,296 @@ namespace samplit
     {
         restoreMixPending = false;
         setPresetName (preset.id);
-        loadPreset (preset, std::move (done));
+
+        // Микс переживает смену кита: правки пользователя переносятся по id микрофонов, выбранный микс читается с диска заново,
+        // а если микс не выбирали, берётся микс пресета (поле mix). Пресет с явным блоком mics и без mix (старый формат или
+        // сохранённый «Сохранить как…» после правок) играет с этими значениями
+        auto withMix = preset;
+        const bool explicitMics = preset.mixId.isEmpty() && ! preset.mics.empty();
+        bool modified;
+        juce::String chosen;
+        {
+            const juce::ScopedLock sl (stateLock);
+            modified = mixModified;
+            chosen = mixName.isNotEmpty() ? mixName : preset.mixId;
+            if (modified && ! explicitMics)
+                for (const auto& [id, m] : savedMix)
+                    withMix.mics[id] = { m.levelDb, m.pan, m.out, m.mute };
+        }
+        if (explicitMics)
+        {
+            const juce::ScopedLock sl (stateLock);
+            mixName = {};
+            mixModified = false;
+        }
+        else if (! modified)
+        {
+            bool found = false;
+            if (chosen.isNotEmpty())
+                for (const auto& m : scanMixes())
+                    if (m.id == chosen)
+                    {
+                        withMix.mics = m.mics;
+                        found = true;
+                    }
+            const juce::ScopedLock sl (stateLock);
+            mixName = found ? chosen : juce::String();
+        }
+        loadPreset (withMix, std::move (done));
+    }
+
+    juce::File SamplitProcessor::saveCurrentPresetAs (const juce::String& name, juce::String& error)
+    {
+        const auto title = name.trim();
+        const auto current = getKit();
+        if (title.isEmpty())
+        {
+            error = utf8 ("Введите название пресета");
+            return {};
+        }
+        if (current == nullptr)
+        {
+            error = utf8 ("Сначала загрузите пресет: сохранять нечего");
+            return {};
+        }
+
+        const auto currentId = getPresetName();
+        Preset preset;
+        bool found = false;
+        for (const auto& e : scanPresets())
+            if (e.preset.id == currentId)
+            {
+                preset = e.preset;
+                found = true;
+            }
+        if (! found)
+        {
+            error = utf8 ("Исходный пресет не найден в папке пресетов");
+            return {};
+        }
+
+        // Микс: выбранный и не правленный сохраняем ссылкой, иначе явными значениями микрофонов
+        {
+            const juce::ScopedLock sl (stateLock);
+            preset.mixId = (mixName.isNotEmpty() && ! mixModified) ? mixName : juce::String();
+        }
+        // Микшер: значения нынешних линеек по id микрофонов
+        for (int i = 0; i < (int) current->mics.size() && i < (int) mixer.size(); ++i)
+        {
+            const auto& m = mixer[(size_t) i];
+            preset.mics[juce::String::fromUTF8 (current->mics[(size_t) i].id.c_str())] = { m.levelDb, m.pan, m.out, m.mute };
+        }
+        // Режимы выбора удара: правило и переключатель связаны названием
+        for (auto& rule : preset.pick)
+            for (int c = 0; c < (int) current->choices.size(); ++c)
+                if (juce::String::fromUTF8 (current->choices[(size_t) c].name.c_str()) == rule.name)
+                    rule.mode = getPickChoice (c);
+
+        juce::String slug;
+        for (auto ch : title.toLowerCase())
+            slug << (juce::CharacterFunctions::isLetterOrDigit (ch) ? juce::String::charToString (ch) : juce::String ("-"));
+        while (slug.contains ("--"))
+            slug = slug.replace ("--", "-");
+        slug = slug.trimCharactersAtStart ("-").trimCharactersAtEnd ("-");
+        if (slug.isEmpty())
+            slug = "preset";
+
+        const auto dir = license->getPresetDir();
+        dir.createDirectory();
+        auto file = dir.getChildFile ("user-" + slug + ".json");
+        for (int n = 2; file.exists(); ++n)
+            file = dir.getChildFile ("user-" + slug + "-" + juce::String (n) + ".json");
+
+        preset.id = file.getFileNameWithoutExtension();
+        preset.name = title;
+        if (! file.replaceWithText (preset.toJson(), false, false, "\r\n"))
+        {
+            error = utf8 ("Не удалось записать файл ") + file.getFullPathName();
+            return {};
+        }
+        setPresetName (preset.id);
+        return file;
+    }
+
+    std::vector<Mix> SamplitProcessor::scanMixes() const
+    {
+        return samplit::scanMixes (getMixDir());
+    }
+
+
+    namespace
+    {
+        // Только свои файлы (user-*.json) прямо в папке пресетов или миксов
+        bool isOwnUserFile (const juce::File& f, const juce::File& presetDir, const juce::File& mixDir)
+        {
+            if (! f.existsAsFile() || ! f.hasFileExtension ("json") || ! f.getFileName().startsWith ("user-"))
+                return false;
+            const auto parent = f.getParentDirectory();
+            return parent == presetDir || parent == mixDir;
+        }
+    }
+
+    juce::File SamplitProcessor::getMixFile (const juce::String& id) const
+    {
+        const auto f = getMixDir().getChildFile (id + ".json");
+        return f.existsAsFile() ? f : juce::File();
+    }
+
+    bool SamplitProcessor::renameUserFile (const juce::File& file, const juce::String& newName, juce::String& error)
+    {
+        const auto title = newName.trim();
+        if (! isOwnUserFile (file, license->getPresetDir(), getMixDir()))
+        {
+            error = utf8 ("Переименовать можно только свои пресеты и миксы");
+            return false;
+        }
+        if (title.isEmpty())
+        {
+            error = utf8 ("Введите название");
+            return false;
+        }
+
+        const auto text = file.loadFileAsString();
+        auto root = juce::JSON::parse (text);
+        auto* obj = root.getDynamicObject();
+        if (obj == nullptr)
+        {
+            error = utf8 ("Файл повреждён");
+            return false;
+        }
+        obj->setProperty ("name", title);
+        if (! file.replaceWithText (juce::JSON::toString (root), false, false, "\r\n"))
+        {
+            error = utf8 ("Не удалось записать файл ") + file.getFullPathName();
+            return false;
+        }
+        sendChangeMessage();
+        return true;
+    }
+
+    bool SamplitProcessor::deleteUserFile (const juce::File& file, juce::String& error)
+    {
+        if (! isOwnUserFile (file, license->getPresetDir(), getMixDir()))
+        {
+            error = utf8 ("Удалить можно только свои пресеты и миксы");
+            return false;
+        }
+        const auto id = file.getFileNameWithoutExtension();
+        if (! file.moveToTrash())
+        {
+            error = utf8 ("Не удалось убрать файл в корзину: ") + file.getFullPathName();
+            return false;
+        }
+        {
+            const juce::ScopedLock sl (stateLock);
+            if (mixName == id)
+            {
+                mixName = {};
+                mixModified = false;
+            }
+        }
+        sendChangeMessage();
+        return true;
+    }
+
+    juce::File SamplitProcessor::getMixDir() const
+    {
+        return license->getPresetDir().getChildFile ("mixes");
+    }
+
+    juce::String SamplitProcessor::getMixName() const
+    {
+        const juce::ScopedLock sl (stateLock);
+        return mixName;
+    }
+
+    bool SamplitProcessor::isMixModified() const
+    {
+        const juce::ScopedLock sl (stateLock);
+        return mixModified;
+    }
+
+    void SamplitProcessor::applyMix (const Mix& mix)
+    {
+        const auto current = getKit();
+        if (current == nullptr)
+            return;
+
+        {
+            const juce::ScopedValueSetter<bool> guard (applyingMix, true);
+            for (int i = 0; i < (int) current->mics.size() && i < (int) mixer.size(); ++i)
+            {
+                const auto found = mix.mics.find (juce::String (current->mics[(size_t) i].id));
+                if (found == mix.mics.end())
+                    continue;
+                auto s = getMicState (i);
+                s.levelDb = found->second.levelDb;
+                s.pan = found->second.pan;
+                s.mute = found->second.mute;
+                if (found->second.out >= 0)
+                    s.out = found->second.out;
+                setMicState (i, s);
+            }
+        }
+        {
+            const juce::ScopedLock sl (stateLock);
+            mixName = mix.id;
+            mixModified = false;
+        }
+        sendChangeMessage();
+    }
+
+    juce::File SamplitProcessor::saveCurrentMixAs (const juce::String& name, juce::String& error)
+    {
+        const auto title = name.trim();
+        const auto current = getKit();
+        if (title.isEmpty())
+        {
+            error = utf8 ("Введите название микса");
+            return {};
+        }
+        if (current == nullptr)
+        {
+            error = utf8 ("Сначала загрузите пресет: сохранять нечего");
+            return {};
+        }
+
+        Mix mix;
+        mix.name = title;
+        for (int i = 0; i < (int) current->mics.size() && i < (int) mixer.size(); ++i)
+        {
+            const auto& m = mixer[(size_t) i];
+            mix.mics[juce::String::fromUTF8 (current->mics[(size_t) i].id.c_str())] = { m.levelDb, m.pan, m.out, m.mute };
+        }
+
+        juce::String slug;
+        for (auto ch : title.toLowerCase())
+            slug << (juce::CharacterFunctions::isLetterOrDigit (ch) ? juce::String::charToString (ch) : juce::String ("-"));
+        while (slug.contains ("--"))
+            slug = slug.replace ("--", "-");
+        slug = slug.trimCharactersAtStart ("-").trimCharactersAtEnd ("-");
+        if (slug.isEmpty())
+            slug = "mix";
+
+        const auto dir = getMixDir();
+        dir.createDirectory();
+        auto file = dir.getChildFile ("user-" + slug + ".json");
+        for (int n = 2; file.exists(); ++n)
+            file = dir.getChildFile ("user-" + slug + "-" + juce::String (n) + ".json");
+
+        mix.id = file.getFileNameWithoutExtension();
+        if (! file.replaceWithText (mix.toJson(), false, false, "\r\n"))
+        {
+            error = utf8 ("Не удалось записать файл ") + file.getFullPathName();
+            return {};
+        }
+        {
+            const juce::ScopedLock sl (stateLock);
+            mixName = mix.id;
+            mixModified = false;
+        }
+        sendChangeMessage();
+        return file;
     }
 
     bool SamplitProcessor::restorePreset()
@@ -570,8 +893,88 @@ namespace samplit
         {
             const juce::ScopedLock sl (stateLock);
             savedMix[juce::String (current->mics[(size_t) mic].id)] = s;
+            if (! applyingMix)
+                mixModified = true;     // «изменён» в подписи показывается, только если микс выбран
         }
         applyMixer();
+        pushParam (mic);
+    }
+
+    // ---------------------------------------------------------------- громкость барабанов и параметры
+
+    float SamplitProcessor::getPieceLevel (int piece) const
+    {
+        return juce::isPositiveAndBelow (piece, (int) pieceLevels.size()) ? pieceLevels[(size_t) piece] : 0.0f;
+    }
+
+    void SamplitProcessor::setPieceLevel (int piece, float levelDb)
+    {
+        const auto current = getKit();
+        if (current == nullptr || ! juce::isPositiveAndBelow (piece, (int) pieceLevels.size()) || piece >= (int) current->pieces.size())
+            return;
+        pieceLevels[(size_t) piece] = juce::jlimit (-24.0f, 12.0f, levelDb);
+        {
+            const juce::ScopedLock sl (stateLock);
+            savedPieces[juce::String (current->pieces[(size_t) piece].id)] = pieceLevels[(size_t) piece];
+        }
+        applyPieceLevels();
+    }
+
+    void SamplitProcessor::applyPieceLevels()
+    {
+        for (int i = 0; i < KitEngine::kMaxPieces; ++i)
+            kitEngine.setPieceLevel (i, i < (int) pieceLevels.size() ? pieceLevels[(size_t) i] : 0.0f);
+    }
+
+    // Микшер → параметр хоста (только если значение действительно другое: без лишних уведомлений)
+    void SamplitProcessor::pushParam (int mic)
+    {
+        if (! juce::isPositiveAndBelow (mic, kAutomatedMics) || ! juce::isPositiveAndBelow (mic, (int) mixer.size()))
+            return;
+        const auto& m = mixer[(size_t) mic];
+        if (std::abs (levelParams[(size_t) mic]->get() - m.levelDb) > 0.051f)
+            *levelParams[(size_t) mic] = m.levelDb;
+        if (std::abs (panParams[(size_t) mic]->get() - m.pan) > 0.0051f)
+            *panParams[(size_t) mic] = m.pan;
+    }
+
+    void SamplitProcessor::pushAllParams()
+    {
+        for (int i = 0; i < kAutomatedMics; ++i)
+            pushParam (i);
+    }
+
+    // Параметр → микшер (message thread). Допуск в полшага параметра: значение микшера, не попавшее на шаг, не затирается
+    void SamplitProcessor::handleAsyncUpdate()
+    {
+        const auto current = getKit();
+        if (current == nullptr)
+            return;
+
+        bool changed = false;
+        const int n = juce::jmin (kAutomatedMics, (int) mixer.size(), (int) current->mics.size());
+        for (int i = 0; i < n; ++i)
+        {
+            auto s = mixer[(size_t) i];
+            bool edited = false;
+            if (const float v = levelParams[(size_t) i]->get(); std::abs (v - s.levelDb) > 0.051f)
+            {
+                s.levelDb = v;
+                edited = true;
+            }
+            if (const float v = panParams[(size_t) i]->get(); std::abs (v - s.pan) > 0.0051f)
+            {
+                s.pan = v;
+                edited = true;
+            }
+            if (edited)
+            {
+                setMicState (i, s);
+                changed = true;
+            }
+        }
+        if (changed)
+            sendChangeMessage();
     }
 
     Pick SamplitProcessor::getPickChoice (int choice) const
@@ -712,6 +1115,8 @@ namespace samplit
             const juce::ScopedLock sl (stateLock);
             state.setProperty ("folder", lastFolder.getFullPathName(), nullptr);
             state.setProperty ("preset", presetName, nullptr);
+            state.setProperty ("mix", mixName, nullptr);
+            state.setProperty ("mixModified", mixModified, nullptr);
             for (const auto& [id, m] : savedMix)
             {
                 juce::ValueTree v ("MIC");
@@ -721,6 +1126,13 @@ namespace samplit
                 v.setProperty ("mute", m.mute, nullptr);
                 v.setProperty ("solo", m.solo, nullptr);
                 v.setProperty ("out", m.out, nullptr);
+                state.appendChild (v, nullptr);
+            }
+            for (const auto& [id, level] : savedPieces)
+            {
+                juce::ValueTree v ("PIECE");
+                v.setProperty ("id", id, nullptr);
+                v.setProperty ("level", level, nullptr);
                 state.appendChild (v, nullptr);
             }
             for (const auto& [id, pick] : savedPicks)
@@ -778,8 +1190,15 @@ namespace samplit
         Instrument parsed;
         std::map<juce::String, MicState> mix;
         std::map<juce::String, Pick> pickModes;
+        std::map<juce::String, float> pieceMap;
         for (const auto& v : state)
         {
+            if (v.hasType ("PIECE"))
+            {
+                pieceMap[v.getProperty ("id").toString()] = juce::jlimit (-24.0f, 12.0f, (float) v.getProperty ("level", 0.0));
+                continue;
+            }
+
             if (v.hasType ("PICK"))
             {
                 Pick pick;
@@ -839,8 +1258,11 @@ namespace samplit
         {
             const juce::ScopedLock sl (stateLock);
             presetName = state.getProperty ("preset").toString();
+            mixName = state.getProperty ("mix").toString();
+            mixModified = (bool) state.getProperty ("mixModified");
             savedMix = std::move (mix);
             savedPicks = std::move (pickModes);
+            savedPieces = std::move (pieceMap);
         }
 
         // Хост может звать setState не из message thread, а модель меняется только там

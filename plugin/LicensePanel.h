@@ -19,6 +19,10 @@ namespace samplit
         // Перечитать состояние из менеджера (зовётся из LicenseManager::onChange)
         void refresh();
 
+        // Лицензия действует; false: окно показывает панель само
+        bool isOk() const noexcept { return ok; }
+        const LicenseManager::Info& getInfo() const noexcept { return info; }
+
         void paint (juce::Graphics&) override;
         void resized() override;
 

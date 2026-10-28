@@ -49,18 +49,40 @@ namespace samplit
         title.setText (utf8 ("Пресеты"), juce::dontSendNotification);
         title.setFont (juce::FontOptions (15.0f, juce::Font::bold));
 
-        rescanButton.setButtonText (utf8 ("Обновить список"));
+        intro.setFont (juce::FontOptions (12.0f));
+        intro.setColour (juce::Label::textColourId, brand::textMuted);
+        intro.setJustificationType (juce::Justification::topLeft);
+        intro.setMinimumHorizontalScale (1.0f);
+
+        rescanButton.setButtonText (utf8 ("Обновить"));
         rescanButton.setTooltip (utf8 ("Заново прочитать папки пресетов и пакетов"));
         rescanButton.onClick = [this] { rescan(); };
 
-        folderButton.setButtonText (utf8 ("Открыть папку"));
-        folderButton.setTooltip (utf8 ("Папка с пресетами. Пакеты лежат рядом, в папке packs"));
+        folderButton.setButtonText (utf8 ("Папка пресетов"));
+        folderButton.setTooltip (utf8 ("Откроется папка с пресетами (.json). Положите сюда чужой пресет и нажмите «Обновить»"));
         folderButton.onClick = [this]
         {
             const auto dir = processor.getLicense().getPresetDir();
             dir.createDirectory();
             dir.startAsProcess();
         };
+
+        packFolderButton.setButtonText (utf8 ("Папка пакетов"));
+        packFolderButton.setTooltip (utf8 ("Откроется папка с пакетами звука (.splpack). Новый пакет можно просто положить сюда"));
+        packFolderButton.onClick = [this]
+        {
+            const auto dir = processor.getLicense().getPackDir();
+            dir.createDirectory();
+            dir.startAsProcess();
+        };
+
+        addPackButton.setButtonText (utf8 ("Добавить пакет…"));
+        addPackButton.setTooltip (utf8 ("Выбрать файл пакета (.splpack) и скопировать его в папку пакетов"));
+        addPackButton.onClick = [this] { addPack(); };
+
+        saveButton.setButtonText (utf8 ("Сохранить как…"));
+        saveButton.setTooltip (utf8 ("Сохранить текущий пресет с вашими уровнями микрофонов, панорамой, выходами и режимами выбора удара"));
+        saveButton.onClick = [this] { saveAs(); };
 
         list.setModel (this);
         list.setRowHeight (kRowHeight);
@@ -71,7 +93,7 @@ namespace samplit
         emptyText.setFont (juce::FontOptions (13.0f));
         emptyText.setJustificationType (juce::Justification::topLeft);
 
-        for (auto* c : std::initializer_list<juce::Component*> { &title, &rescanButton, &folderButton, &list, &emptyText })
+        for (auto* c : std::initializer_list<juce::Component*> { &title, &intro, &rescanButton, &folderButton, &packFolderButton, &addPackButton, &saveButton, &list, &emptyText })
             addAndMakeVisible (c);
 
         processor.addChangeListener (this);
@@ -99,8 +121,137 @@ namespace samplit
                                + utf8 ("\nи нажмите «Обновить список»."),
                            juce::dontSendNotification);
         emptyText.setVisible (presets.empty());
+        updateIntro();
         updateStatus();
         repaint();
+    }
+
+    void PresetPanel::step (int delta)
+    {
+        const int n = (int) presets.size();
+        if (n == 0)
+            return;
+        int current = -1;
+        for (int i = 0; i < n; ++i)
+            if (presets[(size_t) i].preset.id == processor.getPresetName())
+                current = i;
+        load (current < 0 ? 0 : (current + delta + n) % n);
+    }
+
+    void PresetPanel::updateIntro()
+    {
+        const auto packCount = processor.getLicense().getPackDir().findChildFiles (juce::File::findFiles, false, "*.splpack").size();
+        intro.setText (utf8 ("Пресет задаёт, какие барабаны играют и как сведены микрофоны. Звук он берёт из пакетов (файлы .splpack). "
+                             "Пакетов установлено: ") + juce::String (packCount) + utf8 (", пресетов: ") + juce::String ((int) presets.size())
+                           + utf8 (". Свой вариант сохраняется кнопкой «Сохранить как…», правый клик по нему: переименовать или удалить."),
+                       juce::dontSendNotification);
+    }
+
+    // Правый клик по своему пресету (user-*.json): переименовать или удалить
+    void PresetPanel::showRowMenu (int row)
+    {
+        if (! juce::isPositiveAndBelow (row, (int) presets.size()) || ! presets[(size_t) row].file.getFileName().startsWith ("user-"))
+            return;
+
+        const auto file = presets[(size_t) row].file;
+        const auto name = presets[(size_t) row].preset.name;
+        juce::PopupMenu menu;
+        menu.addItem (1, utf8 ("Переименовать…"));
+        menu.addItem (2, utf8 ("Удалить (в корзину)"));
+        menu.showMenuAsync ({}, [this, safe = juce::Component::SafePointer<PresetPanel> (this), file, name] (int result)
+        {
+            if (safe == nullptr || result == 0)
+                return;
+            if (result == 2)
+            {
+                juce::String error;
+                const bool ok = processor.deleteUserFile (file, error);
+                safe->statusWarns = ! ok;
+                safe->statusText = ok ? utf8 ("Удалено: ") + name : error;
+                safe->rescan();
+                return;
+            }
+
+            auto* w = new juce::AlertWindow (utf8 ("Переименовать пресет"), {}, juce::MessageBoxIconType::NoIcon, safe.getComponent());
+            w->addTextEditor ("name", name, utf8 ("Название"));
+            w->addButton (utf8 ("Сохранить"), 1, juce::KeyPress (juce::KeyPress::returnKey));
+            w->addButton (utf8 ("Отмена"), 0, juce::KeyPress (juce::KeyPress::escapeKey));
+            w->enterModalState (true, juce::ModalCallbackFunction::create ([safe, file, w] (int r)
+            {
+                if (safe == nullptr || r != 1)
+                    return;
+                juce::String error;
+                const bool ok = safe->processor.renameUserFile (file, w->getTextEditorContents ("name"), error);
+                safe->statusWarns = ! ok;
+                safe->statusText = ok ? utf8 ("Переименовано") : error;
+                safe->rescan();
+            }), true);
+        });
+    }
+
+    void PresetPanel::saveAs()
+    {
+        if (processor.getKit() == nullptr)
+        {
+            statusText = utf8 ("Сначала загрузите пресет, потом сохраняйте его вариант");
+            statusWarns = true;
+            repaint (statusArea);
+            return;
+        }
+
+        auto* w = new juce::AlertWindow (utf8 ("Сохранить пресет"),
+                                         utf8 ("Название нового пресета. Сохранятся уровни, панорама и выходы микрофонов и режимы выбора удара."),
+                                         juce::MessageBoxIconType::NoIcon, this);
+        w->addTextEditor ("name", {}, utf8 ("Название"));
+        w->addButton (utf8 ("Сохранить"), 1, juce::KeyPress (juce::KeyPress::returnKey));
+        w->addButton (utf8 ("Отмена"), 0, juce::KeyPress (juce::KeyPress::escapeKey));
+        w->enterModalState (true, juce::ModalCallbackFunction::create ([safe = juce::Component::SafePointer<PresetPanel> (this), w] (int result)
+        {
+            if (safe == nullptr || result != 1)
+                return;
+            juce::String error;
+            const auto file = safe->processor.saveCurrentPresetAs (w->getTextEditorContents ("name"), error);
+            safe->rescan();
+            safe->statusWarns = file == juce::File();
+            safe->statusText = safe->statusWarns ? error : utf8 ("Сохранено: ") + file.getFileName() + utf8 (" (папка пресетов)");
+            safe->repaint (safe->statusArea);
+        }), true);
+    }
+
+    void PresetPanel::addPack()
+    {
+        chooser = std::make_unique<juce::FileChooser> (utf8 ("Выберите пакет"), juce::File(), "*.splpack");
+        chooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles
+                                  | juce::FileBrowserComponent::canSelectMultipleItems,
+                              [safe = juce::Component::SafePointer<PresetPanel> (this)] (const juce::FileChooser& fc)
+        {
+            if (safe == nullptr || fc.getResults().isEmpty())
+                return;
+            const auto dir = safe->processor.getLicense().getPackDir();
+            dir.createDirectory();
+            int copied = 0, existed = 0, failed = 0;
+            for (const auto& f : fc.getResults())
+            {
+                const auto target = dir.getChildFile (f.getFileName());
+                if (target.exists())
+                    ++existed;
+                else if (f.copyFileTo (target))
+                    ++copied;
+                else
+                    ++failed;
+            }
+            juce::String text = utf8 ("Добавлено пакетов: ") + juce::String (copied);
+            if (existed > 0)
+                text << utf8 (". Уже были: ") << existed;
+            if (failed > 0)
+                text << utf8 (". Не скопировались: ") << failed;
+            if (copied > 0)
+                text << utf8 (". Если пресет молчит, этого пакета нет в вашей лицензии");
+            safe->rescan();
+            safe->statusText = text;
+            safe->statusWarns = failed > 0;
+            safe->repaint (safe->statusArea);
+        });
     }
 
     void PresetPanel::load (int row)
@@ -125,6 +276,8 @@ namespace samplit
                 safe->rescan();
         });
         updateStatus();
+        if (onPicked)
+            onPicked();
     }
 
     void PresetPanel::updateStatus()
@@ -216,6 +369,12 @@ namespace samplit
             g.setFont (juce::FontOptions (12.0f, juce::Font::bold));
             g.drawText (utf8 ("Играет"), top.removeFromRight (60), juce::Justification::centredRight);
         }
+        else if (e.file.getFileName().startsWith ("user-"))
+        {
+            g.setColour (brand::textMuted);
+            g.setFont (juce::FontOptions (12.0f));
+            g.drawText (utf8 ("Мой"), top.removeFromRight (60), juce::Justification::centredRight);
+        }
 
         g.setColour (e.isPlayable() ? brand::text : brand::textMuted);
         g.setFont (juce::FontOptions (14.0f, juce::Font::bold));
@@ -223,7 +382,8 @@ namespace samplit
 
         g.setColour (e.isComplete() ? brand::textMuted : kWarning);
         g.setFont (juce::FontOptions (12.0f));
-        g.drawText (packSummary (e), text, juce::Justification::centredLeft, true);
+        g.drawText (e.isComplete() && e.preset.comment.isNotEmpty() ? e.preset.comment : packSummary (e), text,
+                    juce::Justification::centredLeft, true);
     }
 
     void PresetPanel::paint (juce::Graphics& g)
@@ -251,16 +411,26 @@ namespace samplit
     {
         auto area = getLocalBounds().reduced (14, 10);
         title.setBounds (area.removeFromTop (kHeaderHeight - 10));
-        area.removeFromTop (8);
+        intro.setBounds (area.removeFromTop (48));
+        area.removeFromTop (6);
 
         statusArea = getLocalBounds().removeFromBottom (kStatusHeight);
         area.removeFromBottom (kStatusHeight - 10);
 
-        // Кнопки под списком: в узком окне заголовок не теряется
-        auto buttons = area.removeFromBottom (30);
-        rescanButton.setBounds (buttons.removeFromLeft (juce::jmin (140, buttons.getWidth() / 2 - 3)));
-        buttons.removeFromLeft (6);
-        folderButton.setBounds (buttons.removeFromLeft (juce::jmin (130, buttons.getWidth())));
+        // Кнопки под списком в два ряда
+        auto second = area.removeFromBottom (30);
+        area.removeFromBottom (6);
+        auto first = area.removeFromBottom (30);
+        const int w2 = (first.getWidth() - 6) / 2;
+        saveButton.setBounds (first.removeFromLeft (w2));
+        first.removeFromLeft (6);
+        rescanButton.setBounds (first);
+        const int w3 = (second.getWidth() - 12) / 3;
+        folderButton.setBounds (second.removeFromLeft (w3));
+        second.removeFromLeft (6);
+        packFolderButton.setBounds (second.removeFromLeft (w3));
+        second.removeFromLeft (6);
+        addPackButton.setBounds (second);
         area.removeFromBottom (8);
 
         list.setBounds (area);

@@ -24,6 +24,9 @@ namespace samplit
         bool isComplete() const noexcept;   // готовы все пакеты
     };
 
+    // Миксы из папки (*.json, по имени). Битые файлы пропускаются
+    std::vector<Mix> scanMixes (const juce::File& mixDir);
+
     // Пресеты из папки (*.json, по имени) и состояние их пакетов. Битые пресеты пропускаются.
     // Читает заголовки пакетов с диска, поэтому не для audio thread; на десятке пакетов быстро
     std::vector<PresetEntry> scanPresets (const juce::File& presetDir, const juce::File& packDir,

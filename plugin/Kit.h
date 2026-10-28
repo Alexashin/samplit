@@ -114,6 +114,7 @@ namespace samplit
         std::string id;                 // ключ для сохранения в проекте: барабаны и клавиши
         std::string name;
         Pick pick = Pick::Random;       // по умолчанию, из пресета
+        std::vector<int> pieces;        // индексы барабанов в Kit::pieces, на которые действует переключатель
     };
 
     // Индекс клавиши: какие слои и удары на ней лежат. Строится в Kit::buildIndex()

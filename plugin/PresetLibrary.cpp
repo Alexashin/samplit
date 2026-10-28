@@ -15,6 +15,26 @@ namespace samplit
         return ! packs.empty() && std::all_of (packs.begin(), packs.end(), [] (const auto& p) { return p.second == PackState::Ready; });
     }
 
+    std::vector<Mix> scanMixes (const juce::File& mixDir)
+    {
+        auto files = mixDir.findChildFiles (juce::File::findFiles, false, "*.json");
+        std::sort (files.begin(), files.end(), [] (const juce::File& a, const juce::File& b)
+                   { return a.getFileName().compareNatural (b.getFileName()) < 0; });
+
+        std::vector<Mix> result;
+        for (const auto& f : files)
+        {
+            Mix m;
+            juce::String error;
+            if (Mix::fromFile (f, m, error))
+            {
+                m.id = f.getFileNameWithoutExtension();     // id = имя файла: так микс находят и сохраняют в проекте
+                result.push_back (std::move (m));
+            }
+        }
+        return result;
+    }
+
     std::vector<PresetEntry> scanPresets (const juce::File& presetDir, const juce::File& packDir,
                                           const std::function<bool (const juce::String&, pack::PackKey&)>& keyFor)
     {

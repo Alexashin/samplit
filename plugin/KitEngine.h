@@ -17,6 +17,7 @@ namespace samplit
     class KitEngine
     {
     public:
+        static constexpr int kMaxPieces = 32;    // барабанов с отдельной громкостью
         static constexpr int kMaxStrikes = 256;  // одновременно звучащих ударов (каждый до kMaxMics голосов)
 
         // Что запустил последний noteOn (для тестов и индикации)
@@ -44,6 +45,9 @@ namespace samplit
 
         // Message thread: уровень (дБ) и панорама микрофона. Панорама действует, когда микрофон идёт в Main
         void setMicMix (int mic, float levelDb, float pan) noexcept;
+
+        // Message thread: громкость барабана кита (дБ), действует на удары, которые начнутся после вызова
+        void setPieceLevel (int piece, float levelDb) noexcept;
 
         // Message thread: выход микрофона поверх выхода из кита. -1: как в ките
         void setMicOutput (int mic, int out) noexcept;
@@ -99,6 +103,7 @@ namespace samplit
         std::atomic<const Kit*> current { nullptr };
         std::atomic<int> selectMode { (int) HitSelect::Live };
         std::atomic<int> spread { 0 };
+        std::array<std::atomic<float>, kMaxPieces> pieceGain;
         std::array<std::atomic<float>, Kit::kMaxMics> micLevel;
         std::array<std::atomic<float>, Kit::kMaxMics> micPan;
         std::array<std::atomic<int>, Kit::kMaxMics> micOut;

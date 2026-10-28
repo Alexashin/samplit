@@ -72,6 +72,8 @@ namespace samplit
 
     KitEngine::KitEngine()
     {
+        for (auto& g : pieceGain)
+            g.store (1.0f);
         for (auto& l : micLevel)
             l.store (1.0f);
         for (auto& p : micPan)
@@ -110,6 +112,12 @@ namespace samplit
     {
         if (choice >= 0 && choice < Kit::kMaxChoices)
             choicePick[(size_t) choice].store (pick < 0 ? -1 : std::min (pick, (int) Pick::Exact));
+    }
+
+    void KitEngine::setPieceLevel (int piece, float levelDb) noexcept
+    {
+        if (piece >= 0 && piece < kMaxPieces)
+            pieceGain[(size_t) piece].store (juce::Decibels::decibelsToGain (levelDb, -100.0f));
     }
 
     void KitEngine::setMicMix (int mic, float levelDb, float pan) noexcept
@@ -324,7 +332,8 @@ namespace samplit
         }
 
         auto& s = strikes[(size_t) slot];
-        const float velGain = kit->velocityGain == VelocityGain::Linear ? (float) velocity / 127.0f : 1.0f;
+        const float pieceGainNow = map.piece < kMaxPieces ? pieceGain[(size_t) map.piece].load() : 1.0f;
+        const float velGain = pieceGainNow * (kit->velocityGain == VelocityGain::Linear ? (float) velocity / 127.0f : 1.0f);
         int started = 0;
         for (int m = 0; m < (int) hit.files.size(); ++m)
         {

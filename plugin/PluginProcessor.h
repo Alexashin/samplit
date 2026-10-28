@@ -28,6 +28,8 @@ namespace samplit
 
     class SamplitProcessor final : public juce::AudioProcessor,
                                    public juce::ChangeBroadcaster,
+                                   private juce::AudioProcessorParameter::Listener,
+                                   private juce::AsyncUpdater,
                                    private juce::Timer
     {
     public:
@@ -118,6 +120,31 @@ namespace samplit
         // Выбор пресета пользователем: запоминается в проекте, микшер берёт значения пресета
         void selectPreset (const Preset&, std::function<void (const KitLoadResult&)> done = {});
 
+        // «Сохранить как…»: текущий пресет с нынешними микшером и режимами выбора удара, новым файлом в папке пресетов.
+        // Существующие файлы не перезаписываются. Возвращает файл, при ошибке пустой File и текст в error
+        juce::File saveCurrentPresetAs (const juce::String& name, juce::String& error);
+
+        // ---- Миксы микрофонов (файлы в папке mixes рядом с пресетами) ----
+        std::vector<Mix> scanMixes() const;
+        // Файл микса по id (пустой File, если нет)
+        juce::File getMixFile (const juce::String& id) const;
+        juce::File getMixDir() const;
+
+        // Применить микс к загруженному киту: уровни, панорамы, выходы, mute. Без перезагрузки, solo не трогает
+        void applyMix (const Mix&);
+
+        // Id применённого микса (пусто: микс не выбран) и признак, что после него микшер правили руками
+        juce::String getMixName() const;
+        bool isMixModified() const;
+
+        // «Сохранить микс…»: текущий микшер новым файлом, существующие не перезаписываются
+        juce::File saveCurrentMixAs (const juce::String& name, juce::String& error);
+
+        // Свои пресеты и миксы (файлы user-*.json): переименовать (меняется только название) и удалить в корзину.
+        // Чужие и стандартные файлы не трогаются: false и текст в error
+        bool renameUserFile (const juce::File&, const juce::String& newName, juce::String& error);
+        bool deleteUserFile (const juce::File&, juce::String& error);
+
         // После загрузки проекта: найти сохранённый пресет и загрузить его с сохранённым микшером.
         // false: пресет в проекте не задан или не найден в папке
         bool restorePreset();
@@ -134,6 +161,14 @@ namespace samplit
 
         MicState getMicState (int mic) const;
         void setMicState (int mic, const MicState&);
+
+        // ---- Громкость барабана (message thread, дБ −24…+12). Индекс как в Kit::pieces; сохраняется в проекте ----
+        float getPieceLevel (int piece) const;
+        void setPieceLevel (int piece, float levelDb);
+
+        // ---- Автоматизация в DAW: уровень и панорама первых kAutomatedMics микрофонов кита (параметры "micNN_level", "micNN_pan").
+        // Хост двигает параметр, микшер следует за ним, и наоборот. Mute, Solo и выход не автоматизируются ----
+        static constexpr int kAutomatedMics = Kit::kMaxMics;
 
         // ---- Выбор удара (message thread): переключатели Kit::choices, сохраняются в проекте по id ----
         Pick getPickChoice (int choice) const;
@@ -201,7 +236,8 @@ namespace samplit
         mutable juce::CriticalSection stateLock;
         std::shared_ptr<const Instrument> published;
         std::shared_ptr<const Kit> kit;
-        juce::String presetName;
+        juce::String presetName, mixName;
+        bool mixModified = false, applyingMix = false;
         juce::File lastFolder;
         SamplePtr previewSample;
         juce::File previewFileLoaded;
@@ -219,6 +255,13 @@ namespace samplit
         std::atomic<uint32_t> enabledOutputs { 0 };
         std::atomic<int> loadsInFlight { 0 };
         void applyMixer();
+        void applyPieceLevels();
+        void pushParam (int mic);
+        void pushAllParams();
+        void parameterValueChanged (int, float) override { triggerAsyncUpdate(); }
+        void parameterGestureChanged (int, bool) override {}
+        void handleAsyncUpdate() override;
+
         void applyPicks();
 
         std::unique_ptr<LicenseManager> license;
@@ -227,6 +270,9 @@ namespace samplit
         std::vector<Pick> picks;                            // только message thread, по индексу Kit::choices
         std::map<juce::String, Pick> savedPicks;            // по id переключателя, под stateLock: пишется в проект
         KitLoadResult lastLoad;                             // только message thread
+        std::vector<float> pieceLevels;                     // дБ, только message thread
+        std::map<juce::String, float> savedPieces;          // по id барабана, под stateLock
+        std::array<juce::AudioParameterFloat*, kAutomatedMics> levelParams {}, panParams {};
         bool restoreMixPending = false;                     // только message thread
         std::atomic<bool> serviceMode { false };
         std::atomic<bool> kitLoading { false };
