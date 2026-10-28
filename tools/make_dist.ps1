@@ -73,10 +73,8 @@ Write-Host ("Дистрибутив: $out ({0:N0} МБ)" -f $size)
 if (-not $NoZip) {
     $zip = "$out.zip"
     if (Test-Path $zip) { Remove-Item $zip -Force }
-    # Пакеты уже сжаты (FLAC), поэтому архив без сжатия: быстрее и того же размера
-    Push-Location (Split-Path $out)
-    try { tar -a -c -f $zip --options zip:compression=store (Split-Path $out -Leaf) }
-    finally { Pop-Location }
+    # Имена по-русски: bsdtar пишет их без флага UTF-8 (в 7-Zip кракозябры), поэтому упаковывает Python
+    python (Join-Path $root 'tools\zip_dist.py') $out $zip
     if ($LASTEXITCODE -ne 0) { throw 'не удалось собрать архив' }
     Write-Host ("Архив: $zip ({0:N0} МБ)" -f ((Get-Item $zip).Length / 1MB))
 }
