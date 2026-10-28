@@ -61,9 +61,10 @@ namespace
 
     juce::var makePayload (const PayloadSpec& spec = {})
     {
+        // Ключи пакетов обёрнуты тем же отпечатком, что и machine: у служебного токена это "*"
         auto* packs = new juce::DynamicObject();
-        packs->setProperty ("kick", wrapPackKey ("kick", packKey (10), kFingerprint, nonce (1)));
-        packs->setProperty ("cymbals", wrapPackKey ("cymbals", packKey (50), kFingerprint, nonce (2)));
+        packs->setProperty ("kick", wrapPackKey ("kick", packKey (10), spec.fingerprint, nonce (1)));
+        packs->setProperty ("cymbals", wrapPackKey ("cymbals", packKey (50), spec.fingerprint, nonce (2)));
 
         auto* p = new juce::DynamicObject();
         p->setProperty ("licenseId", "L-1");
@@ -189,6 +190,62 @@ TEST_CASE ("a token does not work on another machine", "[license]")
 
     REQUIRE (verifyToken (token, optionsFor (keys, "win:another-guid:11223344")).status == Status::WrongMachine);
     REQUIRE (verifyToken (token, optionsFor (keys, "")).status == Status::WrongMachine);
+}
+
+TEST_CASE ("a key string carries the same token as the file", "[license]")
+{
+    Keys keys (testSeed());
+    const auto token = signToken (makePayload(), keys.secret);
+    const auto key = keyTextFromToken (token);
+
+    REQUIRE (key.startsWith ("SPL1-"));
+    REQUIRE (verifyToken (tokenFromKeyText (key), optionsFor (keys)).status == Status::Valid);
+
+    // мессенджеры переносят длинные строки и добавляют пробелы
+    const auto wrapped = key.substring (0, 40) + "\r\n  " + key.substring (40);
+    REQUIRE (verifyToken (tokenFromKeyText (wrapped), optionsFor (keys)).status == Status::Valid);
+
+    REQUIRE (verifyToken (tokenFromKeyText (token), optionsFor (keys)).status == Status::Valid);  // сырой JSON тоже годится
+    REQUIRE (tokenFromKeyText ("hello").isEmpty());
+    REQUIRE (verifyToken (tokenFromKeyText ("SPL1-@@@@"), optionsFor (keys)).status == Status::NoToken);
+}
+
+TEST_CASE ("a service token (any machine) works anywhere while it has an expiry", "[license]")
+{
+    Keys keys (testSeed());
+    PayloadSpec spec;
+    spec.fingerprint = kAnyMachineFingerprint;
+    const auto token = signToken (makePayload (spec), keys.secret);
+
+    for (const auto& fp : { kFingerprint, juce::String ("win:another-guid:11223344"), juce::String() })
+    {
+        const auto r = verifyToken (token, optionsFor (keys, fp));
+        REQUIRE (r.status == Status::Valid);
+        REQUIRE (r.packs.size() == 2);
+        REQUIRE (r.packs[0].key == packKey (50));   // cymbals идёт первым (сортировка по packId)
+    }
+}
+
+TEST_CASE ("a perpetual service token is rejected", "[license]")
+{
+    Keys keys (testSeed());
+    PayloadSpec spec;
+    spec.fingerprint = kAnyMachineFingerprint;
+    spec.expires = 0;
+    const auto token = signToken (makePayload (spec), keys.secret);
+
+    REQUIRE (verifyToken (token, optionsFor (keys)).status == Status::WrongMachine);
+}
+
+TEST_CASE ("an expired service token is rejected", "[license]")
+{
+    Keys keys (testSeed());
+    PayloadSpec spec;
+    spec.fingerprint = kAnyMachineFingerprint;
+    spec.expires = kNow - kDay;
+    const auto token = signToken (makePayload (spec), keys.secret);
+
+    REQUIRE (verifyToken (token, optionsFor (keys)).status == Status::Expired);
 }
 
 TEST_CASE ("pack keys do not open for someone who knows only the machine id", "[license]")

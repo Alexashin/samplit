@@ -306,7 +306,12 @@ namespace samplit::license
         if (options.now > lastSeen)
             storeLastSeen (options.clockStateFile, options.now);
 
-        if (options.fingerprint.isEmpty() || machine.toString() != machineId (options.fingerprint))
+        // Служебный токен (временная мера для демо): подходит любой машине, но только с конечным сроком
+        const bool anyMachine = machine.toString() == machineId (kAnyMachineFingerprint);
+        if (anyMachine && perpetual)
+            return fail (Status::WrongMachine);
+        const juce::String effectiveFingerprint = anyMachine ? juce::String (kAnyMachineFingerprint) : options.fingerprint;
+        if (! anyMachine && (options.fingerprint.isEmpty() || machine.toString() != machineId (options.fingerprint)))
             return fail (Status::WrongMachine);
 
         if (! perpetual && options.now + options.clockSkewSeconds < notBefore)
@@ -319,7 +324,7 @@ namespace samplit::license
         {
             PackKey pk;
             pk.packId = prop.name.toString();
-            if (! prop.value.isString() || ! unwrapPackKey (pk.packId, prop.value.toString(), options.fingerprint, pk.key))
+            if (! prop.value.isString() || ! unwrapPackKey (pk.packId, prop.value.toString(), effectiveFingerprint, pk.key))
                 return fail (Status::Malformed);
             keys.push_back (pk);
         }
@@ -335,5 +340,30 @@ namespace samplit::license
         if (! tokenFile.existsAsFile())
             return {};  // NoToken
         return verifyToken (tokenFile.loadFileAsString(), options);
+    }
+
+    namespace
+    {
+        const juce::String kKeyPrefix = "SPL1-";
+    }
+
+    juce::String keyTextFromToken (const juce::String& tokenJson)
+    {
+        const auto utf8 = tokenJson.trim().toUTF8();
+        return kKeyPrefix + juce::Base64::toBase64 (utf8.getAddress(), utf8.sizeInBytes() - 1);
+    }
+
+    juce::String tokenFromKeyText (const juce::String& text)
+    {
+        const auto compact = text.removeCharacters (" \t\r\n");
+        if (compact.startsWith ("{"))
+            return text.trim();
+        if (! compact.startsWithIgnoreCase (kKeyPrefix))
+            return {};
+
+        juce::MemoryBlock raw;
+        if (! fromBase64 (compact.substring (kKeyPrefix.length()), raw) || raw.isEmpty())
+            return {};
+        return juce::String::fromUTF8 (static_cast<const char*> (raw.getData()), (int) raw.getSize());
     }
 }

@@ -43,10 +43,8 @@ if (Test-Path $token) {
     Write-Host '     файл лицензии из папки установлен'
 }
 else {
-    Write-Host '     файла лицензии в папке нет. Код этого компьютера:'
-    & (Join-Path $PSScriptRoot 'fingerprint.ps1')
-    Write-Host ''
-    Write-Host '     Когда пришлют файл license.token, перетащите его на «Установить лицензию.cmd».'
+    Write-Host '     Откройте Samplit и вставьте присланный ключ лицензии в окно лицензии (поле «Ключ лицензии»).'
+    Write-Host '     Если вместо ключа прислали файл license.token, нажмите там «Выбрать файл».'
 }
 
 Write-Host ''

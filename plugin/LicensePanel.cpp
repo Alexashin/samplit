@@ -37,12 +37,18 @@ namespace samplit
                 code.grabKeyboardFocus();
                 return;
             }
+           #if SAMPLIT_OFFLINE_LICENSE
+            license.importTokenText (text);
+           #else
             license.activate (text);
+           #endif
             refresh();
         };
 
        #if SAMPLIT_OFFLINE_LICENSE
         offline = true;
+        code.setTextToShowWhenEmpty (utf8 ("Ключ лицензии"), brand::textMuted);
+        code.setTitle (utf8 ("Ключ лицензии"));
        #endif
 
         copyCodeButton.setButtonText (utf8 ("Скопировать код"));
@@ -58,8 +64,8 @@ namespace samplit
             });
         };
 
-        loadFileButton.setButtonText (utf8 ("Загрузить лицензию"));
-        loadFileButton.setTooltip (utf8 ("Файл license.token, который вам прислали"));
+        loadFileButton.setButtonText (utf8 ("Выбрать файл"));
+        loadFileButton.setTooltip (utf8 ("Если вместо ключа прислали файл license.token"));
         loadFileButton.onClick = [this]
         {
             chooser = std::make_unique<juce::FileChooser> (utf8 ("Файл лицензии Samplit"),
@@ -107,12 +113,12 @@ namespace samplit
                 break;
             case Status::NoToken:
                 statusText = utf8 ("Лицензии нет, пакеты закрыты");
-                hintText = offline ? utf8 ("Отправьте код компьютера, в ответ придёт файл лицензии.")
+                hintText = offline ? utf8 ("Вставьте ключ лицензии и нажмите «Активировать».")
                                    : utf8 ("Введите код лицензии и нажмите «Активировать».");
                 break;
             case Status::WrongMachine:
                 statusText = utf8 ("Лицензия выписана на другой компьютер");
-                hintText = offline ? utf8 ("Отправьте код этого компьютера, в ответ придёт файл лицензии для него.")
+                hintText = offline ? utf8 ("Этот ключ выписан на другой компьютер. Нужен другой ключ.")
                                    : utf8 ("Активируйте её на этом компьютере своим кодом.");
                 break;
             case Status::ClockRollback:
@@ -125,8 +131,8 @@ namespace samplit
                 break;
             case Status::BadSignature:
             case Status::Malformed:
-                statusText = utf8 ("Файл лицензии повреждён");
-                hintText = offline ? utf8 ("Загрузите файл лицензии заново.") : utf8 ("Активируйте лицензию заново своим кодом.");
+                statusText = utf8 ("Ключ лицензии повреждён");
+                hintText = offline ? utf8 ("Введите ключ заново.") : utf8 ("Активируйте лицензию заново своим кодом.");
                 break;
         }
 
@@ -139,9 +145,9 @@ namespace samplit
         renewButton.setEnabled (! info.busy);
         renewButton.setVisible (! perpetual);
         activateButton.setEnabled (! info.busy);
-        code.setVisible (! ok && ! offline);
-        activateButton.setVisible (! ok && ! offline);
-        copyCodeButton.setVisible (! ok && offline);
+        code.setVisible (! ok);
+        activateButton.setVisible (! ok);
+        copyCodeButton.setVisible (false);
         loadFileButton.setVisible (! ok && offline);
         loadFileButton.setEnabled (! info.busy);
         resized();
@@ -191,16 +197,12 @@ namespace samplit
             auto row = area.removeFromBottom (30);
             if (offline)
             {
-                copyCodeButton.setBounds (row.removeFromLeft (row.getWidth() / 2 - 3));
-                row.removeFromLeft (6);
-                loadFileButton.setBounds (row);
-            }
-            else
-            {
-                activateButton.setBounds (row.removeFromRight (120));
+                loadFileButton.setBounds (row.removeFromRight (110));
                 row.removeFromRight (6);
-                code.setBounds (row);
             }
+            activateButton.setBounds (row.removeFromRight (120));
+            row.removeFromRight (6);
+            code.setBounds (row);
             area.removeFromBottom (6);
         }
         textArea = area;

@@ -45,6 +45,10 @@ namespace samplit::license
         bool isValid() const noexcept { return status == Status::Valid; }
     };
 
+    // Особый «отпечаток» служебного токена: принимается на любой машине, только с конечным сроком.
+    // Временная мера для передачи демо; ключи пакетов в таком токене не защищены машиной
+    inline const char* const kAnyMachineFingerprint = "*";
+
     struct Options
     {
         Key32 publicKey {};           // публичный ключ издателя
@@ -76,6 +80,12 @@ namespace samplit::license
     // Проверка токена: подпись, машина, часы, срок. Обновляет файл состояния часов
     CheckResult verifyToken (const juce::String& tokenJson, const Options&);
     CheckResult verifyTokenFile (const juce::File& tokenFile, const Options&);
+
+    // Ключ лицензии одной строкой "SPL1-<base64>": тот же токен, что и в файле, только для ввода руками.
+    // tokenFromKeyText принимает и ключ, и сырой JSON токена; пробелы и переносы строк игнорирует.
+    // Пустая строка, если текст не похож ни на то, ни на другое
+    juce::String tokenFromKeyText (const juce::String& text);
+    juce::String keyTextFromToken (const juce::String& tokenJson);
 
     // Обёртка ключа пакета на машину: base64( nonce(24) | шифртекст(32) | тег(16) ).
     // Нужна серверу и тестам, плагин только расшифровывает

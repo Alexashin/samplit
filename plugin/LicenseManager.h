@@ -71,6 +71,10 @@ namespace samplit
         // негодный не трогает его, причина попадает в Info::lastError
         void importTokenFile (const juce::File&);
 
+        // То же, но из текста: ключ "SPL1-…" одной строкой или содержимое файла лицензии. Годный ключ
+        // сохраняется в папку данных плагина, исходный файл после этого не нужен
+        void importTokenText (const juce::String&);
+
         // Зовётся в message thread после каждого изменения Info (проверка, активация, продление)
         std::function<void()> onChange;
 
