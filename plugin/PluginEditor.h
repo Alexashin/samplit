@@ -1,6 +1,5 @@
 #pragma once
 
-#include "GroupPanel.h"
 #include "KeyboardView.h"
 #include "LicensePanel.h"
 #include "LookAndFeel.h"
@@ -8,8 +7,6 @@
 #include "PickPanel.h"
 #include "PluginProcessor.h"
 #include "PresetPanel.h"
-#include "SampleBrowser.h"
-#include "ZoneEditor.h"
 
 #include <juce_gui_basics/juce_gui_basics.h>
 
@@ -17,11 +14,8 @@
 
 namespace samplit
 {
-    // Окно плагина. Основной экран: пресеты и лицензия слева, микшер микрофонов и выбор удара справа (вкладки), клавиатура внизу.
-    // Служебный экран (только в сборках с SAMPLIT_SERVICE_MODE): браузер сэмплов, группы и зоны для ручной раскладки.
-    // DragAndDropContainer нужен, чтобы тащить сэмпл из списка на клавишу
+    // Окно плагина: пресеты и лицензия слева, микшер микрофонов и выбор удара справа (вкладки), клавиатура внизу
     class SamplitEditor final : public juce::AudioProcessorEditor,
-                                public juce::DragAndDropContainer,
                                 private juce::FocusChangeListener
     {
     public:
@@ -35,7 +29,6 @@ namespace samplit
         void showRightTab (bool picks);
 
     private:
-        void showServiceScreen (bool);
         void globalFocusChanged (juce::Component*) override;
 
         juce::Component::SafePointer<juce::Component> lastFocused;
@@ -52,12 +45,7 @@ namespace samplit
         PickPanel picks;
         juce::TextButton mixerTab, picksTab;
 
-        SampleBrowser browser;
-        GroupPanel groups;
-        ZoneEditor zones;
         KeyboardView keyboard;
-
-        juce::TextButton serviceButton;
 
         JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (SamplitEditor)
     };

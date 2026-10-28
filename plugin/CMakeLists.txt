@@ -44,14 +44,8 @@ target_sources(Samplit PRIVATE
     KitEngine.cpp
     PluginProcessor.h
     PluginProcessor.cpp
-    SampleBrowser.h
-    SampleBrowser.cpp
     KeyboardView.h
     KeyboardView.cpp
-    GroupPanel.h
-    GroupPanel.cpp
-    ZoneEditor.h
-    ZoneEditor.cpp
     PresetPanel.h
     PresetPanel.cpp
     LicensePanel.h
