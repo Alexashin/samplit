@@ -39,13 +39,14 @@ if (Test-Path (Join-Path $src 'Data\manifests')) { Copy-Item (Join-Path $src 'Da
 Copy-Item (Join-Path $src 'Data\presets\*.json') (Join-Path $data 'presets') -Force
 Copy-Item (Join-Path $src 'Data\presets\mixes\*.json') (Join-Path $data 'presets\mixes') -Force
 
-Write-Host '4/4  Лицензия'
 $token = Join-Path $src 'license.token'
+# Лицензия скрыта в плагине (решение 29.10): шаг показываем, только если лицензию положили в дистрибутив
+if ((Test-Path $token) -or (Test-Path (Join-Path $src 'Лицензия'))) { Write-Host '4/4  Лицензия' }
 if (Test-Path $token) {
     Copy-Item $token (Join-Path $data 'license.token') -Force
     Write-Host '     файл лицензии из папки установлен'
 }
-else {
+elseif (Test-Path (Join-Path $src 'Лицензия')) {
     Write-Host '     Лицензия вводится в плагине вручную. Откройте Samplit (окно лицензии откроется само) и либо'
     Write-Host '     вставьте ключ из файла license.key.txt в поле «Ключ лицензии», либо нажмите «Выбрать файл»'
     Write-Host '     и укажите license.token. Оба файла лежат в папке «Лицензия» рядом с установщиком.'

@@ -50,10 +50,11 @@ Copy-Item (Join-Path $root 'tools\dist\guide.html') (Join-Path $out 'Инстр�
 $cmd = "@echo off`r`npowershell -NoProfile -ExecutionPolicy Bypass -File `"%~dp0setup\{0}`"`r`npause`r`n"
 [IO.File]::WriteAllText((Join-Path $out 'Установить.cmd'), ($cmd -f 'install.ps1'), [Text.Encoding]::ASCII)
 [IO.File]::WriteAllText((Join-Path $out 'Удалить.cmd'), ($cmd -f 'uninstall.ps1'), [Text.Encoding]::ASCII)
-[IO.File]::WriteAllText((Join-Path $out 'Код компьютера.cmd'), ($cmd -f 'fingerprint.ps1'), [Text.Encoding]::ASCII)
+# Лицензия скрыта (решение 29.10): батники кода компьютера и установки лицензии кладём только в полный дистрибутив
+if (-not $Lite) { [IO.File]::WriteAllText((Join-Path $out 'Код компьютера.cmd'), ($cmd -f 'fingerprint.ps1'), [Text.Encoding]::ASCII) }
 # Файл лицензии перетаскивают на этот батник: его путь приходит в %1
 $lic = "@echo off`r`npowershell -NoProfile -ExecutionPolicy Bypass -File `"%~dp0setup\license.ps1`" %1`r`npause`r`n"
-[IO.File]::WriteAllText((Join-Path $out 'Установить лицензию.cmd'), $lic, [Text.Encoding]::ASCII)
+if (-not $Lite) { [IO.File]::WriteAllText((Join-Path $out 'Установить лицензию.cmd'), $lic, [Text.Encoding]::ASCII) }
 
 if ($License) {
     if (-not (Test-Path $License)) { throw "нет файла лицензии: $License" }
@@ -69,7 +70,8 @@ if ($LicenseFolder) {
 
 # Инструкция в PDF: tools\dist\Инструкция.pdf собирается из guide.html (docs/delivery.md)
 $pdf = Join-Path $root 'tools\dist\Инструкция.pdf'
-if (Test-Path $pdf) { Copy-Item $pdf (Join-Path $out 'Инструкция.pdf') }
+# PDF собирается вручную из guide.html и может отстать от него: в лёгкий дистрибутив не кладём
+if ((Test-Path $pdf) -and -not $Lite) { Copy-Item $pdf (Join-Path $out 'Инструкция.pdf') }
 
 $size = (Get-ChildItem $out -Recurse -File | Measure-Object Length -Sum).Sum / 1MB
 Write-Host ("Дистрибутив: $out ({0:N0} МБ)" -f $size)

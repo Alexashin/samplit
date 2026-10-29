@@ -10,6 +10,7 @@ namespace samplit
         constexpr int kHeaderHeight = 64;
         constexpr int kMargin = 20;
         constexpr int kOverlayWidth = 460;
+        constexpr bool kLicenseUi = false;      // лицензия скрыта: на WAV-библиотеке она не нужна (код и тесты остаются)
         const juce::Colour kWarning { 0xffffb454 };
         const juce::Colour kOk { 0xff6fd6a1 };
     }
@@ -82,8 +83,9 @@ namespace samplit
         setResizeLimits (900, 620, 1800, 1200);
         setSize (1180, 780);
 
-        // Без действующей лицензии сразу показываем окно с вводом ключа
-        if (! license.isOk())
+        // Лицензия скрыта (проверка на WAV-библиотеке, решение 29.10): кнопки и окна ввода ключа нет, код остаётся
+        licenseButton.setVisible (kLicenseUi);
+        if (kLicenseUi && ! license.isOk())
             showOverlay (Overlay::License);
         startTimerHz (10);
     }
@@ -313,8 +315,11 @@ namespace samplit
         // Шапка: знак слева, пресет со стрелками по центру, лицензия справа
         auto bar = headerArea.reduced (kMargin, 0);
         logoArea = bar.removeFromLeft (150).withSizeKeepingCentre (150, 30);
-        licenseButton.setBounds (bar.removeFromRight (230).withSizeKeepingCentre (230, 34));
-        bar.removeFromRight (16);
+        if (kLicenseUi)
+        {
+            licenseButton.setBounds (bar.removeFromRight (230).withSizeKeepingCentre (230, 34));
+            bar.removeFromRight (16);
+        }
 
         const int mixWidth = juce::jlimit (170, 250, bar.getWidth() / 4);
         mixButton.setBounds (bar.removeFromRight (mixWidth).withSizeKeepingCentre (mixWidth, 38));
@@ -374,9 +379,12 @@ namespace samplit
     // Точка состояния лицензии на кнопке и рамка выпадающих панелей
     void SamplitEditor::paintOverChildren (juce::Graphics& g)
     {
-        const auto chip = licenseButton.getBounds();
-        g.setColour (license.isOk() ? kOk : kWarning);
-        g.fillEllipse (juce::Rectangle<float> (8.0f, 8.0f).withCentre ({ (float) chip.getX() + 16.0f, (float) chip.getCentreY() }));
+        if (kLicenseUi)
+        {
+            const auto chip = licenseButton.getBounds();
+            g.setColour (license.isOk() ? kOk : kWarning);
+            g.fillEllipse (juce::Rectangle<float> (8.0f, 8.0f).withCentre ({ (float) chip.getX() + 16.0f, (float) chip.getCentreY() }));
+        }
 
         for (auto* c : std::initializer_list<juce::Component*> { &presets, &license })
             if (c->isVisible())
