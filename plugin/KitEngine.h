@@ -104,6 +104,12 @@ namespace samplit
 
         static constexpr int kMaxCycleLayers = 16;     // слоёв на клавише со своим счётчиком круга
 
+        // Кусок диапазона не длиннее kRenderChunk: хвост потокового голоса проверяется и подтверждается на каждом куске,
+        // поэтому большой блок хоста (офлайн-рендер) не требует данных больше, чем помещается в кольцо
+        static constexpr int kRenderChunk = 2048;
+        void renderChunk (const std::array<float*, kNumOutputs + 1>& outL, const std::array<float*, kNumOutputs + 1>& outR,
+                          int start, int end) noexcept;
+
         int selectHit (const Kit&, const NoteMap&, int note, int velocity) noexcept;
         void fadeStrike (Strike&) noexcept;
         void dropVoice (MicVoice&) noexcept;     // голос закончился: отпускает ячейку стримера

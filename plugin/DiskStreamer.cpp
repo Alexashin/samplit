@@ -36,6 +36,7 @@ namespace samplit
             nextFree = (i + 1) % kMaxStreams;
             s.clip = &clip;
             s.kit.store (kit, std::memory_order_relaxed);
+            s.failed.store (false, std::memory_order_relaxed);
             s.written.store (clip.headFrames(), std::memory_order_relaxed);
             s.consumed.store (clip.headFrames(), std::memory_order_relaxed);
             s.state.store (Requested, std::memory_order_release);
@@ -72,6 +73,7 @@ namespace samplit
         if (s.file->failedToOpen())
         {
             s.file.reset();
+            s.failed.store (true, std::memory_order_release);
             readErrors.fetch_add (1, std::memory_order_relaxed);     // голос доиграет голову и затихнет как при недогрузке
         }
     }
@@ -88,6 +90,7 @@ namespace samplit
         if (! pack::readWav24 (*s.file, s.clip->dataOffset + written * 3, (int) n, chunk.data(), scratch))
         {
             s.file.reset();         // дальше этот голос не читается: он затихнет как при недогрузке
+            s.failed.store (true, std::memory_order_release);
             readErrors.fetch_add (1, std::memory_order_relaxed);
             return false;
         }

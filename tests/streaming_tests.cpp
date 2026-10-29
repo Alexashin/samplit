@@ -96,9 +96,9 @@ namespace
 
     // Играет одну ноту и возвращает левый канал Main за заданное число блоков. pumpWith: стример без потока
     // (после каждого блока делается несколько проходов чтения)
-    std::vector<float> playBlocks (KitEngine& engine, int blocks, DiskStreamer* pumpWith, int pumpsPerBlock = 3)
+    std::vector<float> playBlocks (KitEngine& engine, int blocks, DiskStreamer* pumpWith, int pumpsPerBlock = 3, int block = kBlock)
     {
-        std::vector<float> L ((size_t) kBlock), R ((size_t) kBlock);
+        std::vector<float> L ((size_t) block), R ((size_t) block);
         std::array<float*, kNumOutputs + 1> pl {}, pr {};
         for (size_t i = 0; i < pl.size(); ++i)
         {
@@ -111,7 +111,7 @@ namespace
         {
             std::fill (L.begin(), L.end(), 0.0f);
             std::fill (R.begin(), R.end(), 0.0f);
-            engine.render (pl, pr, 0, kBlock);
+            engine.render (pl, pr, 0, block);
             out.insert (out.end(), L.begin(), L.end());
             if (pumpWith != nullptr)
                 for (int k = 0; k < pumpsPerBlock; ++k)
@@ -121,14 +121,14 @@ namespace
     }
 
     // Те же отсчёты, но клип целиком в памяти: эталон
-    std::vector<float> referenceRender (const std::vector<int32_t>& samples, double engineRate, int blocks)
+    std::vector<float> referenceRender (const std::vector<int32_t>& samples, double engineRate, int blocks, int block = kBlock)
     {
         KitEngine ref;
         ref.prepare (engineRate);
         const auto kit = oneHitKit (DecodedClip::fromFloat (toFloats (samples), 44100.0));
         ref.setKit (kit.get());
         ref.noteOn (60, 100);
-        return playBlocks (ref, blocks, nullptr);
+        return playBlocks (ref, blocks, nullptr, 3, block);
     }
 }
 
@@ -400,4 +400,53 @@ TEST_CASE ("loadKit keeps only the head of a long local WAV and describes the ta
     REQUIRE (shortRes.ok());
     CHECK_FALSE (shortRes.kit->pieces[0].hits[0].files[0].clip->isStreamed());
     CHECK (shortRes.kit->pieces[0].hits[0].files[0].clip->frames() == kTotal);
+}
+
+TEST_CASE ("a host block much larger than the ring still renders offline without gaps", "[stream]")
+{
+    constexpr int frames = 4 * 44100;
+    constexpr int bigBlock = 30000;     // больше окна кольца, как бывает в офлайн-рендере некоторых хостов
+    const auto samples = noise24 (frames);
+    const auto wav = writeWav24 (streamDir().getChildFile ("bigblock.wav"), samples);
+
+    DiskStreamer streamer (true);
+    KitEngine engine;
+    engine.setStreamer (&streamer);
+    engine.setOffline (true);
+    engine.prepare (44100.0);
+    const auto kit = oneHitKit (streamedClip (wav, 15435));
+    engine.setKit (kit.get());
+    REQUIRE (engine.noteOn (60, 100).voices == 1);
+
+    const int blocks = frames / bigBlock + 2;
+    const auto streamed = playBlocks (engine, blocks, nullptr, 3, bigBlock);
+    const auto reference = referenceRender (samples, 44100.0, blocks, bigBlock);
+
+    CHECK (streamed == reference);
+    CHECK (streamer.underruns.load() == 0);
+}
+
+TEST_CASE ("an unreadable file does not stall the offline render", "[stream]")
+{
+    const auto wav = writeWav24 (streamDir().getChildFile ("vanish.wav"), noise24 (kTotal));
+    const auto clip = streamedClip (wav, 4000);
+    REQUIRE (wav.deleteFile());          // файл исчез после загрузки кита
+
+    DiskStreamer streamer (true);
+    KitEngine engine;
+    engine.setStreamer (&streamer);
+    engine.setOffline (true);
+    engine.prepare (44100.0);
+    const auto kit = oneHitKit (clip);
+    engine.setKit (kit.get());
+    REQUIRE (engine.noteOn (60, 100).voices == 1);
+
+    const auto start = juce::Time::getMillisecondCounter();
+    const auto out = playBlocks (engine, 12, nullptr);
+    CHECK (juce::Time::getMillisecondCounter() - start < 2000);     // не 5 с ожидания на голос
+    CHECK (streamer.readErrors.load() >= 1);
+    CHECK (streamer.underruns.load() == 1);
+    for (float v : out)
+        REQUIRE (std::isfinite (v));
+    CHECK (engine.getNumActiveStrikes() == 0);
 }

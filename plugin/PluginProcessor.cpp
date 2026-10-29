@@ -59,6 +59,7 @@ namespace samplit
         lifeToken.reset();
         cancelKitLoad();
         kitLoaderPool.removeAllJobs (true, 10000);
+        streamer.shutdown();        // до удаления китов: поток чтения обращается к клипам звучащих голосов
         loader.removeAllJobs (true, 4000);
     }
 

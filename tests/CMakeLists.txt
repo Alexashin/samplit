@@ -29,6 +29,7 @@ target_sources(SamplitTests PRIVATE
     core_tests.cpp
     pack_tests.cpp
     streaming_tests.cpp
+    real_library_tests.cpp
     license_tests.cpp)
 
 target_include_directories(SamplitTests PRIVATE ${CMAKE_SOURCE_DIR}/plugin)

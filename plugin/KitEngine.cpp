@@ -391,6 +391,13 @@ namespace samplit
     void KitEngine::render (const std::array<float*, kNumOutputs + 1>& outL, const std::array<float*, kNumOutputs + 1>& outR,
                             int start, int end) noexcept
     {
+        for (int from = start; from < end; from += kRenderChunk)
+            renderChunk (outL, outR, from, std::min (end, from + kRenderChunk));
+    }
+
+    void KitEngine::renderChunk (const std::array<float*, kNumOutputs + 1>& outL, const std::array<float*, kNumOutputs + 1>& outR,
+                                 int start, int end) noexcept
+    {
         for (int si = 0; si < kMaxStrikes; ++si)
         {
             const Kit* kit = strikeKit[(size_t) si].load();
@@ -431,11 +438,12 @@ namespace samplit
                     const double need = v.position + (double) (end - start + fadeLength) * v.step + 4.0;
                     if (v.fadeLeft < 0 && need > (double) view.available && view.available < view.frames)
                     {
-                        if (offline.load (std::memory_order_relaxed) && v.stream >= 0)
+                        if (offline.load (std::memory_order_relaxed) && v.stream >= 0 && ! streamer->hasFailed (v.stream))
                         {
                             const double target = std::min (need, (double) view.frames);
                             const auto deadline = juce::Time::getMillisecondCounter() + 5000;
-                            while ((double) view.available < target && juce::Time::getMillisecondCounter() < deadline)
+                            while ((double) view.available < target && juce::Time::getMillisecondCounter() < deadline
+                                   && ! streamer->hasFailed (v.stream))
                             {
                                 streamer->kick();
                                 std::this_thread::sleep_for (std::chrono::microseconds (200));

@@ -45,6 +45,13 @@ namespace samplit
         // Audio thread: голос дочитал до этого кадра, кольцо до него можно перезаписывать
         void setConsumed (int index, int64_t frame) noexcept { streams[(size_t) index].consumed.store (frame, std::memory_order_release); }
 
+        // Audio thread: чтение этого голоса сломалось, ждать хвост бессмысленно
+        bool hasFailed (int index) const noexcept { return streams[(size_t) index].failed.load (std::memory_order_acquire); }
+
+        // Останавливает поток чтения. Звать до того, как будут удалены киты: пока поток жив, он читает клипы
+        // звучащих голосов. После остановки ячейки не обслуживаются
+        void shutdown() { stopThread (3000); }
+
         // Будит поток чтения (системный вызов: не для обычного audio thread, только для офлайн-рендера)
         void kick() { notify(); }
 
@@ -70,6 +77,7 @@ namespace samplit
             const DecodedClip* clip = nullptr;
             std::atomic<int64_t> written { 0 };
             std::atomic<int64_t> consumed { 0 };
+            std::atomic<bool> failed { false };     // файл не открылся или не читается: хвоста не будет
             float* ring = nullptr;
             std::unique_ptr<juce::FileInputStream> file;    // только поток чтения
         };
