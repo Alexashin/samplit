@@ -325,7 +325,7 @@ namespace samplit
     int KitEngine::waitForStream (MicVoice& v, const Kit* kit, double target) noexcept
     {
         const auto begin = juce::Time::getMillisecondCounter();
-        const int limit = std::max (0, std::min (v.stream >= 0 ? 5000 : 250, offlineBudgetMs));
+        int limit = std::max (0, std::min (v.stream >= 0 ? 5000 : 250, offlineBudgetMs));
         const auto availableNow = [&]() -> int
         {
             return v.stream >= 0 ? (int) streamer->available (v.stream) : v.clip->headFrames();
@@ -339,7 +339,12 @@ namespace samplit
             {
                 v.stream = streamer->acquire (*v.clip, kit, false);
                 if (v.stream >= 0)
+                {
                     v.wantStream = false;
+                    // Ячейка получена: открытие файла и первая порция получают полный предел 5 с (в рамках общего бюджета)
+                    const int elapsed = (int) (juce::Time::getMillisecondCounter() - begin);
+                    limit = std::max (limit, std::min (elapsed + 5000, offlineBudgetMs));
+                }
             }
             else if (streamer->hasFailed (v.stream))
             {
@@ -633,8 +638,11 @@ namespace samplit
 
                     // Хвост не успевает: затухание 5 мс, пока данные ещё есть (запас на блок и само затухание). Офлайн-рендер
                     // вместо этого ждёт диск, иначе в экспорте будут дыры
-                    const double need = v.position + (double) (end - start + fadeLength) * v.step + 4.0;
-                    if (v.fadeLeft < 0 && need > (double) view.available && view.available < view.frames)
+                    // Уже затухающему голосу (steal/choke, недогрузка) нужно только то, что останется до конца затухания
+                    const bool fading = v.fadeLeft >= 0;
+                    const int span = fading ? std::min (end - start, v.fadeLeft + 1) : end - start + fadeLength;
+                    const double need = v.position + (double) span * v.step + 4.0;
+                    if (need > (double) view.available && view.available < view.frames)
                     {
                         if (streamer != nullptr && offline.load (std::memory_order_relaxed)
                             && (v.stream >= 0 ? ! streamer->hasFailed (v.stream) : v.wantStream))
@@ -645,8 +653,22 @@ namespace samplit
                         if (need > (double) view.available)
                         {
                             // Настоящий обрыв: диск не успел или ячейка не нашлась до конца головы
-                            v.fadeLeft = fadeLength;
-                            v.fadeTotal = fadeLength;
+                            if (fading)
+                            {
+                                // Огибающая должна закончиться на имеющихся данных: укорачиваем остаток затухания,
+                                // сохраняя текущий уровень (fadeLeft / fadeTotal), наклон становится круче
+                                const int fit = std::max (0, (int) ((view.available - 5.0 - v.position) / v.step));
+                                if (fit < v.fadeLeft)
+                                {
+                                    v.fadeTotal = std::max (1, (int) ((double) fit * v.fadeTotal / std::max (1, v.fadeLeft)));
+                                    v.fadeLeft = fit;
+                                }
+                            }
+                            else
+                            {
+                                v.fadeLeft = fadeLength;
+                                v.fadeTotal = fadeLength;
+                            }
                             v.wantStream = false;
                             if (streamer != nullptr)
                                 streamer->underruns.fetch_add (1, std::memory_order_relaxed);

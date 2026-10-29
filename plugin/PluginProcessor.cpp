@@ -192,8 +192,8 @@ namespace samplit
             kit = newKit;
         }
 
-        kitEngine.resetHealth();        // счётчики относятся к прежнему киту
         kitEngine.setKit (newKit.get());
+        kitEngine.resetHealth();        // счётчики относятся к прежнему киту (после setKit: новый кит начинает с нуля)
         picks.clear();
         if (newKit != nullptr)
             for (const auto& c : newKit->choices)

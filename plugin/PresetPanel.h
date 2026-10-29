@@ -54,6 +54,7 @@ namespace samplit
 
         void load (int row);
         void updateStatus();
+        void updateStatus (const StreamHealth& health);
         void changeListenerCallback (juce::ChangeBroadcaster*) override { updateStatus(); list.repaint(); }
         void timerCallback() override;
 
@@ -76,7 +77,7 @@ namespace samplit
         bool statusWarns = false;
         float shownProgress = -1.0f;
         StreamHealth shownHealth;
-        juce::String healthWarning() const;
+        static juce::String healthWarning (const StreamHealth& health);
 
         JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (PresetPanel)
     };

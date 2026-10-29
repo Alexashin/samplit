@@ -421,6 +421,41 @@ TEST_CASE ("a new strike plays whole when slots are scarce and the old one fades
     CHECK (engine.getNumActiveStrikes() == 0);
 }
 
+TEST_CASE ("a voice fading from a steal near the end of the available data finishes smoothly and counts an underrun", "[stream]")
+{
+    const auto wavA = writeWav24 (streamDir().getChildFile ("fadeEdgeA.wav"), std::vector<int32_t> ((size_t) kTotal, 4194304));   // 0,5
+    const auto wavB = writeWav24 (streamDir().getChildFile ("fadeEdgeB.wav"), std::vector<int32_t> ((size_t) kTotal, 0));
+
+    DiskStreamer streamer (false, 1, 1);        // одна ячейка; pump() не зовём: у A есть только голова 4000
+    KitEngine engine;
+    engine.setStreamer (&streamer);
+    engine.prepare (44100.0);
+    const auto kit = twoNoteKit (streamedClip (wavA, 4000), streamedClip (wavB, 4000));
+    engine.setKit (kit.get());
+
+    REQUIRE (engine.noteOn (60, 100).voices == 1);
+    const auto before = playBlocks (engine, 15, nullptr, 3, 250);       // позиция A: 3750, до конца головы 250
+    CHECK (before.back() == 0.5f);
+    CHECK (streamer.underruns.load() == 0);
+
+    REQUIRE (engine.noteOn (62, 100).voices == 1);      // A вытесняется: затухание 10 мс (441), а данных только на 250
+    const auto after = playBlocks (engine, 4, nullptr, 3, 250);
+
+    CHECK (streamer.underruns.load() == 1);
+    CHECK (std::abs (after.front() - 0.5f) < 0.01f);
+    CHECK (std::abs (after.front() - before.back()) < 0.01f);
+    float maxJump = std::abs (after.front() - before.back());
+    for (size_t i = 1; i < after.size(); ++i)
+    {
+        REQUIRE (std::isfinite (after[i]));
+        maxJump = std::max (maxJump, std::abs (after[i] - after[i - 1]));
+    }
+    CHECK (maxJump < 0.01f);                            // без обрыва огибающей (щелчка 0,3 и больше)
+    CHECK (after.back() == 0.0f);
+    for (size_t i = 300; i < after.size(); ++i)
+        REQUIRE (after[i] == 0.0f);
+}
+
 TEST_CASE ("strikes are evicted softly before the hard limit", "[stream]")
 {
     const std::vector<float> data (200000, 0.01f);

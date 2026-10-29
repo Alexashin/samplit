@@ -335,6 +335,12 @@ namespace samplit
 
     void PresetPanel::updateStatus()
     {
+        updateStatus (processor.getHealth());
+    }
+
+    void PresetPanel::updateStatus (const StreamHealth& health)
+    {
+        shownHealth = health;
         const auto& last = processor.getLastKitLoad();
         statusWarns = false;
 
@@ -369,7 +375,7 @@ namespace samplit
                 statusText << utf8 (". Молчат барабаны пакетов: ") << ids.joinIntoString (", ");
                 statusWarns = true;
             }
-            if (const auto warning = healthWarning(); warning.isNotEmpty())
+            if (const auto warning = healthWarning (health); warning.isNotEmpty())
             {
                 statusText << ". " << warning;
                 statusWarns = true;
@@ -396,20 +402,20 @@ namespace samplit
     void PresetPanel::timerCallback()
     {
         const float progress = processor.isKitLoading() ? processor.getKitLoadProgress() : -1.0f;
-        const auto health = processor.getHealth();
-        if (progress != shownProgress || health != shownHealth)
+        const auto health = processor.getHealth();      // один снимок на тик
+        auto comparable = health;
+        comparable.steals = shownHealth.steals;          // мягкие вытеснения не показываются: не повод перерисовывать
+        if (progress != shownProgress || comparable != shownHealth)
         {
             shownProgress = progress;
-            shownHealth = health;
-            updateStatus();
+            updateStatus (health);
         }
     }
 
     // Короткие предупреждения о звуке по приоритету: ошибка чтения, обрывы, жёсткие вытеснения.
     // Мягкие вытеснения (steals) пользователю не показываются: это норма
-    juce::String PresetPanel::healthWarning() const
+    juce::String PresetPanel::healthWarning (const StreamHealth& h)
     {
-        const auto h = processor.getHealth();
         juce::StringArray parts;
         if (h.readErrors > 0)
             parts.add (utf8 ("Ошибка чтения файла: ") + (h.lastError.isNotEmpty() ? h.lastError : utf8 ("неизвестный файл")));
