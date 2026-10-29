@@ -1,4 +1,8 @@
 #include "KitLoader.h"
+#include "DiskStreamer.h"
+
+#include "samplit/core/Wav.h"
+
 #include <juce_audio_formats/juce_audio_formats.h>
 
 #include <algorithm>
@@ -340,7 +344,7 @@ namespace samplit
 
         bool isCancelled (const KitLoadOptions& o) { return o.cancel != nullptr && o.cancel->load(); }
 
-        ClipPtr decodeJob (const LoadedPack& pk, const ClipKey& key, juce::String& error)
+        ClipPtr decodeJob (const LoadedPack& pk, const ClipKey& key, double headSeconds, juce::String& error)
         {
             pack::DecodedAudio audio;
             if (pk.reader == nullptr)
@@ -352,6 +356,31 @@ namespace samplit
                     error = "путь вне папки библиотеки: "_s + file.getFullPathName();
                     return nullptr;
                 }
+
+                // Длинный 24-битный моно WAV: в памяти только голова, хвост потом читает DiskStreamer. Остальное
+                // (короткие, не 24 бит, не моно) целиком, как раньше
+                pack::WavInfo info;
+                juce::String ignored;
+                if (headSeconds > 0.0 && pack::readWavInfo (file, info, ignored) && info.channels == 1 && info.bits == 24 && ! info.isFloat)
+                {
+                    const int64_t from = std::max (0, std::get<2> (key));
+                    const int64_t to = std::get<3> (key) > 0 ? std::min<int64_t> (std::get<3> (key), info.frames) : info.frames;
+                    const int64_t headFrames = (int64_t) (headSeconds * info.sampleRate);
+                    if (from < to && to - from > headFrames + DiskStreamer::kChunkFrames && to - from < (int64_t) INT_MAX)
+                    {
+                        juce::FileInputStream in (file);
+                        std::vector<float> head ((size_t) headFrames);
+                        std::vector<uint8_t> scratch;
+                        if (in.failedToOpen() || ! pack::readWav24 (in, info.dataOffset + from * 3, (int) headFrames, head.data(), scratch))
+                        {
+                            error = "ошибка чтения "_s + file.getFullPathName();
+                            return nullptr;
+                        }
+                        return DecodedClip::fromStream (std::move (head), (int) (to - from), info.sampleRate,
+                                                        file.getFullPathName().toStdString(), info.dataOffset + from * 3);
+                    }
+                }
+
                 juce::AudioFormatManager formats;
                 formats.registerBasicFormats();
                 if (! pack::readAudioFile (formats, file, std::get<2> (key), std::get<3> (key), audio, error))
@@ -617,7 +646,7 @@ namespace samplit
                 auto& job = jobs[(size_t) i];
                 try
                 {
-                    job.clip = decodeJob (packs[(size_t) std::get<0> (job.key)], job.key, job.error);
+                    job.clip = decodeJob (packs[(size_t) std::get<0> (job.key)], job.key, options.headSeconds, job.error);
                 }
                 catch (const std::bad_alloc&)
                 {
@@ -662,7 +691,7 @@ namespace samplit
             f.gainDb = r.gainDb;
         }
         for (const auto& j : jobs)
-            res.memoryBytes += (int64_t) j.clip->frames() * (int64_t) sizeof (float);
+            res.memoryBytes += (int64_t) j.clip->f32.size() * (int64_t) sizeof (float);
 
         if (! kit->buildIndex())
         {

@@ -12,19 +12,37 @@
 namespace samplit
 {
     // Декодированный моно-файл удара: float32, 24 бит без потерь (значение / 8388608).
-    // После публикации не меняется, поэтому его можно читать из audio thread.
+    // Целиком в f32, либо (потоковый клип, totalFrames > f32.size()) только голова, а остальное движок читает с диска
+    // из WAV по path через DiskStreamer. После публикации не меняется, поэтому его можно читать из audio thread.
     struct DecodedClip
     {
-        std::vector<float> f32;
+        std::vector<float> f32;         // клип целиком или его голова
         double sampleRate = 44100.0;
+        int totalFrames = 0;            // 0: клип целиком в f32; иначе полная длина области (голова + хвост на диске)
+        std::string path;               // потоковый клип: WAV (UTF-8)
+        int64_t dataOffset = 0;         // потоковый клип: байт файла, с которого начинается область (учтён start)
 
-        int frames() const noexcept { return (int) f32.size(); }
+        int frames() const noexcept { return totalFrames > 0 ? totalFrames : (int) f32.size(); }
+        int headFrames() const noexcept { return (int) f32.size(); }
+        bool isStreamed() const noexcept { return totalFrames > (int) f32.size(); }
 
         static std::shared_ptr<const DecodedClip> fromFloat (std::vector<float> data, double rate)
         {
             auto c = std::make_shared<DecodedClip>();
             c->f32 = std::move (data);
             c->sampleRate = rate;
+            return c;
+        }
+
+        static std::shared_ptr<const DecodedClip> fromStream (std::vector<float> head, int total, double rate,
+                                                              std::string path, int64_t dataOffset)
+        {
+            auto c = std::make_shared<DecodedClip>();
+            c->f32 = std::move (head);
+            c->totalFrames = total;
+            c->sampleRate = rate;
+            c->path = std::move (path);
+            c->dataOffset = dataOffset;
             return c;
         }
     };

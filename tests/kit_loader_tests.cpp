@@ -511,6 +511,7 @@ TEST_CASE ("loadKit plays a local WAV library in full length, 24-bit exact, with
     opts.libraryRoot = lib;
     opts.manifestDir = manifests;
     opts.threads = 2;      // keyFor не задан: лицензия не нужна
+    opts.headSeconds = 0;  // файл целиком в памяти (стриминг проверяется отдельным тестом)
 
     const auto res = loadKit (presetOf ({ "local" }), opts);
     REQUIRE (res.ok());

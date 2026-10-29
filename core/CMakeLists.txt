@@ -37,6 +37,8 @@ add_library(samplit_core STATIC
     include/samplit/core/Pack.h
     src/Pack.cpp
     src/PackRandom.cpp
+    include/samplit/core/Wav.h
+    src/Wav.cpp
     include/samplit/core/License.h
     src/License.cpp
     src/LicenseKey.cpp

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "DiskStreamer.h"
 #include "Instrument.h"
 #include "KitEngine.h"
 #include "KitLoader.h"
@@ -205,6 +206,9 @@ namespace samplit
 
         // Для тестов и сборки мусора: сколько снимков и сэмплов ещё ждут удаления
         size_t getRetiredCount() const noexcept { return retired.size(); }
+
+        // Чтение хвостов с диска: счётчики недогрузки (голос затих), нехватки ячеек и ошибок чтения, занятые ячейки
+        const DiskStreamer& getStreamer() const noexcept { return streamer; }
         void collectGarbage (bool force = false);
 
         // Сколько файлов ещё читается в фоне
@@ -221,6 +225,7 @@ namespace samplit
         static juce::Array<juce::File> sortedAudioFiles (const juce::Array<juce::File>&);
 
         SamplerEngine engine;
+        DiskStreamer streamer;      // раньше kitEngine: переживает его при разрушении
         KitEngine kitEngine;
         juce::AudioFormatManager formats;
 

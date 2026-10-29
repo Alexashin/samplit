@@ -1,31 +1,49 @@
 #include "KitEngine.h"
+#include "DiskStreamer.h"
 #include "Interpolation.h"
 
 #include <juce_audio_basics/juce_audio_basics.h>
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
+#include <thread>
 
 namespace samplit
 {
     namespace
     {
         // Один микрофонный голос на [start, end). false: голос закончился
+        // Данные клипа голоса: голова в памяти и, если клип потоковый, кольцо с прочитанным хвостом.
+        // available: сколько кадров от начала уже можно читать (у обычного клипа весь клип)
+        struct ClipView
+        {
+            const float* head = nullptr;
+            int headFrames = 0;
+            const float* ring = nullptr;
+            int frames = 0;
+            int available = 0;
+        };
+
         template <bool Mono>
-        bool renderVoice (const DecodedClip& clip, double& position, double step, int& fadeLeft, int fadeLength,
+        bool renderVoice (const ClipView& clip, double& position, double step, int& fadeLeft, int fadeLength,
                           float* left, float* right, float gainL, float gainR, int start, int end) noexcept
         {
-            const int frames = clip.frames();
-            const float* pf = clip.f32.data();
+            const int frames = clip.frames;
+            // Данные кончаются раньше конца клипа: дальше читать нельзя (запас на Эрмит и затухание проверен раньше)
+            const int readable = clip.available < frames ? clip.available - 3 : frames;
             // Частоты совпадают и высота не сдвинута: позиция целая, интерполировать нечего
             const bool exact = step == 1.0;
 
-            auto at = [&] (int k) noexcept -> float { return pf[k]; };
+            auto at = [&] (int k) noexcept -> float
+            {
+                return k < clip.headFrames ? clip.head[k] : clip.ring[k & DiskStreamer::kRingMask];
+            };
 
             for (int i = start; i < end; ++i)
             {
                 const int idx = (int) position;
-                if (idx + 1 >= frames)
+                if (idx + 1 >= frames || idx >= readable)
                     return false;
 
                 float fade = 1.0f;
@@ -127,7 +145,7 @@ namespace samplit
 
     bool KitEngine::isUsing (const Kit* kit) const noexcept
     {
-        if (current.load() == kit)
+        if (current.load() == kit || (streamer != nullptr && streamer->isUsing (kit)))
             return true;
         for (const auto& k : strikeKit)
             if (k.load() == kit)
@@ -158,8 +176,16 @@ namespace samplit
         s.piece = -1;
         s.note = -1;
         for (auto& v : s.voices)
-            v.clip = nullptr;
+            dropVoice (v);
         strikeKit[(size_t) index].store (nullptr);
+    }
+
+    void KitEngine::dropVoice (MicVoice& v) noexcept
+    {
+        if (v.stream >= 0 && streamer != nullptr)
+            streamer->release (v.stream);
+        v.stream = -1;
+        v.clip = nullptr;
     }
 
     void KitEngine::fadeStrike (Strike& s) noexcept
@@ -329,7 +355,7 @@ namespace samplit
         for (int m = 0; m < (int) hit.files.size(); ++m)
         {
             auto& v = s.voices[(size_t) m];
-            v.clip = nullptr;
+            dropVoice (v);
             const auto& file = hit.files[(size_t) m];
             if (file.clip == nullptr || file.clip->frames() < 2)
                 continue;
@@ -340,10 +366,12 @@ namespace samplit
             v.gain = velGain * juce::Decibels::decibelsToGain (file.gainDb, -100.0f);
             v.mic = m;
             v.fadeLeft = -1;
+            if (file.clip->isStreamed() && streamer != nullptr)
+                v.stream = streamer->acquire (*file.clip, kit);
             ++started;
         }
         for (int m = (int) hit.files.size(); m < Kit::kMaxMics; ++m)
-            s.voices[(size_t) m].clip = nullptr;
+            dropVoice (s.voices[(size_t) m]);
 
         info.voices = started;
         if (started == 0)
@@ -388,13 +416,51 @@ namespace samplit
                 const float gainL = mono ? gain : gain * std::min (1.0f, 1.0f - pan);
                 const float gainR = mono ? 0.0f : gain * std::min (1.0f, 1.0f + pan);
 
+                ClipView view;
+                view.head = v.clip->f32.data();
+                view.headFrames = v.clip->headFrames();
+                view.frames = v.clip->frames();
+                view.available = view.frames;
+                if (v.clip->isStreamed())
+                {
+                    view.available = v.stream >= 0 ? (int) streamer->available (v.stream) : view.headFrames;
+                    view.ring = v.stream >= 0 ? streamer->ring (v.stream) : nullptr;
+
+                    // Хвост не успевает: затухание 5 мс, пока данные ещё есть (запас на блок и само затухание). Офлайн-рендер
+                    // вместо этого ждёт диск, иначе в экспорте будут дыры
+                    const double need = v.position + (double) (end - start + fadeLength) * v.step + 4.0;
+                    if (v.fadeLeft < 0 && need > (double) view.available && view.available < view.frames)
+                    {
+                        if (offline.load (std::memory_order_relaxed) && v.stream >= 0)
+                        {
+                            const double target = std::min (need, (double) view.frames);
+                            const auto deadline = juce::Time::getMillisecondCounter() + 5000;
+                            while ((double) view.available < target && juce::Time::getMillisecondCounter() < deadline)
+                            {
+                                streamer->kick();
+                                std::this_thread::sleep_for (std::chrono::microseconds (200));
+                                view.available = (int) streamer->available (v.stream);
+                            }
+                        }
+                        if (need > (double) view.available)
+                        {
+                            v.fadeLeft = fadeLength;
+                            if (streamer != nullptr)
+                                streamer->underruns.fetch_add (1, std::memory_order_relaxed);
+                        }
+                    }
+                }
+
                 bool alive;
-                alive = mono ? renderVoice<true> (*v.clip, v.position, v.step, v.fadeLeft, fadeLength, left, right, gainL, gainR, start, end)
-                             : renderVoice<false> (*v.clip, v.position, v.step, v.fadeLeft, fadeLength, left, right, gainL, gainR, start, end);
+                alive = mono ? renderVoice<true> (view, v.position, v.step, v.fadeLeft, fadeLength, left, right, gainL, gainR, start, end)
+                             : renderVoice<false> (view, v.position, v.step, v.fadeLeft, fadeLength, left, right, gainL, gainR, start, end);
+
+                if (alive && v.stream >= 0)
+                    streamer->setConsumed (v.stream, std::max<int64_t> (0, (int64_t) v.position - 2));
 
                 if (! alive)
                 {
-                    v.clip = nullptr;
+                    dropVoice (v);
                     --s.numActive;
                 }
             }

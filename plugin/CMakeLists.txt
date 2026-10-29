@@ -42,6 +42,7 @@ target_sources(Samplit PRIVATE
     PresetLibrary.cpp
     KitEngine.h
     KitEngine.cpp
+    DiskStreamer.cpp
     PluginProcessor.h
     PluginProcessor.cpp
     KeyboardView.h

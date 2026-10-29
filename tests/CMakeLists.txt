@@ -13,6 +13,7 @@ juce_add_console_app(SamplitTests PRODUCT_NAME "SamplitTests")
 target_sources(SamplitTests PRIVATE
     ${CMAKE_SOURCE_DIR}/plugin/SamplerEngine.cpp
     ${CMAKE_SOURCE_DIR}/plugin/KitEngine.cpp
+    ${CMAKE_SOURCE_DIR}/plugin/DiskStreamer.cpp
     ${CMAKE_SOURCE_DIR}/plugin/KitLoader.cpp
     ${CMAKE_SOURCE_DIR}/plugin/LicenseManager.cpp
     ${CMAKE_SOURCE_DIR}/plugin/PresetLibrary.cpp
@@ -27,6 +28,7 @@ target_sources(SamplitTests PRIVATE
     processor_tests.cpp
     core_tests.cpp
     pack_tests.cpp
+    streaming_tests.cpp
     license_tests.cpp)
 
 target_include_directories(SamplitTests PRIVATE ${CMAKE_SOURCE_DIR}/plugin)

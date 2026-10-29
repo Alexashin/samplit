@@ -89,6 +89,9 @@ namespace samplit
         // из исходных манифестов <manifestDir>/<id пакета>.json. Пакеты и лицензия не нужны
         juce::File libraryRoot;
         juce::File manifestDir;
+        // Локальная библиотека: в памяти остаётся голова каждого длинного 24-битного моно WAV (столько секунд), а хвост
+        // читается с диска во время игры (DiskStreamer). 0: файлы целиком в память
+        double headSeconds = 0.35;
         // Ключ пакета по его id (из токена лицензии). false: лицензии на пакет нет
         std::function<bool (const juce::String& packId, pack::PackKey& key)> keyFor;
         const std::atomic<bool>* cancel = nullptr;      // true: загрузка прерывается

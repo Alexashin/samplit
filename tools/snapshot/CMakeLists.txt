@@ -6,6 +6,7 @@ target_sources(samplit-snapshot PRIVATE
     main.cpp
     ${SAMPLIT_PLUGIN_DIR}/SamplerEngine.cpp
     ${SAMPLIT_PLUGIN_DIR}/KitEngine.cpp
+    ${SAMPLIT_PLUGIN_DIR}/DiskStreamer.cpp
     ${SAMPLIT_PLUGIN_DIR}/KitLoader.cpp
     ${SAMPLIT_PLUGIN_DIR}/LicenseManager.cpp
     ${SAMPLIT_PLUGIN_DIR}/PresetLibrary.cpp

@@ -14,6 +14,8 @@ namespace samplit
     //
     // noteOn, render и publishActivity вызываются только из audio thread: без аллокаций и блокировок.
     // Кит и клипы движку не принадлежат: их держит процессор, пока isUsing() возвращает true.
+    class DiskStreamer;
+
     class KitEngine
     {
     public:
@@ -39,6 +41,12 @@ namespace samplit
         // Message thread
         void setSelectMode (HitSelect mode) noexcept { selectMode.store ((int) mode); }
         void setSpread (int layers) noexcept { spread.store (layers < 0 ? 0 : layers); }
+
+        // Message thread, до первой игры: стример хвостов с диска. nullptr: потоковые клипы играют только голову
+        void setStreamer (DiskStreamer* s) noexcept { streamer = s; }
+
+        // Audio thread, раз в блок: офлайн-рендер (экспорт в DAW). Тогда голос ждёт недочитанный хвост вместо затухания
+        void setOffline (bool isOffline) noexcept { offline.store (isOffline, std::memory_order_relaxed); }
 
         // Message thread: режим слоёв переключателя Kit::choices[choice]. -1: как в ките
         void setPickChoice (int choice, int pick) noexcept;
@@ -82,6 +90,7 @@ namespace samplit
             float gain = 0.0f;       // громкость файла и velocity, без уровня микрофона
             int mic = 0;
             int fadeLeft = -1;       // -1: не затухает
+            int stream = -1;         // ячейка DiskStreamer с хвостом клипа, -1: хвоста нет
         };
 
         struct Strike
@@ -97,10 +106,13 @@ namespace samplit
 
         int selectHit (const Kit&, const NoteMap&, int note, int velocity) noexcept;
         void fadeStrike (Strike&) noexcept;
+        void dropVoice (MicVoice&) noexcept;     // голос закончился: отпускает ячейку стримера
         void release (int index) noexcept;
         uint32_t nextRandom() noexcept;
 
         std::atomic<const Kit*> current { nullptr };
+        DiskStreamer* streamer = nullptr;
+        std::atomic<bool> offline { false };
         std::atomic<int> selectMode { (int) HitSelect::Live };
         std::atomic<int> spread { 0 };
         std::array<std::atomic<float>, kMaxPieces> pieceGain;

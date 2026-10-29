@@ -27,6 +27,7 @@ namespace samplit
     SamplitProcessor::SamplitProcessor() : AudioProcessor (makeBuses())
     {
         formats.registerBasicFormats();
+        kitEngine.setStreamer (&streamer);
         license = std::make_unique<LicenseManager> (LicenseManager::defaultConfig());
         model.groups.push_back ({ "Group 1", 1 });
         publish();
@@ -137,6 +138,7 @@ namespace samplit
         };
 
         const int numSamples = buffer.getNumSamples();
+        kitEngine.setOffline (isNonRealtime());
 
         // Команды из UI: прослушивание и ноты с экранной клавиатуры
         if (pendingPreviewStop.exchange (false))
