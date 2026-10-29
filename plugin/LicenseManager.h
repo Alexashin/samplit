@@ -53,6 +53,12 @@ namespace samplit
         juce::File getPresetDir() const { return config.dataDir.getChildFile ("presets"); }
         void setPackDir (const juce::File&);
 
+        // Локальная библиотека (проверка на своих WAV без пакетов и лицензии): папка с сэмплами и папка исходных
+        // манифестов <id пакета>.json. Путь хранится в library.path рядом с токеном; пусто: обычный режим по пакетам
+        juce::File getLibraryRoot() const;
+        void setLibraryRoot (const juce::File&);
+        juce::File getManifestDir() const { return config.dataDir.getChildFile ("manifests"); }
+
         // Ключ пакета из действующего токена. false: токена нет, он недействителен или пакета в нём нет
         bool keyFor (const juce::String& packId, pack::PackKey& out) const;
 
@@ -86,6 +92,7 @@ namespace samplit
 
         Config config;
         juce::File packDir;
+        juce::File libraryRoot;
 
         mutable juce::CriticalSection lock;
         license::CheckResult result;

@@ -70,3 +70,7 @@ JSON `{ "payload": {...}, "sig": "<base64 Ed25519>" }`. Подпись на SHA-
 - Обёртка ключа пакета: `base64(nonce24 | шифртекст32 | тег16)`, XChaCha20-Poly1305, AD = `"samplit-packkey-v1:" + packId`.
 - Порядок проверок: NoToken, Malformed, BadSignature, ClockRollback, WrongMachine, NotYetValid, Expired.
 - В `core/src/LicenseKey.cpp` зашит боевой публичный ключ (`tools/license_server/admin.py init`). Тесты подписывают токены своим тестовым ключом.
+
+## Без потерь (29.10.2026)
+
+По требованию владельца библиотеки звук Studio600 не меняется: `samplit-packer build` по умолчанию **не обрезает хвосты** (обрезка включается `--trim` или `--trim-db`), в пакете лежит 24-битный FLAC без потерь, плагин держит сэмплы в памяти как float32 (`pack::toFloat24`, значение/8388608, точно для 24 бит), а не int16. Память примерно вдвое больше прежней, размер пакетов растёт; решение про стриминг `docs/streaming-design.md` остаётся резервом.

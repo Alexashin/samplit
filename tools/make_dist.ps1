@@ -11,7 +11,8 @@
 param(
     [string]$License = '',
     [string]$LicenseFolder = '',
-    [switch]$NoZip
+    [switch]$NoZip,
+    [switch]$Lite       # без пакетов: плагин берёт звук из папки с WAV (кнопка «Моя библиотека…»), архив в несколько МБ
 )
 
 $ErrorActionPreference = 'Stop'
@@ -22,7 +23,7 @@ $artefacts = Join-Path $root 'build\Release\plugin\Samplit_artefacts\Release'
 $packs = Join-Path $env:APPDATA 'Samplit\packs'
 $out = Join-Path $root "dist\Samplit-$version"
 
-foreach ($need in @((Join-Path $artefacts 'VST3\Samplit.vst3'), (Join-Path $artefacts 'Standalone\Samplit.exe'), $packs)) {
+foreach ($need in @((Join-Path $artefacts 'VST3\Samplit.vst3'), (Join-Path $artefacts 'Standalone\Samplit.exe')) + $(if (-not $Lite) { $packs })) {
     if (-not (Test-Path $need)) { throw "не найдено: $need" }
 }
 
@@ -33,7 +34,10 @@ New-Item -ItemType Directory -Force (Join-Path $out 'Plugin'), (Join-Path $out '
 Copy-Item (Join-Path $artefacts 'VST3\Samplit.vst3') (Join-Path $out 'Plugin') -Recurse
 Copy-Item (Join-Path $artefacts 'Standalone\Samplit.exe') (Join-Path $out 'Plugin')
 # Пакет studio600-unverified нужен только служебным пресетам «[Проверка]», которые в архив не идут
-Get-ChildItem (Join-Path $packs '*.splpack') -Exclude 'studio600-unverified*' | Copy-Item -Destination (Join-Path $out 'Data\packs')
+if (-not $Lite) { Get-ChildItem (Join-Path $packs '*.splpack') -Exclude 'studio600-unverified*' | Copy-Item -Destination (Join-Path $out 'Data\packs') }
+# Исходные манифесты (раскладка ударов без звука): нужны режиму «Моя библиотека…»
+New-Item -ItemType Directory -Force (Join-Path $out 'Data\manifests') | Out-Null
+Get-ChildItem (Join-Path $root 'sample_library\packs-src\*.json') -Exclude 'studio600-unverified*' | Copy-Item -Destination (Join-Path $out 'Data\manifests')
 # Служебные «full» (спорные удары) остаются только у нас
 Get-ChildItem (Join-Path $root 'tools\presets\*.json') -Exclude 'studio600-full-*' | Copy-Item -Destination (Join-Path $out 'Data\presets')
 Copy-Item (Join-Path $root 'tools\presets\mixes\*.json') (Join-Path $out 'Data\presets\mixes')

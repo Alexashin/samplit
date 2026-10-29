@@ -80,6 +80,10 @@ namespace samplit
         addPackButton.setTooltip (utf8 ("Выбрать файл пакета (.splpack) и скопировать его в папку пакетов"));
         addPackButton.onClick = [this] { addPack(); };
 
+        libraryButton.setButtonText (utf8 ("Моя библиотека…"));
+        libraryButton.setTooltip (utf8 ("Проверка на своих сэмплах: выберите папку с WAV (00-Studio600ru-Drum-LIB). Звук берётся из неё целиком, без пакетов и лицензии. Отмена выбора возвращает обычный режим"));
+        libraryButton.onClick = [this] { chooseLibrary(); };
+
         saveButton.setButtonText (utf8 ("Сохранить как…"));
         saveButton.setTooltip (utf8 ("Сохранить текущий пресет с вашими уровнями микрофонов, панорамой, выходами и режимами выбора удара"));
         saveButton.onClick = [this] { saveAs(); };
@@ -93,7 +97,7 @@ namespace samplit
         emptyText.setFont (juce::FontOptions (13.0f));
         emptyText.setJustificationType (juce::Justification::topLeft);
 
-        for (auto* c : std::initializer_list<juce::Component*> { &title, &intro, &rescanButton, &folderButton, &packFolderButton, &addPackButton, &saveButton, &list, &emptyText })
+        for (auto* c : std::initializer_list<juce::Component*> { &title, &intro, &rescanButton, &folderButton, &packFolderButton, &addPackButton, &saveButton, &libraryButton, &list, &emptyText })
             addAndMakeVisible (c);
 
         processor.addChangeListener (this);
@@ -216,6 +220,37 @@ namespace samplit
             safe->statusText = safe->statusWarns ? error : utf8 ("Сохранено: ") + file.getFileName() + utf8 (" (папка пресетов)");
             safe->repaint (safe->statusArea);
         }), true);
+    }
+
+    void PresetPanel::chooseLibrary()
+    {
+        const auto current = processor.getLicense().getLibraryRoot();
+        chooser = std::make_unique<juce::FileChooser> (utf8 ("Папка с библиотекой (00-Studio600ru-Drum-LIB). Отмена: обычный режим по пакетам"), current);
+        chooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectDirectories,
+                              [safe = juce::Component::SafePointer<PresetPanel> (this)] (const juce::FileChooser& fc)
+        {
+            if (safe == nullptr)
+                return;
+            auto& lic = safe->processor.getLicense();
+            const auto dir = fc.getResult();
+            if (dir == juce::File())
+            {
+                lic.setLibraryRoot ({});
+                safe->statusText = utf8 ("Обычный режим: звук из пакетов");
+                safe->statusWarns = false;
+            }
+            else
+            {
+                lic.setLibraryRoot (dir);
+                const int manifests = lic.getManifestDir().findChildFiles (juce::File::findFiles, false, "*.json").size();
+                safe->statusWarns = manifests == 0;
+                safe->statusText = manifests == 0
+                    ? utf8 ("Нет манифестов в ") + lic.getManifestDir().getFullPathName()
+                    : utf8 ("Звук из папки ") + dir.getFullPathName() + utf8 (" (без пакетов и лицензии). Выберите пресет заново");
+            }
+            safe->rescan();
+            safe->repaint (safe->statusArea);
+        });
     }
 
     void PresetPanel::addPack()
@@ -417,7 +452,9 @@ namespace samplit
         statusArea = getLocalBounds().removeFromBottom (kStatusHeight);
         area.removeFromBottom (kStatusHeight - 10);
 
-        // Кнопки под списком в два ряда
+        // Кнопки под списком в три ряда
+        libraryButton.setBounds (area.removeFromBottom (30));
+        area.removeFromBottom (6);
         auto second = area.removeFromBottom (30);
         area.removeFromBottom (6);
         auto first = area.removeFromBottom (30);

@@ -21,6 +21,8 @@ namespace samplit
     LicenseManager::LicenseManager (Config c) : config (std::move (c))
     {
         packDir = config.dataDir.getChildFile ("packs");
+        if (const auto saved = config.dataDir.getChildFile ("library.path").loadFileAsString().trim(); saved.isNotEmpty())
+            libraryRoot = juce::File (saved);
         check();
         startTimer (3000);      // первая попытка продления сразу после старта, дальше раз в час
     }
@@ -70,6 +72,28 @@ namespace samplit
     {
         const juce::ScopedLock sl (lock);
         packDir = dir;
+    }
+
+    juce::File LicenseManager::getLibraryRoot() const
+    {
+        const juce::ScopedLock sl (lock);
+        return libraryRoot;
+    }
+
+    void LicenseManager::setLibraryRoot (const juce::File& dir)
+    {
+        {
+            const juce::ScopedLock sl (lock);
+            libraryRoot = dir;
+        }
+        const auto marker = config.dataDir.getChildFile ("library.path");
+        if (dir == juce::File())
+            marker.deleteFile();
+        else
+        {
+            config.dataDir.createDirectory();
+            marker.replaceWithText (dir.getFullPathName());
+        }
     }
 
     bool LicenseManager::keyFor (const juce::String& packId, pack::PackKey& out) const

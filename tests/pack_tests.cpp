@@ -168,6 +168,50 @@ TEST_CASE ("flac round trip is bit exact for 24-bit audio", "[pack]")
     REQUIRE (back.samples == audio.samples);
 }
 
+TEST_CASE ("wav to pack to decoded audio is bit exact, quiet tail kept", "[pack]")
+{
+    // Хвост ниже -60 дБ: при старой обрезке он бы пропал, теперь пакет хранит файл целиком
+    auto audio = makeAudio (6000, 48000.0, 3);
+    for (int i = 3000; i < audio.frames; ++i)
+        audio.samples[(size_t) i] = (i % 7) - 3;
+    const auto wav = writeWav ("lossless.wav", audio);
+
+    juce::AudioFormatManager fm;
+    fm.registerBasicFormats();
+    juce::String error;
+    DecodedAudio fromWav;
+    REQUIRE (readAudioFile (fm, wav, 0, 0, fromWav, error));
+
+    const auto key = generateKey();
+    const auto file = packDir().getChildFile ("lossless.splpack");
+    auto w = PackWriter::create (file, "lossless", key, error);
+    REQUIRE (w != nullptr);
+    const int id = w->addAudio (fromWav, error);
+    REQUIRE (id == 0);
+    REQUIRE (w->finish (makeManifest ("lossless", { id }), error));
+
+    auto reader = PackReader::open (file, error);
+    REQUIRE (reader != nullptr);
+    DecodedAudio back;
+    REQUIRE (reader->decodeChunk (key, id, back, error));
+    REQUIRE (back.frames == 6000);
+    REQUIRE (back.samples == audio.samples);
+    CHECK (trimmedLength (back, -60.0) < back.frames);  // обрезка бы сработала, но пакет её не применяет сам
+}
+
+TEST_CASE ("toFloat24 keeps every 24-bit value exactly", "[pack]")
+{
+    DecodedAudio audio;
+    audio.sampleRate = 44100.0;
+    audio.samples = { -8388608, -8388607, -1, 0, 1, 12345, 8388606, 8388607 };
+    audio.frames = (int) audio.samples.size();
+
+    const auto f = toFloat24 (audio);
+    REQUIRE (f.size() == audio.samples.size());
+    for (size_t i = 0; i < f.size(); ++i)
+        CHECK ((int32_t) std::lround ((double) f[i] * 8388608.0) == audio.samples[i]);
+}
+
 TEST_CASE ("silence and tiny clips encode", "[pack]")
 {
     DecodedAudio audio;

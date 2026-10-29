@@ -292,9 +292,9 @@ TEST_CASE ("loadKit builds a playable kit from a pack", "[loader]")
     REQUIRE (h0.files[0].clip != nullptr);
     CHECK (h0.files[0].gainDb == -3.0f);
     CHECK (h0.files[0].clip->frames() == 1000);
-    CHECK (h0.files[0].clip->isInt16());
-    CHECK (h0.files[0].clip->s16[10] == pack::toInt16 (tone (1000, 100000))[10]);
-    CHECK (res.memoryBytes == 3 * 1000 * 2);
+    CHECK_FALSE (h0.files[0].clip->isInt16());
+    CHECK (h0.files[0].clip->f32[10] == pack::toFloat24 (tone (1000, 100000))[10]);
+    CHECK (res.memoryBytes == 3 * 1000 * 4);
 
     // Блок 1 (oh) общий у двух ударов: декодируется один раз
     CHECK (kit.pieces[0].hits[0].files[1].clip == kit.pieces[0].hits[1].files[1].clip);
@@ -463,4 +463,65 @@ TEST_CASE ("a failed or cancelled load keeps the current kit", "[loader]")
     pumpUntil ([&] { return called; }, 300);
     CHECK_FALSE (called);
     CHECK (processor.getKit() == first);
+}
+
+TEST_CASE ("loadKit plays a local WAV library in full length, 24-bit exact, without pack or license", "[loader]")
+{
+    const auto dir = loaderDir();
+    const auto lib = dir.getChildFile ("lib");
+    const auto manifests = dir.getChildFile ("manifests");
+    lib.getChildFile ("KICK/in").createDirectory();
+    manifests.createDirectory();
+
+    // Длинный файл с тихим хвостом: раньше обрезка по -60 дБ отрезала бы его
+    pack::DecodedAudio audio = tone (50000, 4000000);
+    for (int i = 20000; i < audio.frames; ++i)
+        audio.samples[(size_t) i] = (i % 5) - 2;
+    const auto wav = lib.getChildFile ("KICK/in/0-01.wav");
+    {
+        juce::WavAudioFormat fmt;
+        std::unique_ptr<juce::OutputStream> os (wav.createOutputStream());
+        REQUIRE (os != nullptr);
+        auto writer = fmt.createWriterFor (os, juce::AudioFormatWriterOptions{}.withSampleRate (44100.0).withNumChannels (1).withBitsPerSample (24));
+        REQUIRE (writer != nullptr);
+        std::vector<int> shifted ((size_t) audio.frames);
+        for (size_t i = 0; i < shifted.size(); ++i)
+            shifted[i] = audio.samples[i] * 256;
+        const int* ch[1] = { shifted.data() };
+        REQUIRE (writer->write (ch, audio.frames));
+    }
+
+    pack::Manifest m;
+    m.id = "local";
+    m.mics = { { "kick_in", "Kick In", "close", 1 } };
+    pack::Piece p;
+    p.id = "kick";
+    p.name = "Kick";
+    p.keys = { 36 };
+    p.layers = { { "all", "center", 1, 127 } };
+    pack::Hit h;
+    h.id = "kick_0";
+    h.layer = "all";
+    h.key = 36;
+    h.files["kick_in"].path = "KICK/in/0-01.wav";
+    p.hits.push_back (h);
+    m.pieces.push_back (p);
+    manifests.getChildFile ("local.json").replaceWithText (m.toJson());
+
+    KitLoadOptions opts;
+    opts.libraryRoot = lib;
+    opts.manifestDir = manifests;
+    opts.threads = 2;      // keyFor не задан: лицензия не нужна
+
+    const auto res = loadKit (presetOf ({ "local" }), opts);
+    REQUIRE (res.ok());
+    const auto& clip = *res.kit->pieces[0].hits[0].files[0].clip;
+    REQUIRE (clip.frames() == 50000);
+    CHECK_FALSE (clip.isInt16());
+    CHECK (clip.f32[10] == (float) audio.samples[10] / 8388608.0f);
+    CHECK (clip.f32[49999] == (float) audio.samples[49999] / 8388608.0f);
+
+    // Папки с манифестом нет: пакет пресета считается недоступным, а не падением
+    opts.manifestDir = dir.getChildFile ("none");
+    CHECK_FALSE (loadKit (presetOf ({ "local" }), opts).ok());
 }

@@ -29,6 +29,8 @@ namespace samplit
 
     // Пресеты из папки (*.json, по имени) и состояние их пакетов. Битые пресеты пропускаются.
     // Читает заголовки пакетов с диска, поэтому не для audio thread; на десятке пакетов быстро
+    // libraryRoot не пуст: режим локальной библиотеки, пакет «установлен», если есть <manifestDir>/<id>.json, лицензия не нужна
     std::vector<PresetEntry> scanPresets (const juce::File& presetDir, const juce::File& packDir,
-                                          const std::function<bool (const juce::String&, pack::PackKey&)>& keyFor);
+                                          const std::function<bool (const juce::String&, pack::PackKey&)>& keyFor,
+                                          const juce::File& libraryRoot = {}, const juce::File& manifestDir = {});
 }

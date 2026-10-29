@@ -1,4 +1,5 @@
 #include "KitLoader.h"
+#include <juce_audio_formats/juce_audio_formats.h>
 
 #include <algorithm>
 #include <thread>
@@ -314,6 +315,10 @@ namespace samplit
             std::unique_ptr<pack::PackReader> reader;
             pack::PackKey key {};
             pack::Manifest manifest;
+            juce::File libraryRoot;                 // не пусто: режим локальной библиотеки, reader нет
+            std::vector<juce::String> paths;        // локальный режим: «блок» = индекс файла в этом списке
+
+            int chunkCount() const { return reader != nullptr ? reader->getChunkCount() : (int) paths.size(); }
         };
 
         // Что декодировать: блок пакета с обрезкой. Одинаковые блоки декодируются один раз
@@ -338,6 +343,21 @@ namespace samplit
         ClipPtr decodeJob (const LoadedPack& pk, const ClipKey& key, juce::String& error)
         {
             pack::DecodedAudio audio;
+            if (pk.reader == nullptr)
+            {
+                // Локальная библиотека: WAV целиком, start/end из .nki читает сам readAudioFile
+                const auto file = pk.libraryRoot.getChildFile (pk.paths[(size_t) std::get<1> (key)]);
+                if (! file.isAChildOf (pk.libraryRoot))
+                {
+                    error = "путь вне папки библиотеки: "_s + file.getFullPathName();
+                    return nullptr;
+                }
+                juce::AudioFormatManager formats;
+                formats.registerBasicFormats();
+                if (! pack::readAudioFile (formats, file, std::get<2> (key), std::get<3> (key), audio, error))
+                    return nullptr;
+                return DecodedClip::fromFloat (pack::toFloat24 (audio), audio.sampleRate);
+            }
             if (! pk.reader->decodeChunk (pk.key, std::get<1> (key), audio, error))
                 return nullptr;
             if (audio.channels != 1)
@@ -359,7 +379,7 @@ namespace samplit
                 error = "пустой файл"_s;
                 return nullptr;
             }
-            return DecodedClip::fromInt16 (pack::toInt16 (audio), audio.sampleRate);
+            return DecodedClip::fromFloat (pack::toFloat24 (audio), audio.sampleRate);
         }
     }
 
@@ -368,17 +388,48 @@ namespace samplit
         KitLoadResult res;
 
         // 1. Пакеты пресета: файл, ключ, манифест
+        const bool localLibrary = options.libraryRoot != juce::File();
         std::map<juce::String, juce::File> files;
-        for (const auto& f : options.packDir.findChildFiles (juce::File::findFiles, false, "*.splpack"))
-        {
-            juce::String err;
-            if (auto r = pack::PackReader::open (f, err))
-                files[r->getHeader().packId] = f;
-        }
+        if (! localLibrary)
+            for (const auto& f : options.packDir.findChildFiles (juce::File::findFiles, false, "*.splpack"))
+            {
+                juce::String err;
+                if (auto r = pack::PackReader::open (f, err))
+                    files[r->getHeader().packId] = f;
+            }
 
         std::vector<LoadedPack> packs;
         for (const auto& id : preset.packs)
         {
+            if (localLibrary)
+            {
+                LoadedPack lp;
+                lp.id = id;
+                lp.libraryRoot = options.libraryRoot;
+                const auto mf = options.manifestDir.getChildFile (id + ".json");
+                juce::String err;
+                if (! mf.existsAsFile() || ! pack::Manifest::fromJson (mf.loadFileAsString(), lp.manifest, err))
+                {
+                    res.missingPacks.push_back (id);
+                    continue;
+                }
+
+                // Пути файлов в номера «блоков»: один файл на разных ударах декодируется один раз
+                std::map<juce::String, int> pathIndex;
+                for (auto& mp : lp.manifest.pieces)
+                    for (auto& mh : mp.hits)
+                        for (auto& [micId, f] : mh.files)
+                            if (f.path.isNotEmpty())
+                            {
+                                const auto it = pathIndex.emplace (f.path, (int) lp.paths.size());
+                                if (it.second)
+                                    lp.paths.push_back (f.path);
+                                f.chunk = it.first->second;
+                            }
+                packs.push_back (std::move (lp));
+                continue;
+            }
+
             const auto it = files.find (id);
             LoadedPack lp;
             juce::String err;
@@ -405,7 +456,8 @@ namespace samplit
 
         if (packs.empty())
         {
-            res.error = "Ни один пакет пресета не доступен (нет файла или лицензии)"_s;
+            res.error = localLibrary ? "Для пресета нет манифестов в "_s + options.manifestDir.getFullPathName()
+                                      : "Ни один пакет пресета не доступен (нет файла или лицензии)"_s;
             return res;
         }
 
@@ -524,7 +576,7 @@ namespace samplit
                     for (const auto& [micId, f] : mh.files)
                     {
                         const auto mic = micIndex.find (micId);
-                        if (mic == micIndex.end() || f.chunk < 0 || f.chunk >= packs[(size_t) pi].reader->getChunkCount())
+                        if (mic == micIndex.end() || f.chunk < 0 || f.chunk >= packs[(size_t) pi].chunkCount())
                             continue;
                         if (f.peak == 0)
                         {
@@ -610,7 +662,7 @@ namespace samplit
             f.gainDb = r.gainDb;
         }
         for (const auto& j : jobs)
-            res.memoryBytes += (int64_t) j.clip->frames() * (int64_t) sizeof (int16_t);
+            res.memoryBytes += (int64_t) j.clip->frames() * (int64_t) sizeof (float);
 
         if (! kit->buildIndex())
         {

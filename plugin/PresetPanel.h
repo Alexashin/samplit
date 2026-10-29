@@ -62,11 +62,12 @@ namespace samplit
         juce::String loadingName;
 
         juce::Label title;
-        juce::TextButton rescanButton, folderButton, packFolderButton, addPackButton, saveButton;
+        juce::TextButton rescanButton, folderButton, packFolderButton, addPackButton, saveButton, libraryButton;
         std::unique_ptr<juce::FileChooser> chooser;
         juce::Label intro;
         void saveAs();
         void addPack();
+        void chooseLibrary();
         void updateIntro();
         juce::ListBox list;
         juce::Label emptyText;

@@ -151,6 +151,14 @@ namespace samplit::pack
         return out;
     }
 
+    std::vector<float> toFloat24 (const DecodedAudio& audio)
+    {
+        std::vector<float> out (audio.samples.size());
+        for (size_t i = 0; i < out.size(); ++i)
+            out[i] = (float) audio.samples[i] * (1.0f / 8388608.0f);
+        return out;
+    }
+
     bool encodeFlac (const DecodedAudio& audio, juce::MemoryBlock& out, juce::String& error)
     {
         if (audio.channels != 1 || audio.frames < 1 || (int) audio.samples.size() != audio.frames || audio.sampleRate <= 0.0)

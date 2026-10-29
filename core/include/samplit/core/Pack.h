@@ -43,6 +43,9 @@ namespace samplit::pack
     // Для памяти в плагине: 24 бит → 16 бит с округлением и ограничением
     std::vector<int16_t> toInt16 (const DecodedAudio&);
 
+    // 24 бит → float32 без потерь (мантисса float32 — 24 бит): значение / 8388608. Так сэмплы Studio600 лежат в памяти плагина
+    std::vector<float> toFloat24 (const DecodedAudio&);
+
     bool encodeFlac (const DecodedAudio&, juce::MemoryBlock& out, juce::String& error);
     bool decodeFlac (const void* data, size_t size, DecodedAudio& out, juce::String& error);
 

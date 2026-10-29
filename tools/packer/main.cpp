@@ -2,8 +2,9 @@
 //
 //   samplit-packer build <манифест.json> --root <папка библиотеки> --out <файл.splpack>
 //                        (--key <hex64> | --key-file <файл> | --gen-key <файл>)
-//                        [--trim-db <дБ>] [--no-trim] [--allow-silent]
-//     Тихий хвост (RMS блока 10 мс ниже порога, по умолчанию −60 дБ от полной шкалы) отрезается.
+//                        [--trim] [--trim-db <дБ>] [--allow-silent]
+//     По умолчанию звук хранится целиком, без обрезки (24 бит, FLAC без потерь). С --trim или --trim-db тихий
+//     хвост (RMS блока 10 мс ниже порога, по умолчанию −60 дБ от полной шкалы) отрезается.
 //     Файлы из одних нулей считаются повреждёнными и останавливают сборку, если нет --allow-silent.
 //   samplit-packer verify <файл.splpack> (--key <hex64> | --key-file <файл>) [--deep]
 //   samplit-packer info <файл.splpack> [--key <hex64> | --key-file <файл>]
@@ -35,7 +36,7 @@ namespace
     {
         sayErr ("Использование:\n"_s
                 "  samplit-packer build <манифест.json> --root <папка> --out <файл.splpack> (--key <hex64> | --key-file <файл> | --gen-key <файл>)\n"_s
-                "                       [--trim-db <дБ, по умолчанию -60>] [--no-trim] [--allow-silent]\n"_s
+                "                       [--trim] [--trim-db <дБ, по умолчанию -60>] [--allow-silent]  (обрезка хвоста только с --trim/--trim-db)\n"_s
                 "  samplit-packer verify <файл.splpack> (--key <hex64> | --key-file <файл>) [--deep]\n"_s
                 "  samplit-packer info <файл.splpack> [--key <hex64> | --key-file <файл>]\n"_s
                 "  samplit-packer fingerprint"_s);
@@ -62,7 +63,7 @@ namespace
             if (argv[i].startsWith ("--"))
             {
                 const auto name = argv[i].substring (2);
-                const bool flag = name == "deep" || name == "no-trim" || name == "allow-silent";
+                const bool flag = name == "deep" || name == "trim" || name == "allow-silent";
                 a.options[name] = flag || i + 1 >= argv.size() ? juce::String ("1") : argv[++i];
             }
             else
@@ -183,7 +184,7 @@ namespace
                 return 2;
             }
         }
-        const bool trim = ! a.has ("no-trim");
+        const bool trim = a.has ("trim") || a.has ("trim-db");
         const bool allowSilent = a.has ("allow-silent");
 
         juce::AudioFormatManager formats;

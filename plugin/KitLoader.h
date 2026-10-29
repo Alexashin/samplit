@@ -84,6 +84,11 @@ namespace samplit
     struct KitLoadOptions
     {
         juce::File packDir;     // папка с *.splpack
+        // Режим «локальная библиотека» (для проверки на своих сэмплах): если задана libraryRoot, звук берётся прямо из WAV
+        // этой папки (та же структура, что у sample_library/00-Studio600ru-Drum-LIB), целиком и без обрезки, а раскладка
+        // из исходных манифестов <manifestDir>/<id пакета>.json. Пакеты и лицензия не нужны
+        juce::File libraryRoot;
+        juce::File manifestDir;
         // Ключ пакета по его id (из токена лицензии). false: лицензии на пакет нет
         std::function<bool (const juce::String& packId, pack::PackKey& key)> keyFor;
         const std::atomic<bool>* cancel = nullptr;      // true: загрузка прерывается
@@ -104,7 +109,7 @@ namespace samplit
         bool ok() const noexcept { return kit != nullptr; }
     };
 
-    // Собирает кит из пресета и пакетов: расшифровывает, декодирует FLAC в int16, склеивает манифесты по id барабана
+    // Собирает кит из пресета и пакетов: расшифровывает, декодирует FLAC в float32 (24 бит без потерь), склеивает манифесты по id барабана
     // и удара. Блокирует вызывающий поток и сам ничего не публикует: вызывать из фонового потока, готовый кит
     // отдавать в SamplitProcessor::setKit(). Audio thread не затрагивает
     KitLoadResult loadKit (const Preset&, const KitLoadOptions&);

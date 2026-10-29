@@ -17,7 +17,7 @@ if ($running) {
     exit 1
 }
 
-New-Item -ItemType Directory -Force $vst3Dir, $appDir, (Join-Path $data 'packs'), (Join-Path $data 'presets'), (Join-Path $data 'presets\mixes') | Out-Null
+New-Item -ItemType Directory -Force $vst3Dir, $appDir, (Join-Path $data 'packs'), (Join-Path $data 'manifests'), (Join-Path $data 'presets'), (Join-Path $data 'presets\mixes') | Out-Null
 
 Write-Host '1/4  Плагин VST3'
 $vst3 = Join-Path $vst3Dir 'Samplit.vst3'
@@ -33,7 +33,9 @@ $link.WorkingDirectory = $appDir
 $link.Save()
 
 Write-Host '3/4  Пакеты с сэмплами и пресеты (около 1 ГБ, подождите)'
-Copy-Item (Join-Path $src 'Data\packs\*.splpack') (Join-Path $data 'packs') -Force
+if (Test-Path (Join-Path $src 'Data\packs\*.splpack')) { Copy-Item (Join-Path $src 'Data\packs\*.splpack') (Join-Path $data 'packs') -Force }
+# Манифесты для режима «Моя библиотека…» (звук из папки с WAV, без пакетов)
+if (Test-Path (Join-Path $src 'Data\manifests')) { Copy-Item (Join-Path $src 'Data\manifests\*.json') (Join-Path $data 'manifests') -Force }
 Copy-Item (Join-Path $src 'Data\presets\*.json') (Join-Path $data 'presets') -Force
 Copy-Item (Join-Path $src 'Data\presets\mixes\*.json') (Join-Path $data 'presets\mixes') -Force
 

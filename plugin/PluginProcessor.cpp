@@ -456,6 +456,11 @@ namespace samplit
     {
         KitLoadOptions options;
         options.packDir = license->getPackDir();
+        if (const auto root = license->getLibraryRoot(); root.isDirectory())
+        {
+            options.libraryRoot = root;
+            options.manifestDir = license->getManifestDir();
+        }
         options.keyFor = [this] (const juce::String& id, pack::PackKey& key) { return license->keyFor (id, key); };
         loadKitAsync (preset, std::move (options), std::move (done));
     }
@@ -559,8 +564,10 @@ namespace samplit
 
     std::vector<PresetEntry> SamplitProcessor::scanPresets() const
     {
+        const auto root = license->getLibraryRoot();
         return samplit::scanPresets (license->getPresetDir(), license->getPackDir(),
-                                     [this] (const juce::String& id, pack::PackKey& key) { return license->keyFor (id, key); });
+                                     [this] (const juce::String& id, pack::PackKey& key) { return license->keyFor (id, key); },
+                                     root.isDirectory() ? root : juce::File(), license->getManifestDir());
     }
 
     void SamplitProcessor::selectPreset (const Preset& preset, std::function<void (const KitLoadResult&)> done)
