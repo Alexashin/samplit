@@ -1,7 +1,5 @@
 #pragma once
 
-#include "Instrument.h"
-
 #include <algorithm>
 #include <array>
 #include <cstdint>
@@ -11,6 +9,9 @@
 
 namespace samplit
 {
+    // Выходы плагина: 0 = Main (стерео), 1..kNumOutputs = отдельные моно-шины Out 1..Out N
+    constexpr int kNumOutputs = 16;
+
     // Декодированный моно-файл удара: float32, 24 бит без потерь (значение / 8388608).
     // Целиком в f32, либо (потоковый клип, totalFrames > f32.size()) только голова, а остальное движок читает с диска
     // из WAV по path через DiskStreamer. После публикации не меняется, поэтому его можно читать из audio thread.

@@ -26,25 +26,28 @@ juce_add_plugin(Samplit
     COPY_PLUGIN_AFTER_BUILD     ${SAMPLIT_COPY_PLUGIN}
     VST3_COPY_DIR               "${SAMPLIT_VST3_DIR}")
 
+# Движок и процессор без графики: общий список для плагина, тестов и tools/snapshot
+set(SAMPLIT_ENGINE_SOURCES
+    ${CMAKE_CURRENT_SOURCE_DIR}/Kit.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/Interpolation.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/DiskStreamer.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/DiskStreamer.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/KitEngine.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/KitEngine.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/KitLoader.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/KitLoader.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/LicenseManager.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/LicenseManager.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/PresetLibrary.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/PresetLibrary.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/PluginProcessor.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/PluginProcessor.cpp)
+set(SAMPLIT_ENGINE_SOURCES ${SAMPLIT_ENGINE_SOURCES} PARENT_SCOPE)
+
 target_sources(Samplit PRIVATE
     Brand.h
     LookAndFeel.h
-    Sample.h
-    Instrument.h
-    SamplerEngine.h
-    SamplerEngine.cpp
-    Kit.h
-    KitLoader.h
-    KitLoader.cpp
-    LicenseManager.h
-    LicenseManager.cpp
-    PresetLibrary.h
-    PresetLibrary.cpp
-    KitEngine.h
-    KitEngine.cpp
-    DiskStreamer.cpp
-    PluginProcessor.h
-    PluginProcessor.cpp
+    ${SAMPLIT_ENGINE_SOURCES}
     KeyboardView.h
     KeyboardView.cpp
     PresetPanel.h

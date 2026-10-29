@@ -4,13 +4,7 @@ juce_add_console_app(samplit-snapshot PRODUCT_NAME "samplit-snapshot")
 set(SAMPLIT_PLUGIN_DIR ${CMAKE_SOURCE_DIR}/plugin)
 target_sources(samplit-snapshot PRIVATE
     main.cpp
-    ${SAMPLIT_PLUGIN_DIR}/SamplerEngine.cpp
-    ${SAMPLIT_PLUGIN_DIR}/KitEngine.cpp
-    ${SAMPLIT_PLUGIN_DIR}/DiskStreamer.cpp
-    ${SAMPLIT_PLUGIN_DIR}/KitLoader.cpp
-    ${SAMPLIT_PLUGIN_DIR}/LicenseManager.cpp
-    ${SAMPLIT_PLUGIN_DIR}/PresetLibrary.cpp
-    ${SAMPLIT_PLUGIN_DIR}/PluginProcessor.cpp
+    ${SAMPLIT_ENGINE_SOURCES}
     ${SAMPLIT_PLUGIN_DIR}/PluginEditor.cpp
     ${SAMPLIT_PLUGIN_DIR}/PresetPanel.cpp
     ${SAMPLIT_PLUGIN_DIR}/LicensePanel.cpp
