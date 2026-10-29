@@ -1,11 +1,17 @@
-"""Web / PWA icon set from the main icon (A). Run after build_logo.py."""
+"""Web / PWA icon set from the main icon (A). Run after build_logo.py, from the brand/ folder.
+
+Needs a PNG renderer script (render_png.py from the logo-design skill): pass its path in the
+SAMPLIT_RENDER_PNG environment variable or as the first argument."""
 import json
 import os
 import shutil
 import subprocess
 import sys
 
-RENDER = os.path.expanduser("~/.claude/skills/logo-design/scripts/render_png.py")
+RENDER = (sys.argv[1] if len(sys.argv) > 1 else os.environ.get("SAMPLIT_RENDER_PNG")
+          or os.path.expanduser("~/.claude/skills/logo-design/scripts/render_png.py"))
+if not os.path.isfile(RENDER):
+    sys.exit(f"render_png.py not found: {RENDER}\nPass the path as an argument or set SAMPLIT_RENDER_PNG.")
 OUT = "logo/web"
 os.makedirs(OUT, exist_ok=True)
 

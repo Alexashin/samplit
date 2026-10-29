@@ -19,7 +19,8 @@ param(
     [string[]]$Packs = @(),
     [int]$Days = 0,         # 0: бессрочный токен
     [switch]$All,
-    [switch]$SkipBuild
+    [switch]$SkipBuild,
+    [string]$User = $env:USERNAME   # имя владельца токена
 )
 
 $ErrorActionPreference = 'Stop'
@@ -79,7 +80,7 @@ $installed = Get-ChildItem (Join-Path $data 'packs') -Filter '*.splpack' |
 $fingerprint = (& $packer fingerprint).Trim()
 $term = @(if ($Days -gt 0) { '--days', "$Days" } else { '--perpetual' })
 & $python (Join-Path $root 'tools\make_token.py') --fingerprint $fingerprint --packs ($installed -join ',') `
-    --user 'Алексашин А.А.' @term --out (Join-Path $data 'license.token')
+    --user $User @term --out (Join-Path $data 'license.token')
 if ($LASTEXITCODE -ne 0) { throw 'выпуск токена не прошёл' }
 
 Write-Host "Готово: $data"
