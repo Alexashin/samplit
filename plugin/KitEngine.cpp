@@ -105,6 +105,7 @@ namespace samplit
         lastHit.fill (-1);
         for (auto& c : cyclePos)
             c.fill (0);
+        lastKitSerial = 0;
     }
 
     StreamHealth KitEngine::getHealth() const
@@ -183,12 +184,43 @@ namespace samplit
 
     bool KitEngine::isUsing (const Kit* kit) const noexcept
     {
-        if (current.load() == kit || (streamer != nullptr && streamer->isUsing (kit)))
+        if (kit == nullptr)
+            return false;
+        // Порядок важен (см. протокол в KitEngine.h): current, hazard, потом удары и ячейки
+        if (current.load() == kit || hazard.load() == kit)
             return true;
         for (const auto& k : strikeKit)
             if (k.load() == kit)
                 return true;
-        return false;
+        return streamer != nullptr && streamer->isUsing (kit);
+    }
+
+    void KitEngine::beginBlock() noexcept
+    {
+        const Kit* k = current.load();
+        for (int attempt = 0; attempt < 8; ++attempt)
+        {
+            hazard.store (k, std::memory_order_seq_cst);
+            const Kit* again = current.load();
+            if (again == k)
+            {
+                blockKit = k;
+                inBlock = true;
+                return;
+            }
+            k = again;
+        }
+        // Кит менялся 8 раз подряд (при одном message thread не бывает): блок играет без кита, но уже звучащие удары доигрываются
+        hazard.store (nullptr, std::memory_order_release);
+        blockKit = nullptr;
+        inBlock = true;
+    }
+
+    void KitEngine::endBlock() noexcept
+    {
+        inBlock = false;
+        blockKit = nullptr;
+        hazard.store (nullptr, std::memory_order_release);
     }
 
     int KitEngine::getNumActiveStrikes() const noexcept
@@ -428,13 +460,13 @@ namespace samplit
     KitEngine::StrikeInfo KitEngine::noteOn (int note, int velocity) noexcept
     {
         StrikeInfo info;
-        const Kit* kit = current.load();
+        const Kit* kit = inBlock ? blockKit : current.load();   // в блоке только защищённый кит
         if (kit == nullptr || note < 0 || note > 127)
             return info;
 
-        if (kit != lastKit)
+        if (kit->serial.value != lastKitSerial)
         {
-            lastKit = kit;
+            lastKitSerial = kit->serial.value;
             lastHit.fill (-1);
             for (auto& c : cyclePos)
                 c.fill (0);

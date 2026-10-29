@@ -84,8 +84,25 @@ namespace samplit
         // Детерминированный ГСЧ для тестов
         void setSeed (uint32_t seed) noexcept { rng = seed != 0 ? seed : 0x9e3779b9u; }
 
-        // Message thread: кит ещё нужен audio thread (он текущий или из него звучит удар)
+        // Message thread: кит ещё нужен audio thread (текущий, защищён блоком, из него звучит удар или читает стример).
+        //
+        // Протокол защиты (hazard pointer). Audio thread в начале каждого блока вызывает beginBlock():
+        //   k = current.load(); hazard.store(k, seq_cst); повторять, пока current.load() != k (число повторов ограничено).
+        // Весь блок (noteOn, render) работает только с этим k. В конце блока endBlock() сбрасывает hazard (release).
+        // Message thread: setKit() сначала меняет current (seq_cst), и только потом списанный кит проверяется isUsing().
+        // Порядок проверки в isUsing: current, hazard, затем strikeKit и ячейки стримера. Удар и ячейка записываются
+        // раньше, чем endBlock() снимает hazard, поэтому кит не может «проскочить» между проверками.
+        // Если повторная проверка current в beginBlock() увидела старый кит, то hazard.store стоял в общем порядке
+        // seq_cst до смены current, а значит isUsing() увидит hazard.
         bool isUsing (const Kit* kit) const noexcept;
+
+        // Audio thread: границы блока (см. протокол выше). Без пары noteOn читает current напрямую (только тесты)
+        void beginBlock() noexcept;
+        void endBlock() noexcept;
+        // Для тестов: кит сейчас защищён hazard pointer
+        bool isProtected (const Kit* kit) const noexcept { return kit != nullptr && hazard.load() == kit; }
+        // Для тестов: serial кита, с которым связаны lastHit и cyclePos (0: ещё ни с каким)
+        uint64_t getLastKitSerial() const noexcept { return lastKitSerial; }
 
         // velocity 1..127
         StrikeInfo noteOn (int note, int velocity) noexcept;
@@ -147,6 +164,9 @@ namespace samplit
         uint32_t nextRandom() noexcept;
 
         std::atomic<const Kit*> current { nullptr };
+        std::atomic<const Kit*> hazard { nullptr };     // кит, с которым audio thread работает в текущем блоке
+        const Kit* blockKit = nullptr;                  // он же, только audio thread; действует, пока inBlock
+        bool inBlock = false;
         DiskStreamer* streamer = nullptr;
         std::atomic<bool> offline { false };
         std::atomic<int> selectMode { (int) HitSelect::Live };
@@ -160,7 +180,7 @@ namespace samplit
         std::array<Strike, kMaxStrikes> strikes {};
         std::array<int, 128> lastHit;
         std::array<std::array<uint32_t, kMaxCycleLayers>, 128> cyclePos {};   // следующий удар круга по клавише и слою
-        const Kit* lastKit = nullptr;
+        uint64_t lastKitSerial = 0;     // serial кита, для которого накоплены lastHit и cyclePos
         std::atomic<uint64_t> activeLo { 0 }, activeHi { 0 };
         uint64_t ageCounter = 0;
         uint32_t rng = 0x9e3779b9u;

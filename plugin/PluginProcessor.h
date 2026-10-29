@@ -19,7 +19,6 @@ namespace samplit
     class SamplitProcessor final : public juce::AudioProcessor,
                                    public juce::ChangeBroadcaster,
                                    private juce::AudioProcessorParameter::Listener,
-                                   private juce::AsyncUpdater,
                                    private juce::ChangeListener,       // смена лицензии (только при включённой лицензии)
                                    private juce::Timer
     {
@@ -161,15 +160,16 @@ namespace samplit
         // Message thread: сводка здоровья звука (обрывы, вытеснения, ошибки чтения) и её сброс; сброс идёт при смене кита
         StreamHealth getHealth() const { return kitEngine.getHealth(); }
         void resetHealth() { kitEngine.resetHealth(); }
-        void collectGarbage (bool force = false);
+        // Message thread: удаляет списанные киты, которые audio thread больше не использует (по факту, без ожидания по времени)
+        void collectGarbage();
 
     private:
         static BusesProperties makeBuses();
-        void timerCallback() override { collectGarbage(); }
+        void timerCallback() override;
 
         DiskStreamer streamer;      // раньше kitEngine: переживает его при разрушении
         KitEngine kitEngine;
-        struct Retired { std::shared_ptr<const Kit> kit; juce::uint32 since; };
+        struct Retired { std::shared_ptr<const Kit> kit; };
         std::vector<Retired> retired;
 
         // Состояние проекта читается и из потока хоста при сохранении проекта
@@ -189,9 +189,13 @@ namespace samplit
         void applyPieceLevels();
         void pushParam (int mic);
         void pushAllParams();
-        void parameterValueChanged (int, float) override { triggerAsyncUpdate(); }
+        // Может вызываться из audio thread хоста: только флаг (triggerAsyncUpdate берёт мьютекс и аллоцирует).
+        // Флаг разбирает timerCallback на message thread
+        void parameterValueChanged (int, float) override { paramsDirty.store (true, std::memory_order_release); }
+        std::atomic<bool> paramsDirty { false };
+        int garbageTicks = 0;       // только message thread: уборка китов раз в секунду
         void parameterGestureChanged (int, bool) override {}
-        void handleAsyncUpdate() override;
+        void applyHostParams();
         void changeListenerCallback (juce::ChangeBroadcaster*) override;
 
         void applyPicks();

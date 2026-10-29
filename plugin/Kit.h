@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <cstdint>
 #include <memory>
 #include <string>
@@ -142,8 +143,26 @@ namespace samplit
         std::vector<LayerRef> layers;   // по возрастанию velLo
     };
 
+    // Уникальный номер кита: новый у каждого созданного и скопированного кита, не повторяется за жизнь процесса
+    // (в отличие от адреса, который после удаления кита может достаться новому). Ноль не выдаётся
+    struct KitSerial
+    {
+        uint64_t value = next();
+        KitSerial() = default;
+        KitSerial (const KitSerial&) : value (next()) {}
+        KitSerial& operator= (const KitSerial&) { value = next(); return *this; }
+
+    private:
+        static uint64_t next() noexcept
+        {
+            static std::atomic<uint64_t> counter { 0 };
+            return counter.fetch_add (1, std::memory_order_relaxed) + 1;
+        }
+    };
+
     struct Kit
     {
+        KitSerial serial;               // идентичность кита для движка (lastKit), см. KitSerial
         static constexpr int kMaxMics = kNumOutputs;
         static constexpr int kMaxChoices = 32;
 

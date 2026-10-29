@@ -33,7 +33,7 @@ namespace samplit
             levelParams[(size_t) i]->addListener (this);
             panParams[(size_t) i]->addListener (this);
         }
-        startTimer (1000);
+        startTimer (50);
     }
 
     SamplitProcessor::~SamplitProcessor()
@@ -42,7 +42,6 @@ namespace samplit
             p->removeListener (this);
         for (auto* p : panParams)
             p->removeListener (this);
-        cancelPendingUpdate();
         stopTimer();
         if (license != nullptr)
             license->removeChangeListener (this);
@@ -84,6 +83,14 @@ namespace samplit
     {
         juce::ScopedNoDenormals noDenormals;
         buffer.clear();
+
+        // Кит защищён от удаления на весь блок (hazard pointer), все выходы из функции снимают защиту
+        struct BlockScope
+        {
+            KitEngine& e;
+            explicit BlockScope (KitEngine& engine) noexcept : e (engine) { e.beginBlock(); }
+            ~BlockScope() { e.endBlock(); }
+        } blockScope (kitEngine);
 
         auto main = getBusBuffer (buffer, false, 0);
         if (main.getNumChannels() < 2)
@@ -152,17 +159,26 @@ namespace samplit
         activeHi.store (kitKeys[1]);
     }
 
-    void SamplitProcessor::collectGarbage (bool force)
+    void SamplitProcessor::collectGarbage()
     {
-        // Объект удаляем, только когда он не нужен audio thread. Секунда запаса покрывает блок,
-        // который audio thread мог начать до замены
-        const auto now = juce::Time::getMillisecondCounter();
+        // Кит удаляется, только когда он не текущий, не защищён блоком (hazard), не звучит и не читается стримером:
+        // гарантия протокола KitEngine::isUsing, время не используется
         std::erase_if (retired, [&] (const Retired& r)
         {
-            if (! force && now - r.since <= 1000)
-                return false;
             return ! (r.kit != nullptr && kitEngine.isUsing (r.kit.get()));
         });
+    }
+
+    // Message thread, каждые 50 мс: параметры хоста в микшер (флаг ставит parameterValueChanged) и уборка китов раз в секунду
+    void SamplitProcessor::timerCallback()
+    {
+        if (paramsDirty.exchange (false, std::memory_order_acq_rel))
+            applyHostParams();
+        if (++garbageTicks >= 20)
+        {
+            garbageTicks = 0;
+            collectGarbage();
+        }
     }
 
     // ---------------------------------------------------------------- кит
@@ -184,7 +200,7 @@ namespace samplit
                 picks.push_back (c.pick);
 
         if (old != nullptr)
-            retired.push_back ({ std::move (old), juce::Time::getMillisecondCounter() });
+            retired.push_back ({ std::move (old) });
         collectGarbage();
         sendChangeMessage();
     }
@@ -719,7 +735,7 @@ namespace samplit
     }
 
     // Параметр → микшер (message thread). Допуск в полшага параметра: значение микшера, не попавшее на шаг, не затирается
-    void SamplitProcessor::handleAsyncUpdate()
+    void SamplitProcessor::applyHostParams()
     {
         const auto current = getKit();
         if (current == nullptr)

@@ -5,7 +5,9 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <cmath>
+#include <chrono>
 #include <map>
+#include <thread>
 
 using namespace samplit;
 using namespace kittest;
@@ -760,13 +762,13 @@ TEST_CASE ("processor with a kit: a replaced kit is freed only after its strike 
     f.play (36);   // звучит секунду
 
     f.processor.setKit (nullptr);
-    f.processor.collectGarbage (true);
+    f.processor.collectGarbage();
     REQUIRE (f.processor.getRetiredCount() > 0);   // кит ещё звучит
 
     juce::MidiBuffer midi;
     for (int i = 0; i < 100; ++i)
         f.run (midi);
-    f.processor.collectGarbage (true);
+    f.processor.collectGarbage();
     REQUIRE (f.processor.getRetiredCount() == 0);
 }
 
@@ -782,4 +784,98 @@ TEST_CASE ("preset name survives save and load", "[kit]")
     SamplitProcessor b;
     b.setStateInformation (saved.getData(), (int) saved.getSize());
     REQUIRE (b.getPresetName() == "Studio600 Rock");
+}
+
+TEST_CASE ("kit: a kit protected by the block hazard pointer is not released until the block ends", "[kit]")
+{
+    KitBuilder b1;
+    b1.mic ("m", 1);
+    const int p = b1.piece ("p");
+    b1.hit (p, b1.layer (p, 1, 127), 100, { 0.3f });
+    const auto kit1 = b1.done();
+    const auto kit2 = std::make_shared<Kit> (*kit1);
+
+    Rig r;
+    r.engine.setKit (kit1.get());
+    r.engine.beginBlock();
+    REQUIRE (r.engine.isProtected (kit1.get()));
+
+    r.engine.setKit (kit2.get());                // кит заменили посреди блока
+    REQUIRE (r.engine.isUsing (kit1.get()));     // ударов нет, он уже не текущий, но блок его держит
+    REQUIRE (r.engine.noteOn (100, 100).voices == 1);   // и играет именно защищённый кит
+
+    r.engine.endBlock();
+    REQUIRE_FALSE (r.engine.isProtected (kit1.get()));
+    REQUIRE (r.engine.isUsing (kit1.get()));     // теперь держит звучащий удар
+    r.engine.prepare (kRate);
+    REQUIRE_FALSE (r.engine.isUsing (kit1.get()));
+
+    // Без блока удержания нет
+    r.engine.beginBlock();
+    r.engine.endBlock();
+    REQUIRE_FALSE (r.engine.isProtected (kit2.get()));
+    REQUIRE (r.engine.isUsing (kit2.get()));     // текущий
+}
+
+TEST_CASE ("kit: a changed kit resets the cycle and last hit by serial, not by address", "[kit]")
+{
+    KitBuilder b;
+    b.mic ("m", 1);
+    const int p = b.piece ("p");
+    const int l = b.layer (p, 1, 127);
+    b.kit->pieces[(size_t) p].layers[(size_t) l].pick = Pick::Cycle;
+    b.hit (p, l, 60, { 0.2f }, 1, 60);
+    b.hit (p, l, 60, { 0.4f }, 61, 127);
+    const auto a = b.done();
+    const auto copy = std::make_shared<Kit> (*a);
+    REQUIRE (copy->serial.value != a->serial.value);   // копия это другой кит
+    REQUIRE (a->serial.value != 0);
+
+    Rig r;
+    r.engine.setKit (a.get());
+    const int first = r.engine.noteOn (60, 100).hit;
+    REQUIRE (r.engine.getLastKitSerial() == a->serial.value);
+    REQUIRE (r.engine.noteOn (60, 100).hit != first);   // круг ушёл вперёд
+
+    r.engine.setKit (copy.get());
+    REQUIRE (r.engine.noteOn (60, 100).hit == first);   // новый кит начинает круг заново
+    REQUIRE (r.engine.getLastKitSerial() == copy->serial.value);
+}
+
+TEST_CASE ("processor with a kit: 200 kit swaps while the audio thread plays do not crash, retired kits are freed", "[kit]")
+{
+    KitFixture f;
+    f.processor.setKit (f.kit);
+
+    std::atomic<bool> run { true };
+    std::atomic<int> blocks { 0 };
+    std::thread audio ([&]
+    {
+        juce::MidiBuffer midi;
+        while (run.load())
+        {
+            midi.clear();
+            midi.addEvent (juce::MidiMessage::noteOn (1, 36, 1.0f), 0);
+            f.run (midi);
+            ++blocks;
+            std::this_thread::yield();
+        }
+    });
+
+    for (int i = 0; i < 200; ++i)
+    {
+        f.processor.setKit (i % 7 == 6 ? nullptr : KitFixture::makeKit ({ 1, 2, 0 }));
+        if (i % 10 == 0)
+            std::this_thread::sleep_for (std::chrono::milliseconds (1));
+    }
+    run.store (false);
+    audio.join();
+    REQUIRE (blocks.load() > 0);
+
+    f.processor.setKit (nullptr);
+    juce::MidiBuffer idle;
+    for (int i = 0; i < 300; ++i)      // удары доигрывают (клип 1 с)
+        f.run (idle);
+    f.processor.collectGarbage();
+    REQUIRE (f.processor.getRetiredCount() == 0);
 }

@@ -643,7 +643,7 @@ TEST_CASE ("switching kits while the audio thread keeps playing stays finite and
 
     // Старые киты освобождаются, когда из них ничего не звучит
     pumpUntil ([] { return false; }, 300);
-    p.collectGarbage (true);
+    p.collectGarbage();
     CHECK (p.getRetiredCount() <= 2);
 }
 
