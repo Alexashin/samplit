@@ -701,42 +701,6 @@ TEST_CASE ("manual mixer edits survive a kit change without a chosen mix, and a 
     CHECK_FALSE (p.deleteUserFile (mixes.getChildFile ("m-x.json"), error));
 }
 
-TEST_CASE ("service mode silences the kit and gives notes back to the sampler", "[licmgr]")
-{
-    Env env;
-    const auto kickKey = pack::generateKey();
-    writeKickPack (env.dir.getChildFile ("packs"), "kick", kickKey, 36);
-    writePreset (env.dir, kPresetJson);
-    env.writeToken ({ { "kick", kickKey } });
-
-    SamplitProcessor p;
-    p.prepareToPlay (44100.0, 512);
-    p.setLicenseManager (started (env));
-    bool called = false;
-    p.selectPreset (p.scanPresets()[0].preset, [&] (const KitLoadResult&) { called = true; });
-    REQUIRE (pumpUntil ([&] { return called; }));
-
-    auto renderNote = [&]
-    {
-        juce::AudioBuffer<float> buffer (p.getTotalNumOutputChannels(), 512);
-        buffer.clear();
-        juce::MidiBuffer midi;
-        midi.addEvent (juce::MidiMessage::noteOn (1, 36, (juce::uint8) 100), 0);
-        p.processBlock (buffer, midi);
-        float peak = 0.0f;
-        for (int ch = 0; ch < buffer.getNumChannels(); ++ch)
-            peak = std::max (peak, buffer.getMagnitude (ch, 0, 512));
-        return peak;
-    };
-
-    CHECK (renderNote() > 0.0f);
-    p.setServiceMode (true);
-    CHECK (p.isServiceMode());
-    CHECK (renderNote() == 0.0f);   // в сэмплере на клавише 36 ничего нет
-    p.setServiceMode (false);
-    CHECK (renderNote() > 0.0f);
-}
-
 TEST_CASE ("a perpetual licence has no end date and ignores the clock", "[licmgr]")
 {
     Env env;

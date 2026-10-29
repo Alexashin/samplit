@@ -442,7 +442,7 @@ namespace samplit
         if (newKit != nullptr)
             for (const auto& c : newKit->choices)
                 picks.push_back (c.pick);
-        kitActive.store (newKit != nullptr && ! serviceMode.load());
+        kitActive.store (newKit != nullptr);
 
         if (old != nullptr)
             retired.push_back ({ nullptr, nullptr, std::move (old), juce::Time::getMillisecondCounter() });
@@ -1030,13 +1030,6 @@ namespace samplit
                 kitEngine.setMicOutput (i, -1);
             }
         }
-    }
-
-    void SamplitProcessor::setServiceMode (bool on)
-    {
-        serviceMode.store (on);
-        kitActive.store (! on && getKit() != nullptr);
-        sendChangeMessage();
     }
 
     std::shared_ptr<const Kit> SamplitProcessor::getKit() const

@@ -50,7 +50,7 @@ namespace samplit
     {
         setWantsKeyboardFocus (true);
         instrument = processor.getInstrument();
-        kit = processor.isServiceMode() ? nullptr : processor.getKit();
+        kit = processor.getKit();
         rebuildKeyInfo();
         processor.addChangeListener (this);
         startTimerHz (30);
@@ -164,7 +164,7 @@ namespace samplit
     void KeyboardView::changeListenerCallback (juce::ChangeBroadcaster*)
     {
         instrument = processor.getInstrument();
-        kit = processor.isServiceMode() ? nullptr : processor.getKit();
+        kit = processor.getKit();
         rebuildKeyInfo();
         repaint();
     }

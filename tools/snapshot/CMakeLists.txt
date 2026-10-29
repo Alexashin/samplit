@@ -23,7 +23,6 @@ target_compile_options(samplit-snapshot PRIVATE $<$<CXX_COMPILER_ID:MSVC>:/utf-8
 
 target_compile_definitions(samplit-snapshot PRIVATE
     JucePlugin_Name="Samplit"
-    SAMPLIT_SERVICE_MODE=0
     SAMPLIT_OFFLINE_LICENSE=1
     JUCE_MODAL_LOOPS_PERMITTED=1
     JUCE_WEB_BROWSER=0

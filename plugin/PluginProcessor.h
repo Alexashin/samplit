@@ -175,10 +175,6 @@ namespace samplit
         Pick getPickChoice (int choice) const;
         void setPickChoice (int choice, Pick);
 
-        // Служебный режим: играет сэмплер с ручной раскладкой, кит молчит. В релизе переключателя нет
-        void setServiceMode (bool);
-        bool isServiceMode() const noexcept { return serviceMode.load(); }
-
         // Имя пресета в состоянии проекта (сам пресет подгружает загрузчик пакетов)
         juce::String getPresetName() const;
         void setPresetName (const juce::String&);
@@ -279,7 +275,6 @@ namespace samplit
         std::map<juce::String, float> savedPieces;          // по id барабана, под stateLock
         std::array<juce::AudioParameterFloat*, kAutomatedMics> levelParams {}, panParams {};
         bool restoreMixPending = false;                     // только message thread
-        std::atomic<bool> serviceMode { false };
         std::atomic<bool> kitLoading { false };
         std::atomic<float> kitProgress { 0.0f };
         std::shared_ptr<std::atomic<bool>> kitCancel;       // только message thread

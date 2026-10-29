@@ -42,7 +42,7 @@ elseif (-not $Out) {
 New-Item -ItemType Directory -Force (Split-Path $Out) | Out-Null
 
 $term = @(if ($Days -gt 0) { '--days', "$Days" } else { '--perpetual' })
-$who = if ($AnyMachine) { @('--any-machine') } else { @('--fingerprint', $Code) }
+$who = @(if ($AnyMachine) { '--any-machine' } else { '--fingerprint', $Code })
 $id = 'L-' + (Get-Date -Format 'yyyyMMdd-HHmmss')
 & $python (Join-Path $root 'tools\make_token.py') @who --user $User --id $id @term --out $Out
 if ($LASTEXITCODE -ne 0) { throw 'выпуск лицензии не прошёл' }

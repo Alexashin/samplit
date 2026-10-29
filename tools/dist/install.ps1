@@ -32,7 +32,7 @@ $link.TargetPath = Join-Path $appDir 'Samplit.exe'
 $link.WorkingDirectory = $appDir
 $link.Save()
 
-Write-Host '3/4  Пакеты с сэмплами и пресеты (около 1 ГБ, подождите)'
+Write-Host '3/4  Пресеты и пакеты с сэмплами, если они есть в дистрибутиве (с пакетами около 1 ГБ, подождите)'
 if (Test-Path (Join-Path $src 'Data\packs\*.splpack')) { Copy-Item (Join-Path $src 'Data\packs\*.splpack') (Join-Path $data 'packs') -Force }
 # Манифесты для режима «Моя библиотека…» (звук из папки с WAV, без пакетов)
 if (Test-Path (Join-Path $src 'Data\manifests')) { Copy-Item (Join-Path $src 'Data\manifests\*.json') (Join-Path $data 'manifests') -Force }

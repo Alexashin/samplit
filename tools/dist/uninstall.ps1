@@ -13,7 +13,8 @@ $paths = @(
     (Join-Path $env:LOCALAPPDATA 'Programs\Samplit'),
     (Join-Path ([Environment]::GetFolderPath('Desktop')) 'Samplit.lnk'),
     (Join-Path $data 'packs'),
-    (Join-Path $data 'presets')
+    (Join-Path $data 'presets'),
+    (Join-Path $data 'manifests')
 )
 foreach ($p in $paths) {
     if (Test-Path $p) { Remove-Item $p -Recurse -Force; Write-Host "удалено: $p" }

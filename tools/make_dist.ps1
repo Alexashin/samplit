@@ -23,7 +23,7 @@ $artefacts = Join-Path $root 'build\Release\plugin\Samplit_artefacts\Release'
 $packs = Join-Path $env:APPDATA 'Samplit\packs'
 $out = Join-Path $root "dist\Samplit-$version"
 
-foreach ($need in @((Join-Path $artefacts 'VST3\Samplit.vst3'), (Join-Path $artefacts 'Standalone\Samplit.exe')) + $(if (-not $Lite) { $packs })) {
+foreach ($need in @((Join-Path $artefacts 'VST3\Samplit.vst3'), (Join-Path $artefacts 'Standalone\Samplit.exe')) + $(if (-not $Lite) { $packs }) + (Join-Path $root 'sample_library\packs-src')) {
     if (-not (Test-Path $need)) { throw "не найдено: $need" }
 }
 
