@@ -196,7 +196,6 @@ TEST_CASE ("wav to pack to decoded audio is bit exact, quiet tail kept", "[pack]
     REQUIRE (reader->decodeChunk (key, id, back, error));
     REQUIRE (back.frames == 6000);
     REQUIRE (back.samples == audio.samples);
-    CHECK (trimmedLength (back, -60.0) < back.frames);  // обрезка бы сработала, но пакет её не применяет сам
 }
 
 TEST_CASE ("toFloat24 keeps every 24-bit value exactly", "[pack]")
@@ -229,19 +228,6 @@ TEST_CASE ("silence and tiny clips encode", "[pack]")
     audio.frames = 0;
     audio.samples.clear();
     REQUIRE_FALSE (encodeFlac (audio, flac, error));
-}
-
-TEST_CASE ("toInt16 rounds and clamps", "[pack]")
-{
-    DecodedAudio a;
-    a.frames = 5;
-    a.samples = { 0, 255, 256, -8388608, 8388607 };
-    const auto s = toInt16 (a);
-    REQUIRE (s[0] == 0);
-    REQUIRE (s[1] == 1);        // 255/256 округляется вверх
-    REQUIRE (s[2] == 1);
-    REQUIRE (s[3] == -32768);
-    REQUIRE (s[4] == 32767);    // 8388607/256 = 32767,996: ограничение без переполнения
 }
 
 TEST_CASE ("pack hex keys", "[pack]")
@@ -695,54 +681,6 @@ TEST_CASE ("peakOf finds the loudest sample and zero for silence", "[pack]")
     REQUIRE (peakOf (a) == 0);
     a.samples = { -8388608 };
     REQUIRE (peakOf (a) == 8388608);
-}
-
-TEST_CASE ("trimmedLength cuts a quiet tail in 10 ms blocks", "[pack]")
-{
-    // 44100 Гц: блок 441 отсчёт. Громкий участок 5000 отсчётов, дальше тишина около -90 дБ
-    DecodedAudio a;
-    a.sampleRate = 44100.0;
-    a.frames = 20000;
-    a.samples.assign (20000, 0);
-    for (int i = 0; i < 5000; ++i)
-        a.samples[(size_t) i] = (i % 2 == 0) ? 600000 : -600000;  // около -23 дБ
-    for (int i = 5000; i < 20000; ++i)
-        a.samples[(size_t) i] = (i % 2 == 0) ? 200 : -200;       // около -92 дБ
-
-    const int keep = trimmedLength (a, -60.0);
-    REQUIRE (keep >= 5000);
-    REQUIRE (keep < 5000 + 441);  // не дальше конца блока, в котором закончился громкий звук
-    REQUIRE (keep < 20000);
-
-    SECTION ("a lower threshold keeps the faint tail")
-    {
-        REQUIRE (trimmedLength (a, -100.0) == 20000);
-    }
-    SECTION ("a tail that is loud enough is kept")
-    {
-        for (int i = 19000; i < 20000; ++i)
-            a.samples[(size_t) i] = (i % 2 == 0) ? 100000 : -100000;  // около -38 дБ
-        REQUIRE (trimmedLength (a, -60.0) == 20000);
-    }
-    SECTION ("pure silence is left alone")
-    {
-        std::fill (a.samples.begin(), a.samples.end(), 0);
-        REQUIRE (trimmedLength (a, -60.0) == 20000);
-    }
-    SECTION ("very short clips are left alone")
-    {
-        DecodedAudio tiny;
-        tiny.sampleRate = 44100.0;
-        tiny.frames = 100;
-        tiny.samples.assign (100, 10);
-        REQUIRE (trimmedLength (tiny, -60.0) == 100);
-    }
-    SECTION ("a sound shorter than one block still leaves one block")
-    {
-        std::fill (a.samples.begin(), a.samples.end(), 0);
-        a.samples[3] = 5000000;
-        REQUIRE (trimmedLength (a, -60.0) == 441);
-    }
 }
 
 TEST_CASE ("verifyPack reports files made of zeros", "[pack]")

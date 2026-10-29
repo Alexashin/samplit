@@ -495,13 +495,13 @@ TEST_CASE ("kit: a piece does not choke itself", "[kit]")
     REQUIRE (std::abs (r.level (1) - 0.5f) < 1e-4f);
 }
 
-TEST_CASE ("kit: int16 clips play at the right level and the rate is converted", "[kit]")
+TEST_CASE ("kit: clips play at the right level and the rate is converted", "[kit]")
 {
     KitBuilder b;
     b.mic ("m", 1);
     const int p = b.piece ("p");
     b.hit (p, b.layer (p, 1, 127), 60, { 0.0f });
-    b.kit->pieces[0].hits[0].files[0].clip = DecodedClip::fromInt16 (std::vector<int16_t> (44100, 16384), 44100.0);
+    b.kit->pieces[0].hits[0].files[0].clip = DecodedClip::fromFloat (std::vector<float> (44100, 0.5f), 44100.0);
     const auto kit = b.done();
 
     Rig r;

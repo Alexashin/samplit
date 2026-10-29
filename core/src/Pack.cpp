@@ -119,38 +119,6 @@ namespace samplit::pack
         return (int) peak;
     }
 
-    int trimmedLength (const DecodedAudio& audio, double thresholdDb)
-    {
-        const int block = std::max (1, (int) std::lround (audio.sampleRate * 0.010));
-        if (audio.frames <= block || audio.sampleRate <= 0.0)
-            return audio.frames;
-
-        const double limit = std::pow (10.0, thresholdDb / 20.0) * 8388608.0;  // порог RMS в единицах отсчёта
-        const double limitSq = limit * limit;
-
-        for (int end = audio.frames; end > 0; end -= block)
-        {
-            const int begin = std::max (0, end - block);
-            double sum = 0.0;
-            for (int i = begin; i < end; ++i)
-                sum += (double) audio.samples[(size_t) i] * (double) audio.samples[(size_t) i];
-            if (sum / (double) (end - begin) >= limitSq)
-                return std::max (block, end);
-        }
-        return audio.frames;  // громких блоков нет: не трогаем, это решает проверка на нули
-    }
-
-    std::vector<int16_t> toInt16 (const DecodedAudio& audio)
-    {
-        std::vector<int16_t> out (audio.samples.size());
-        for (size_t i = 0; i < out.size(); ++i)
-        {
-            const int32_t v = (audio.samples[i] + 128) >> 8;
-            out[i] = (int16_t) std::clamp (v, -32768, 32767);
-        }
-        return out;
-    }
-
     std::vector<float> toFloat24 (const DecodedAudio& audio)
     {
         std::vector<float> out (audio.samples.size());

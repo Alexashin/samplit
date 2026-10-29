@@ -10,26 +10,17 @@ namespace samplit
 {
     namespace
     {
-        constexpr float kInt16Scale = 1.0f / 32768.0f;
-
         // Один микрофонный голос на [start, end). false: голос закончился
-        template <bool S16, bool Mono>
+        template <bool Mono>
         bool renderVoice (const DecodedClip& clip, double& position, double step, int& fadeLeft, int fadeLength,
                           float* left, float* right, float gainL, float gainR, int start, int end) noexcept
         {
             const int frames = clip.frames();
-            const int16_t* p16 = clip.s16.data();
             const float* pf = clip.f32.data();
             // Частоты совпадают и высота не сдвинута: позиция целая, интерполировать нечего
             const bool exact = step == 1.0;
 
-            auto at = [&] (int k) noexcept -> float
-            {
-                if constexpr (S16)
-                    return (float) p16[k] * kInt16Scale;
-                else
-                    return pf[k];
-            };
+            auto at = [&] (int k) noexcept -> float { return pf[k]; };
 
             for (int i = start; i < end; ++i)
             {
@@ -398,12 +389,8 @@ namespace samplit
                 const float gainR = mono ? 0.0f : gain * std::min (1.0f, 1.0f + pan);
 
                 bool alive;
-                if (v.clip->isInt16())
-                    alive = mono ? renderVoice<true, true> (*v.clip, v.position, v.step, v.fadeLeft, fadeLength, left, right, gainL, gainR, start, end)
-                                 : renderVoice<true, false> (*v.clip, v.position, v.step, v.fadeLeft, fadeLength, left, right, gainL, gainR, start, end);
-                else
-                    alive = mono ? renderVoice<false, true> (*v.clip, v.position, v.step, v.fadeLeft, fadeLength, left, right, gainL, gainR, start, end)
-                                 : renderVoice<false, false> (*v.clip, v.position, v.step, v.fadeLeft, fadeLength, left, right, gainL, gainR, start, end);
+                alive = mono ? renderVoice<true> (*v.clip, v.position, v.step, v.fadeLeft, fadeLength, left, right, gainL, gainR, start, end)
+                             : renderVoice<false> (*v.clip, v.position, v.step, v.fadeLeft, fadeLength, left, right, gainL, gainR, start, end);
 
                 if (! alive)
                 {

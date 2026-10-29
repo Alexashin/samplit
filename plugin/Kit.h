@@ -11,29 +11,19 @@
 
 namespace samplit
 {
-    // Декодированный моно-файл удара. Хранится как int16 (вдвое меньше памяти, чем float) или как float.
+    // Декодированный моно-файл удара: float32, 24 бит без потерь (значение / 8388608).
     // После публикации не меняется, поэтому его можно читать из audio thread.
     struct DecodedClip
     {
-        std::vector<int16_t> s16;
         std::vector<float> f32;
         double sampleRate = 44100.0;
 
-        int frames() const noexcept { return s16.empty() ? (int) f32.size() : (int) s16.size(); }
-        bool isInt16() const noexcept { return ! s16.empty(); }
+        int frames() const noexcept { return (int) f32.size(); }
 
         static std::shared_ptr<const DecodedClip> fromFloat (std::vector<float> data, double rate)
         {
             auto c = std::make_shared<DecodedClip>();
             c->f32 = std::move (data);
-            c->sampleRate = rate;
-            return c;
-        }
-
-        static std::shared_ptr<const DecodedClip> fromInt16 (std::vector<int16_t> data, double rate)
-        {
-            auto c = std::make_shared<DecodedClip>();
-            c->s16 = std::move (data);
             c->sampleRate = rate;
             return c;
         }

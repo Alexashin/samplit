@@ -292,7 +292,6 @@ TEST_CASE ("loadKit builds a playable kit from a pack", "[loader]")
     REQUIRE (h0.files[0].clip != nullptr);
     CHECK (h0.files[0].gainDb == -3.0f);
     CHECK (h0.files[0].clip->frames() == 1000);
-    CHECK_FALSE (h0.files[0].clip->isInt16());
     CHECK (h0.files[0].clip->f32[10] == pack::toFloat24 (tone (1000, 100000))[10]);
     CHECK (res.memoryBytes == 3 * 1000 * 4);
 
@@ -517,7 +516,6 @@ TEST_CASE ("loadKit plays a local WAV library in full length, 24-bit exact, with
     REQUIRE (res.ok());
     const auto& clip = *res.kit->pieces[0].hits[0].files[0].clip;
     REQUIRE (clip.frames() == 50000);
-    CHECK_FALSE (clip.isInt16());
     CHECK (clip.f32[10] == (float) audio.samples[10] / 8388608.0f);
     CHECK (clip.f32[49999] == (float) audio.samples[49999] / 8388608.0f);
 
