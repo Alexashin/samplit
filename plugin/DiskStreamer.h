@@ -25,7 +25,7 @@ namespace samplit
     class DiskStreamer : private juce::Thread
     {
     public:
-        static constexpr int kMaxStreams = 512;         // одновременно читаемых хвостов
+        static constexpr int kMaxStreams = 1024;        // одновременно читаемых хвостов
         static constexpr int kRingFrames = 32768;       // степень двойки: 0,74 с при 44,1 кГц
         static constexpr int kChunkFrames = 8192;       // порция чтения с диска
         static constexpr int kRingMask = kRingFrames - 1;
