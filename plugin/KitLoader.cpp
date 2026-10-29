@@ -495,6 +495,18 @@ namespace samplit
             return res;
         }
 
+        // Файл, разрезанный на голову и хвост (tailChunk), загрузчик пока не собирает: молча играть одну голову нельзя
+        for (const auto& pk : packs)
+            for (const auto& mp : pk.manifest.pieces)
+                for (const auto& mh : mp.hits)
+                    for (const auto& [micId, f] : mh.files)
+                        if (f.tailChunk >= 0)
+                        {
+                            res.error = "Пакет "_s + pk.id + ": удар "_s + mh.id + ", микрофон "_s + micId
+                                        + ": файл разрезан на голову и хвост (tailChunk), такой формат пока не поддерживается"_s;
+                            return res;
+                        }
+
         // 2. Модель: микрофоны, барабаны, слои, удары (пока без звука)
         auto kit = std::make_shared<Kit>();
         kit->id = preset.id.toStdString();

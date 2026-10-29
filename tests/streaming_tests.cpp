@@ -94,6 +94,34 @@ namespace
         return kit;
     }
 
+    // Две клавиши (60 и 62) одного барабана, на каждой свой клип
+    std::shared_ptr<const Kit> twoNoteKit (ClipPtr a, ClipPtr b)
+    {
+        auto kit = std::make_shared<Kit>();
+        kit->mics.push_back ({ "m", "m", "close", 0 });
+        Piece p;
+        p.id = "p";
+        p.name = "p";
+        p.layers.push_back ({ "l0", "", 1, 127 });
+        int n = 0;
+        for (const auto& clip : { a, b })
+        {
+            Hit h;
+            h.id = "h" + std::to_string (n);
+            h.layer = 0;
+            h.key = n == 0 ? 60 : 62;
+            h.velLo = 1;
+            h.velHi = 127;
+            h.files.push_back ({ clip, 0.0f });
+            p.hits.push_back (h);
+            ++n;
+        }
+        kit->pieces.push_back (p);
+        kit->mode = HitSelect::Live;
+        REQUIRE (kit->buildIndex());
+        return kit;
+    }
+
     // Играет одну ноту и возвращает левый канал Main за заданное число блоков. pumpWith: стример без потока
     // (после каждого блока делается несколько проходов чтения)
     std::vector<float> playBlocks (KitEngine& engine, int blocks, DiskStreamer* pumpWith, int pumpsPerBlock = 3, int block = kBlock)
@@ -289,21 +317,300 @@ TEST_CASE ("streamer slots run out gracefully", "[stream]")
     const auto wav = writeWav24 (streamDir().getChildFile ("slots.wav"), noise24 (kTotal));
     const auto clip = streamedClip (wav, 1000);
 
-    DiskStreamer streamer (false);
+    DiskStreamer streamer (false, 4, 2);        // максимум 4 ячейки, блоки по 2
+    streamer.reserve (4);
+    CHECK (streamer.getAllocatedSlots() == 4);
     std::vector<int> slots;
-    for (int i = 0; i < DiskStreamer::kMaxStreams; ++i)
+    for (int i = 0; i < 4; ++i)
     {
         slots.push_back (streamer.acquire (*clip, nullptr));
         REQUIRE (slots.back() >= 0);
     }
     CHECK (streamer.acquire (*clip, nullptr) == -1);
     CHECK (streamer.noSlot.load() == 1);
+    CHECK (streamer.acquire (*clip, nullptr, false) == -1);      // повторная попытка не считается отказом
+    CHECK (streamer.noSlot.load() == 1);
+    streamer.pump();
+    CHECK (streamer.getAllocatedSlots() == 4);                   // больше максимума не растёт
 
     for (int s : slots)
         streamer.release (s);
     streamer.pump();
     CHECK (streamer.numActive() == 0);
     CHECK (streamer.acquire (*clip, nullptr) >= 0);
+}
+
+TEST_CASE ("ring memory is allocated lazily by blocks up to the maximum", "[stream]")
+{
+    const auto wav = writeWav24 (streamDir().getChildFile ("lazy.wav"), noise24 (kTotal));
+    const auto clip = streamedClip (wav, 1000);
+
+    {
+        DiskStreamer fresh (false);
+        CHECK (fresh.getAllocatedBlocks() == 0);        // пустой экземпляр: 0 МБ
+        CHECK (fresh.getMaxSlots() == 2048);
+        CHECK (DiskStreamer::kMaxStreams / DiskStreamer::kBlockSlots == 32);
+    }
+
+    DiskStreamer streamer (false, 6, 2);
+    CHECK (streamer.getAllocatedBlocks() == 0);
+    CHECK (streamer.acquire (*clip, nullptr) == -1);    // нечем: поток чтения получает сигнал и выделит блок
+    streamer.pump();
+    CHECK (streamer.getAllocatedBlocks() == 1);
+
+    std::vector<int> slots;
+    for (int i = 0; i < 2; ++i)
+        slots.push_back (streamer.acquire (*clip, nullptr));
+    CHECK (slots[0] >= 0);
+    CHECK (slots[1] >= 0);
+    streamer.pump();                                    // занято больше 3/4: запас выделяется заранее
+    CHECK (streamer.getAllocatedBlocks() == 2);
+    for (int i = 0; i < 4; ++i)
+        slots.push_back (streamer.acquire (*clip, nullptr));
+    for (int i = 0; i < 6; ++i)
+        streamer.pump();
+    CHECK (streamer.getAllocatedBlocks() == 3);
+    CHECK (streamer.getAllocatedSlots() == 6);
+    CHECK (streamer.acquire (*clip, nullptr) >= 0);     // два оставшихся места третьего блока
+    CHECK (streamer.acquire (*clip, nullptr) >= 0);
+    CHECK (streamer.acquire (*clip, nullptr) == -1);
+    streamer.pump();
+    CHECK (streamer.getAllocatedSlots() == 6);          // максимум
+}
+
+TEST_CASE ("a new strike plays whole when slots are scarce and the old one fades smoothly", "[stream]")
+{
+    const auto sa = std::vector<int32_t> ((size_t) kTotal, 4194304);    // 0,5
+    const auto sb = noise24 (kTotal);
+    const auto wavA = writeWav24 (streamDir().getChildFile ("scarceA.wav"), sa);
+    const auto wavB = writeWav24 (streamDir().getChildFile ("scarceB.wav"), sb);
+
+    DiskStreamer streamer (false, 1, 1);        // одна ячейка на всех
+    KitEngine engine;
+    engine.setStreamer (&streamer);
+    engine.prepare (44100.0);
+    const auto kit = twoNoteKit (streamedClip (wavA, 4000), streamedClip (wavB, 4000));
+    engine.setKit (kit.get());
+
+    REQUIRE (engine.noteOn (60, 100).voices == 1);
+    playBlocks (engine, 4, &streamer);
+    REQUIRE (engine.noteOn (62, 100).voices == 1);
+    const int blocks = kTotal / kBlock + 6;
+    const auto second = playBlocks (engine, blocks, &streamer);
+
+    const auto ref = referenceRender (sb, 44100.0, blocks);
+    REQUIRE (second.size() == ref.size());
+
+    // Остаток после вычитания эталона удара B это затухание удара A: плавное, 10 мс, потом тишина
+    std::vector<float> rest (second.size());
+    for (size_t i = 0; i < rest.size(); ++i)
+        rest[i] = second[i] - ref[i];
+    CHECK (std::abs (rest[0] - 0.5f) < 1e-5f);
+    float maxJump = 0.0f;
+    for (size_t i = 1; i < 500; ++i)
+        maxJump = std::max (maxJump, std::abs (rest[i] - rest[i - 1]));
+    CHECK (maxJump < 0.002f);                           // шаг спада 0,5 / 441 = 0,0011
+    for (size_t i = 460; i < rest.size(); ++i)
+        REQUIRE (std::abs (rest[i]) < 1e-5f);           // B звучит целиком, до последнего отсчёта
+
+    const auto health = engine.getHealth();
+    CHECK (health.underruns == 0);
+    CHECK (health.steals == 1);
+    CHECK (health.hardSteals == 0);
+    CHECK (health.readErrors == 0);
+    CHECK (engine.getNumActiveStrikes() == 0);
+}
+
+TEST_CASE ("strikes are evicted softly before the hard limit", "[stream]")
+{
+    const std::vector<float> data (200000, 0.01f);
+    const auto clip = DecodedClip::fromFloat (data, 44100.0);
+    const auto kit = oneHitKit (clip);
+
+    {
+        KitEngine engine;
+        engine.prepare (44100.0);
+        engine.setKit (kit.get());
+        float peak = 0.0f;
+        for (int i = 0; i < 700; ++i)
+        {
+            REQUIRE (engine.noteOn (60, 100).voices == 1);
+            for (float v : playBlocks (engine, 1, nullptr, 3, 64))
+            {
+                REQUIRE (std::isfinite (v));
+                peak = std::max (peak, std::abs (v));
+            }
+            CHECK (engine.getNumActiveStrikes() <= KitEngine::kMaxStrikes);
+        }
+        const auto h = engine.getHealth();
+        CHECK (h.steals > 0);
+        CHECK (h.hardSteals == 0);
+        CHECK (peak < 0.01f * (float) KitEngine::kMaxStrikes + 0.001f);
+    }
+    {
+        // Без рендера между ударами затухание не успевает освободить место: срабатывает жёсткое вытеснение
+        KitEngine engine;
+        engine.prepare (44100.0);
+        engine.setKit (kit.get());
+        for (int i = 0; i < 300; ++i)
+            REQUIRE (engine.noteOn (60, 100).voices == 1);
+        CHECK (engine.getNumActiveStrikes() == KitEngine::kMaxStrikes);
+        CHECK (engine.getHealth().hardSteals > 0);
+    }
+}
+
+TEST_CASE ("the last sample of a clip is played", "[stream]")
+{
+    const auto samples = noise24 (kTotal);
+    const auto floats = toFloats (samples);
+
+    {
+        KitEngine engine;
+        engine.prepare (44100.0);
+        const auto kit = oneHitKit (DecodedClip::fromFloat (floats, 44100.0));
+        engine.setKit (kit.get());
+        REQUIRE (engine.noteOn (60, 100).voices == 1);
+        const auto out = playBlocks (engine, kTotal / kBlock + 2, nullptr);
+        CHECK (out[(size_t) kTotal - 1] == floats.back());
+        CHECK (out[(size_t) kTotal] == 0.0f);
+    }
+    {
+        const auto wav = writeWav24 (streamDir().getChildFile ("last.wav"), samples);
+        DiskStreamer streamer (false);
+        KitEngine engine;
+        engine.setStreamer (&streamer);
+        engine.prepare (44100.0);
+        const auto kit = oneHitKit (streamedClip (wav, 4000));
+        engine.setKit (kit.get());
+        REQUIRE (engine.noteOn (60, 100).voices == 1);
+        const auto out = playBlocks (engine, kTotal / kBlock + 2, &streamer);
+        CHECK (out[(size_t) kTotal - 1] == floats.back());
+        CHECK (out[(size_t) kTotal] == 0.0f);
+        CHECK (engine.getHealth().underruns == 0);
+    }
+}
+
+TEST_CASE ("health counts read errors and names the file", "[stream]")
+{
+    {
+        const auto wav = writeWav24 (streamDir().getChildFile ("gone-health.wav"), noise24 (kTotal));
+        const auto clip = streamedClip (wav, 4000);
+        REQUIRE (wav.deleteFile());
+
+        DiskStreamer streamer (false);
+        KitEngine engine;
+        engine.setStreamer (&streamer);
+        engine.prepare (44100.0);
+        const auto kit = oneHitKit (clip);
+        engine.setKit (kit.get());
+        REQUIRE (engine.noteOn (60, 100).voices == 1);
+        playBlocks (engine, 40, &streamer);
+        const auto h = engine.getHealth();
+        CHECK (h.readErrors >= 1);
+        CHECK (h.lastError.contains ("gone-health.wav"));
+        CHECK (h.underruns == 1);
+
+        engine.resetHealth();
+        const auto cleared = engine.getHealth();
+        CHECK (cleared.readErrors == 0);
+        CHECK (cleared.underruns == 0);
+        CHECK (cleared.lastError.isEmpty());
+    }
+    {
+        // Файл укоротили после загрузки кита: чтение посреди хвоста не удаётся
+        const auto wav = writeWav24 (streamDir().getChildFile ("cut-health.wav"), noise24 (kTotal));
+        const auto clip = streamedClip (wav, 4000);
+        juce::MemoryBlock all;
+        REQUIRE (wav.loadFileAsData (all));
+        REQUIRE (wav.replaceWithData (all.getData(), 30000));
+
+        DiskStreamer streamer (false);
+        KitEngine engine;
+        engine.setStreamer (&streamer);
+        engine.prepare (44100.0);
+        const auto kit = oneHitKit (clip);
+        engine.setKit (kit.get());
+        REQUIRE (engine.noteOn (60, 100).voices == 1);
+        const auto out = playBlocks (engine, 60, &streamer);
+        for (float v : out)
+            REQUIRE (std::isfinite (v));
+        const auto h = engine.getHealth();
+        CHECK (h.readErrors >= 1);
+        CHECK (h.lastError.contains ("cut-health.wav"));
+        CHECK (h.underruns == 1);
+        CHECK (engine.getNumActiveStrikes() == 0);
+    }
+}
+
+TEST_CASE ("many strikes with few slots stay clean and finite", "[stream]")
+{
+    const auto samples = noise24 (kTotal);
+    const auto wav = writeWav24 (streamDir().getChildFile ("stress.wav"), samples);
+
+    DiskStreamer streamer (false, 4, 2);
+    KitEngine engine;
+    engine.setStreamer (&streamer);
+    engine.prepare (44100.0);
+    const auto kit = oneHitKit (streamedClip (wav, 4000));
+    engine.setKit (kit.get());
+
+    float peak = 0.0f;
+    for (int i = 0; i < 150; ++i)
+    {
+        REQUIRE (engine.noteOn (60, 100).voices == 1);
+        for (float v : playBlocks (engine, 2, &streamer))
+        {
+            REQUIRE (std::isfinite (v));
+            peak = std::max (peak, std::abs (v));
+        }
+    }
+    const auto h = engine.getHealth();
+    CHECK (h.underruns == 0);
+    CHECK (h.readErrors == 0);
+    CHECK (h.steals > 0);
+    CHECK (peak < 32.0f);
+    CHECK (streamer.getAllocatedSlots() <= 4);
+}
+
+TEST_CASE ("a manifest with a split file (tailChunk) is rejected clearly", "[stream][loader]")
+{
+    auto dir = juce::File::getSpecialLocation (juce::File::tempDirectory).getChildFile ("samplit-tests").getChildFile ("streaming-tail");
+    dir.deleteRecursively();
+    const auto lib = dir.getChildFile ("lib");
+    const auto manifests = dir.getChildFile ("manifests");
+    lib.getChildFile ("KICK/in").createDirectory();
+    manifests.createDirectory();
+    writeWav24 (lib.getChildFile ("KICK/in/0-01.wav"), noise24 (5000));
+
+    pack::Manifest m;
+    m.id = "local";
+    m.mics = { { "kick_in", "Kick In", "close", 1 } };
+    pack::Piece p;
+    p.id = "kick";
+    p.name = "Kick";
+    p.keys = { 36 };
+    p.layers = { { "all", "center", 1, 127 } };
+    pack::Hit hit;
+    hit.id = "h";
+    hit.layer = "all";
+    hit.key = 36;
+    hit.files["kick_in"].path = "KICK/in/0-01.wav";
+    hit.files["kick_in"].tailChunk = 3;
+    p.hits = { hit };
+    m.pieces.push_back (p);
+    manifests.getChildFile ("local.json").replaceWithText (m.toJson());
+
+    KitLoadOptions opts;
+    opts.libraryRoot = lib;
+    opts.manifestDir = manifests;
+    opts.threads = 1;
+    Preset preset;
+    preset.id = "t";
+    preset.name = "T";
+    preset.packs = { "local" };
+    const auto res = loadKit (preset, opts);
+    CHECK_FALSE (res.ok());
+    CHECK (res.error.contains ("tailChunk"));
 }
 
 TEST_CASE ("offline render waits for the disk and matches the in-memory render", "[stream]")

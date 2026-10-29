@@ -157,6 +157,10 @@ namespace samplit
 
         // Чтение хвостов с диска: счётчики недогрузки (голос затих), нехватки ячеек и ошибок чтения, занятые ячейки
         const DiskStreamer& getStreamer() const noexcept { return streamer; }
+
+        // Message thread: сводка здоровья звука (обрывы, вытеснения, ошибки чтения) и её сброс; сброс идёт при смене кита
+        StreamHealth getHealth() const { return kitEngine.getHealth(); }
+        void resetHealth() { kitEngine.resetHealth(); }
         void collectGarbage (bool force = false);
 
     private:

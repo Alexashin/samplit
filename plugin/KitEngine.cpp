@@ -43,7 +43,7 @@ namespace samplit
             for (int i = start; i < end; ++i)
             {
                 const int idx = (int) position;
-                if (idx + 1 >= frames || idx >= readable)
+                if (idx >= frames || idx >= readable)      // последний отсчёт клипа (frames - 1) тоже играет
                     return false;
 
                 float fade = 1.0f;
@@ -65,8 +65,9 @@ namespace samplit
                 {
                     const float frac = (float) (position - idx);
                     const int im1 = idx > 0 ? idx - 1 : idx;
-                    const int i2 = idx + 2 < frames ? idx + 2 : idx + 1;
-                    value = hermite (at (im1), at (idx), at (idx + 1), at (i2), frac);
+                    const int i1 = idx + 1 < frames ? idx + 1 : idx;
+                    const int i2 = idx + 2 < frames ? idx + 2 : i1;
+                    value = hermite (at (im1), at (idx), at (i1), at (i2), frac);
                 }
 
                 const float s = value * fade;
@@ -97,7 +98,8 @@ namespace samplit
     void KitEngine::prepare (double sampleRate) noexcept
     {
         sr = sampleRate;
-        fadeLength = std::max (1, (int) (0.005 * sr));  // 5 мс на глушение
+        fadeLength = std::max (1, (int) (0.005 * sr));  // 5 мс: недогрузка диска
+        stealFade = std::max (1, (int) (0.010 * sr));   // 10 мс: choke и вытеснение
         for (int i = 0; i < kMaxStrikes; ++i)
             release (i);
         lastHit.fill (-1);
@@ -105,8 +107,44 @@ namespace samplit
             c.fill (0);
     }
 
+    StreamHealth KitEngine::getHealth() const
+    {
+        StreamHealth h;
+        h.steals = steals.load (std::memory_order_relaxed);
+        h.hardSteals = hardSteals.load (std::memory_order_relaxed);
+        h.offlineTimeouts = offlineTimeouts.load (std::memory_order_relaxed);
+        if (streamer != nullptr)
+        {
+            h.underruns = streamer->underruns.load (std::memory_order_relaxed);
+            h.noSlot = streamer->noSlot.load (std::memory_order_relaxed);
+            h.readErrors = streamer->readErrors.load (std::memory_order_relaxed);
+            h.lastError = streamer->getLastError();
+        }
+        return h;
+    }
+
+    void KitEngine::resetHealth()
+    {
+        steals.store (0);
+        hardSteals.store (0);
+        offlineTimeouts.store (0);
+        if (streamer != nullptr)
+            streamer->resetCounters();
+    }
+
     void KitEngine::setKit (const Kit* kit) noexcept
     {
+        if (kit != nullptr && streamer != nullptr)
+        {
+            // Кит со стримящимися клипами: память под хвосты выделяет поток чтения, пока кит ещё не играет
+            bool streamed = false;
+            for (const auto& p : kit->pieces)
+                for (const auto& h : p.hits)
+                    for (const auto& f : h.files)
+                        streamed = streamed || (f.clip != nullptr && f.clip->isStreamed());
+            if (streamed)
+                streamer->reserve (1);
+        }
         if (kit != nullptr)
         {
             selectMode.store ((int) kit->mode);
@@ -175,6 +213,7 @@ namespace samplit
         s.numActive = 0;
         s.piece = -1;
         s.note = -1;
+        s.fading = false;
         for (auto& v : s.voices)
             dropVoice (v);
         strikeKit[(size_t) index].store (nullptr);
@@ -188,11 +227,103 @@ namespace samplit
         v.clip = nullptr;
     }
 
-    void KitEngine::fadeStrike (Strike& s) noexcept
+    void KitEngine::fadeStrike (Strike& s, int frames) noexcept
     {
         for (auto& v : s.voices)
             if (v.clip != nullptr && v.fadeLeft < 0)
-                v.fadeLeft = fadeLength;
+            {
+                v.fadeLeft = frames;
+                v.fadeTotal = frames;
+                v.wantStream = false;       // голос затихает: хвост ему уже не нужен
+            }
+        s.fading = true;
+    }
+
+    // Ячейки отдаёт только затухающий удар: они освободятся, когда голоса дойдут до конца затухания (dropVoice)
+    int KitEngine::stealStreams (int needed, int exclude) noexcept
+    {
+        int freed = 0;
+        while (freed < needed)
+        {
+            int best = -1, bestCount = 0;
+            for (int i = 0; i < kMaxStrikes; ++i)
+            {
+                if (i == exclude || strikeKit[(size_t) i].load() == nullptr || strikes[(size_t) i].fading)
+                    continue;
+                int count = 0;
+                for (const auto& v : strikes[(size_t) i].voices)
+                    count += (v.clip != nullptr && v.stream >= 0 && v.fadeLeft < 0) ? 1 : 0;
+                if (count > 0 && (best < 0 || strikes[(size_t) i].age < strikes[(size_t) best].age))
+                {
+                    best = i;
+                    bestCount = count;
+                }
+            }
+            if (best < 0)
+                break;
+            fadeStrike (strikes[(size_t) best], stealFade);
+            steals.fetch_add (1, std::memory_order_relaxed);
+            freed += bestCount;
+        }
+        return freed;
+    }
+
+    // Мало свободных мест под удары: старейший удар заранее уходит в затухание, чтобы не вытеснять жёстко
+    void KitEngine::softEvictStrike() noexcept
+    {
+        int free = 0, fading = 0, oldest = -1;
+        for (int i = 0; i < kMaxStrikes; ++i)
+        {
+            if (strikeKit[(size_t) i].load() == nullptr)
+                ++free;
+            else if (strikes[(size_t) i].fading)
+                ++fading;
+            else if (oldest < 0 || strikes[(size_t) i].age < strikes[(size_t) oldest].age)
+                oldest = i;
+        }
+        if (free + fading < kSoftFreeStrikes && oldest >= 0)
+        {
+            fadeStrike (strikes[(size_t) oldest], stealFade);
+            steals.fetch_add (1, std::memory_order_relaxed);
+        }
+    }
+
+    // Офлайн-рендер: ждёт хвост (или свободную ячейку) вместо затухания. Возвращает, сколько кадров стало доступно.
+    // Предел: 5 с на голос и общий offlineBudgetMs на вызов render()
+    int KitEngine::waitForStream (MicVoice& v, const Kit* kit, double target) noexcept
+    {
+        const auto begin = juce::Time::getMillisecondCounter();
+        const int limit = std::max (0, std::min (v.stream >= 0 ? 5000 : 250, offlineBudgetMs));
+        const auto availableNow = [&]() -> int
+        {
+            return v.stream >= 0 ? (int) streamer->available (v.stream) : v.clip->headFrames();
+        };
+
+        int available = availableNow();
+        bool failed = false;
+        while ((double) available < target && (int) (juce::Time::getMillisecondCounter() - begin) < limit)
+        {
+            if (v.stream < 0)
+            {
+                v.stream = streamer->acquire (*v.clip, kit, false);
+                if (v.stream >= 0)
+                    v.wantStream = false;
+            }
+            else if (streamer->hasFailed (v.stream))
+            {
+                failed = true;
+                break;
+            }
+            streamer->kick();
+            std::this_thread::sleep_for (std::chrono::microseconds (200));
+            available = availableNow();
+        }
+
+        const int spent = (int) (juce::Time::getMillisecondCounter() - begin);
+        offlineBudgetMs = std::max (0, offlineBudgetMs - spent);
+        if ((double) available < target && ! failed)
+            offlineTimeouts.fetch_add (1, std::memory_order_relaxed);
+        return available;
     }
 
     int KitEngine::selectHit (const Kit& kit, const NoteMap& map, int note, int velocity) noexcept
@@ -330,9 +461,12 @@ namespace samplit
             for (int i = 0; i < kMaxStrikes; ++i)
                 if (strikeKit[(size_t) i].load() == kit && strikes[(size_t) i].piece != map.piece
                     && kit->pieces[(size_t) strikes[(size_t) i].piece].choke == piece.choke)
-                    fadeStrike (strikes[(size_t) i]);
+                    fadeStrike (strikes[(size_t) i], stealFade);
 
-        // Свободная ячейка или самый старый удар
+        // Мест под удары почти не осталось: старейший удар мягко затухает заранее
+        softEvictStrike();
+
+        // Свободное место или, в крайнем случае, жёсткое вытеснение (предпочтительно уже затухающего, затем самого старого)
         int slot = -1;
         for (int i = 0; i < kMaxStrikes; ++i)
             if (strikeKit[(size_t) i].load() == nullptr)
@@ -342,16 +476,19 @@ namespace samplit
             }
         if (slot < 0)
         {
-            slot = 0;
-            for (int i = 1; i < kMaxStrikes; ++i)
-                if (strikes[(size_t) i].age < strikes[(size_t) slot].age)
-                    slot = i;
+            for (int pass = 0; pass < 2 && slot < 0; ++pass)
+            {
+                for (int i = 0; i < kMaxStrikes; ++i)
+                    if ((pass == 1 || strikes[(size_t) i].fading) && (slot < 0 || strikes[(size_t) i].age < strikes[(size_t) slot].age))
+                        slot = i;
+            }
+            hardSteals.fetch_add (1, std::memory_order_relaxed);
         }
 
         auto& s = strikes[(size_t) slot];
         const float pieceGainNow = map.piece < kMaxPieces ? pieceGain[(size_t) map.piece].load() : 1.0f;
         const float velGain = pieceGainNow * (kit->velocityGain == VelocityGain::Linear ? (float) velocity / 127.0f : 1.0f);
-        int started = 0;
+        int started = 0, missing = 0;
         for (int m = 0; m < (int) hit.files.size(); ++m)
         {
             auto& v = s.voices[(size_t) m];
@@ -366,10 +503,24 @@ namespace samplit
             v.gain = velGain * juce::Decibels::decibelsToGain (file.gainDb, -100.0f);
             v.mic = m;
             v.fadeLeft = -1;
+            v.fadeTotal = fadeLength;
+            v.wantStream = false;
+            v.stealWait = 0;
             if (file.clip->isStreamed() && streamer != nullptr)
+            {
                 v.stream = streamer->acquire (*file.clip, kit);
+                if (v.stream < 0)
+                {
+                    // Ячейки нет: голос играет голову и повторяет захват на каждом куске рендера, а старый удар уступает ячейки
+                    v.wantStream = true;
+                    v.stealWait = std::max (1, (int) (0.03 * sr));
+                    ++missing;
+                }
+            }
             ++started;
         }
+        if (missing > 0)
+            stealStreams (missing, slot);
         for (int m = (int) hit.files.size(); m < Kit::kMaxMics; ++m)
             dropVoice (s.voices[(size_t) m]);
 
@@ -383,6 +534,7 @@ namespace samplit
         s.piece = map.piece;
         s.note = note;
         s.numActive = started;
+        s.fading = false;
         s.age = ++ageCounter;
         strikeKit[(size_t) slot].store (kit);
         return info;
@@ -391,6 +543,7 @@ namespace samplit
     void KitEngine::render (const std::array<float*, kNumOutputs + 1>& outL, const std::array<float*, kNumOutputs + 1>& outR,
                             int start, int end) noexcept
     {
+        offlineBudgetMs = 30000;
         for (int from = start; from < end; from += kRenderChunk)
             renderChunk (outL, outR, from, std::min (end, from + kRenderChunk));
     }
@@ -430,6 +583,19 @@ namespace samplit
                 view.available = view.frames;
                 if (v.clip->isStreamed())
                 {
+                    // Отложенный захват: ячейки не было при ударе. Хвост читается с головы, поэтому начать поздно можно
+                    if (v.stream < 0 && v.wantStream && streamer != nullptr)
+                    {
+                        v.stream = streamer->acquire (*v.clip, kit, false);
+                        if (v.stream >= 0)
+                            v.wantStream = false;
+                        else if ((v.stealWait -= end - start) <= 0)
+                        {
+                            stealStreams (1, si);       // раз в 30 мс, пока ячейки нет
+                            v.stealWait = std::max (1, (int) (0.03 * sr));
+                        }
+                    }
+
                     view.available = v.stream >= 0 ? (int) streamer->available (v.stream) : view.headFrames;
                     view.ring = v.stream >= 0 ? streamer->ring (v.stream) : nullptr;
 
@@ -438,21 +604,18 @@ namespace samplit
                     const double need = v.position + (double) (end - start + fadeLength) * v.step + 4.0;
                     if (v.fadeLeft < 0 && need > (double) view.available && view.available < view.frames)
                     {
-                        if (offline.load (std::memory_order_relaxed) && v.stream >= 0 && ! streamer->hasFailed (v.stream))
+                        if (streamer != nullptr && offline.load (std::memory_order_relaxed)
+                            && (v.stream >= 0 ? ! streamer->hasFailed (v.stream) : v.wantStream))
                         {
-                            const double target = std::min (need, (double) view.frames);
-                            const auto deadline = juce::Time::getMillisecondCounter() + 5000;
-                            while ((double) view.available < target && juce::Time::getMillisecondCounter() < deadline
-                                   && ! streamer->hasFailed (v.stream))
-                            {
-                                streamer->kick();
-                                std::this_thread::sleep_for (std::chrono::microseconds (200));
-                                view.available = (int) streamer->available (v.stream);
-                            }
+                            view.available = waitForStream (v, kit, std::min (need, (double) view.frames));
+                            view.ring = v.stream >= 0 ? streamer->ring (v.stream) : nullptr;
                         }
                         if (need > (double) view.available)
                         {
+                            // Настоящий обрыв: диск не успел или ячейка не нашлась до конца головы
                             v.fadeLeft = fadeLength;
+                            v.fadeTotal = fadeLength;
+                            v.wantStream = false;
                             if (streamer != nullptr)
                                 streamer->underruns.fetch_add (1, std::memory_order_relaxed);
                         }
@@ -460,8 +623,8 @@ namespace samplit
                 }
 
                 bool alive;
-                alive = mono ? renderVoice<true> (view, v.position, v.step, v.fadeLeft, fadeLength, left, right, gainL, gainR, start, end)
-                             : renderVoice<false> (view, v.position, v.step, v.fadeLeft, fadeLength, left, right, gainL, gainR, start, end);
+                alive = mono ? renderVoice<true> (view, v.position, v.step, v.fadeLeft, v.fadeTotal, left, right, gainL, gainR, start, end)
+                             : renderVoice<false> (view, v.position, v.step, v.fadeLeft, v.fadeTotal, left, right, gainL, gainR, start, end);
 
                 if (alive && v.stream >= 0)
                     streamer->setConsumed (v.stream, std::max<int64_t> (0, (int64_t) v.position - 2));

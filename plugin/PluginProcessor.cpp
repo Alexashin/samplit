@@ -176,6 +176,7 @@ namespace samplit
             kit = newKit;
         }
 
+        kitEngine.resetHealth();        // счётчики относятся к прежнему киту
         kitEngine.setKit (newKit.get());
         picks.clear();
         if (newKit != nullptr)

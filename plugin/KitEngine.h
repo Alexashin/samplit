@@ -2,6 +2,8 @@
 
 #include "Kit.h"
 
+#include <juce_core/juce_core.h>
+
 #include <array>
 #include <atomic>
 #include <cstdint>
@@ -16,11 +18,26 @@ namespace samplit
     // Кит и клипы движку не принадлежат: их держит процессор, пока isUsing() возвращает true.
     class DiskStreamer;
 
+    // Сводка здоровья звука: всё, что обрывает или портит воспроизведение. steals (мягкое вытеснение) в норме не показывается
+    struct StreamHealth
+    {
+        uint32_t underruns = 0;         // настоящий обрыв: диск не успел или ячейка не нашлась до конца головы
+        uint32_t steals = 0;            // нормальное вытеснение: старый удар затух (10 мс), ячейка отдана новому
+        uint32_t hardSteals = 0;        // крайний случай: удар вытеснен без затухания
+        uint32_t noSlot = 0;            // отказов acquire ячейки
+        uint32_t readErrors = 0;        // файл не открылся или не читается
+        uint32_t offlineTimeouts = 0;   // офлайн-рендер не дождался диска
+        juce::String lastError;         // «имя.wav (причина)»
+
+        bool operator== (const StreamHealth&) const = default;
+    };
+
     class KitEngine
     {
     public:
         static constexpr int kMaxPieces = 32;    // барабанов с отдельной громкостью
         static constexpr int kMaxStrikes = 256;  // одновременно звучащих ударов (каждый до kMaxMics голосов)
+        static constexpr int kSoftFreeStrikes = 8;   // меньше стольких свободных мест: старейший удар заранее затухает
 
         // Что запустил последний noteOn (для тестов и индикации)
         struct StrikeInfo
@@ -47,6 +64,10 @@ namespace samplit
 
         // Audio thread, раз в блок: офлайн-рендер (экспорт в DAW). Тогда голос ждёт недочитанный хвост вместо затухания
         void setOffline (bool isOffline) noexcept { offline.store (isOffline, std::memory_order_relaxed); }
+
+        // Message thread: сводка здоровья (счётчики движка и стримера, последняя ошибка чтения) и её сброс
+        StreamHealth getHealth() const;
+        void resetHealth();
 
         // Message thread: режим слоёв переключателя Kit::choices[choice]. -1: как в ките
         void setPickChoice (int choice, int pick) noexcept;
@@ -91,6 +112,9 @@ namespace samplit
             int mic = 0;
             int fadeLeft = -1;       // -1: не затухает
             int stream = -1;         // ячейка DiskStreamer с хвостом клипа, -1: хвоста нет
+            int fadeTotal = 1;       // длина начатого затухания в кадрах (знаменатель огибающей)
+            bool wantStream = false; // потоковый клип ещё без ячейки: повторять acquire на каждом куске
+            int stealWait = 0;       // кадров до следующего вытеснения ради этого голоса
         };
 
         struct Strike
@@ -99,6 +123,7 @@ namespace samplit
             int note = -1;
             int numActive = 0;
             uint64_t age = 0;
+            bool fading = false;     // удар уже глушится (choke, вытеснение): повторно не трогать
             std::array<MicVoice, Kit::kMaxMics> voices {};
         };
 
@@ -111,7 +136,12 @@ namespace samplit
                           int start, int end) noexcept;
 
         int selectHit (const Kit&, const NoteMap&, int note, int velocity) noexcept;
-        void fadeStrike (Strike&) noexcept;
+        void fadeStrike (Strike&, int frames) noexcept;
+        // Глушит старейшие не затухающие удары с ячейками стримера, пока не освободится не меньше needed ячеек.
+        // exclude: индекс удара, который не трогать. Возвращает, сколько ячеек освободится
+        int stealStreams (int needed, int exclude) noexcept;
+        void softEvictStrike() noexcept;
+        int waitForStream (MicVoice&, const Kit*, double target) noexcept;
         void dropVoice (MicVoice&) noexcept;     // голос закончился: отпускает ячейку стримера
         void release (int index) noexcept;
         uint32_t nextRandom() noexcept;
@@ -135,7 +165,10 @@ namespace samplit
         uint64_t ageCounter = 0;
         uint32_t rng = 0x9e3779b9u;
         double sr = 44100.0;
-        int fadeLength = 220;
+        int fadeLength = 220;       // 5 мс: недогрузка диска
+        int stealFade = 441;        // 10 мс: choke и вытеснение
+        int offlineBudgetMs = 30000;    // общий предел ожидания диска за один вызов render()
+        std::atomic<uint32_t> steals { 0 }, hardSteals { 0 }, offlineTimeouts { 0 };
 
     public:
         KitEngine();

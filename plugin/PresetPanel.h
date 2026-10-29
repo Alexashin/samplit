@@ -75,6 +75,8 @@ namespace samplit
         juce::String statusText;
         bool statusWarns = false;
         float shownProgress = -1.0f;
+        StreamHealth shownHealth;
+        juce::String healthWarning() const;
 
         JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (PresetPanel)
     };

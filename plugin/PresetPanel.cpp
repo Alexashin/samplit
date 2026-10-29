@@ -369,6 +369,11 @@ namespace samplit
                 statusText << utf8 (". Молчат барабаны пакетов: ") << ids.joinIntoString (", ");
                 statusWarns = true;
             }
+            if (const auto warning = healthWarning(); warning.isNotEmpty())
+            {
+                statusText << ". " << warning;
+                statusWarns = true;
+            }
         }
         else if (const auto& lic = processor.getLicense();
                  lic.getLibraryRoot() != juce::File() && lic.getManifestDir().findChildFiles (juce::File::findFiles, false, "*.json").isEmpty())
@@ -391,11 +396,28 @@ namespace samplit
     void PresetPanel::timerCallback()
     {
         const float progress = processor.isKitLoading() ? processor.getKitLoadProgress() : -1.0f;
-        if (progress != shownProgress)
+        const auto health = processor.getHealth();
+        if (progress != shownProgress || health != shownHealth)
         {
             shownProgress = progress;
+            shownHealth = health;
             updateStatus();
         }
+    }
+
+    // Короткие предупреждения о звуке по приоритету: ошибка чтения, обрывы, жёсткие вытеснения.
+    // Мягкие вытеснения (steals) пользователю не показываются: это норма
+    juce::String PresetPanel::healthWarning() const
+    {
+        const auto h = processor.getHealth();
+        juce::StringArray parts;
+        if (h.readErrors > 0)
+            parts.add (utf8 ("Ошибка чтения файла: ") + (h.lastError.isNotEmpty() ? h.lastError : utf8 ("неизвестный файл")));
+        if (h.underruns > 0)
+            parts.add (utf8 ("Диск не успевает: ") + juce::String (h.underruns) + utf8 (" обрывов"));
+        if (h.hardSteals > 0)
+            parts.add (utf8 ("Не хватило голосов: ") + juce::String (h.hardSteals));
+        return parts.joinIntoString (". ");
     }
 
     juce::String PresetPanel::getTooltip()
