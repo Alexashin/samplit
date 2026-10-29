@@ -1,11 +1,21 @@
 #include "DiskStreamer.h"
 #include "KitEngine.h"
 #include "KitLoader.h"
+#include "PluginProcessor.h"
 
 #include <catch2/catch_test_macros.hpp>
 
+#if defined(_WIN32)
+ #ifndef NOMINMAX
+  #define NOMINMAX
+ #endif
+ #include <windows.h>
+#endif
+
 #include <algorithm>
 #include <chrono>
+#include <cmath>
+#include <cstring>
 #include <cstdlib>
 #include <iostream>
 #include <numeric>
@@ -208,4 +218,150 @@ TEST_CASE ("real library: dense playing in real time without underruns", "[.real
     }
     CHECK (streamer.underruns.load() == 0);
     CHECK (streamer.readErrors.load() == 0);
+}
+
+// Весь путь плагина на настоящей библиотеке: SamplitProcessor, MIDI, реальное время и офлайн-экспорт (setNonRealtime).
+// Офлайн-прогон дважды: звук должен совпасть побитово (экспорт не зависит от скорости диска), недогрузок нет.
+// Параметры: SAMPLIT_HOST_SECONDS (20), SAMPLIT_HOST_HITS (ударов в секунду, 12).
+namespace
+{
+    struct HostRun
+    {
+        uint64_t hash = 0;
+        double maxBlockUs = 0.0;
+        int maxBlockIndex = 0, slowBlocks = 0;      // номер самого долгого блока и сколько блоков дольше 2 мс
+        double meanBlockUs = 0.0;
+        uint32_t underruns = 0, noSlot = 0, readErrors = 0;
+        float peak = 0.0f;
+        bool finite = true;
+    };
+
+    HostRun runHost (const char* libPath, bool offline, double seconds, double hitsPerSecond, int block)
+    {
+        constexpr double rate = 44100.0;
+        const auto repo = juce::File (SAMPLIT_TEST_FIXTURES).getParentDirectory().getParentDirectory();
+        auto dataDir = juce::File::getSpecialLocation (juce::File::tempDirectory).getChildFile ("samplit-tests").getChildFile ("host");
+        dataDir.deleteRecursively();
+        dataDir.getChildFile ("manifests").createDirectory();
+        for (const auto& f : repo.getChildFile ("sample_library/packs-src").findChildFiles (juce::File::findFiles, false, "*.json"))
+            f.copyFileTo (dataDir.getChildFile ("manifests").getChildFile (f.getFileName()));
+
+        auto config = LicenseManager::defaultConfig();
+        config.dataDir = dataDir;
+        auto manager = std::make_unique<LicenseManager> (config);
+        manager->setLibraryRoot (juce::File (libPath));
+
+        SamplitProcessor p;
+        p.setLicenseManager (std::move (manager));
+        p.setNonRealtime (offline);
+        p.setRateAndBufferSizeDetails (rate, block);
+        p.prepareToPlay (rate, block);
+
+        Preset preset;
+        juce::String error;
+        REQUIRE (Preset::fromFile (repo.getChildFile ("tools/presets/studio600-default.json"), preset, error));
+        bool loaded = false;
+        p.selectPreset (preset, [&] (const KitLoadResult& r) { loaded = r.ok(); });
+        const auto until = juce::Time::getMillisecondCounter() + 180000;
+        while ((! loaded || p.isKitLoading()) && juce::Time::getMillisecondCounter() < until)
+            juce::MessageManager::getInstance()->runDispatchLoopUntil (20);
+        REQUIRE (loaded);
+
+        const auto kit = p.getKit();
+        REQUIRE (kit != nullptr);
+        std::vector<int> notes;
+        for (int n = 0; n < 128; ++n)
+            if (kit->notes[(size_t) n].piece >= 0)
+                notes.push_back (n);
+
+        juce::AudioBuffer<float> buffer (std::max (2, p.getTotalNumOutputChannels()), block);
+        // Как аудио-поток в DAW: повышенный приоритет (SAMPLIT_HOST_PRIO=0 отключает, для сравнения)
+        if (std::getenv ("SAMPLIT_HOST_PRIO") == nullptr || std::atoi (std::getenv ("SAMPLIT_HOST_PRIO")) != 0)
+        {
+           #if JUCE_WINDOWS
+            ::SetThreadPriority (::GetCurrentThread(), THREAD_PRIORITY_TIME_CRITICAL);
+           #endif
+        }
+        uint32_t rng = 777;
+        auto next = [&] { rng = rng * 1664525u + 1013904223u; return rng >> 8; };
+
+        HostRun out;
+        out.hash = 1469598103934665603ull;
+        const int blocks = (int) (seconds * rate / block);
+        const double hitsPerBlock = hitsPerSecond * block / rate;
+        double debt = 0.0, total = 0.0;
+        const auto begin = std::chrono::steady_clock::now();
+        for (int b = 0; b < blocks; ++b)
+        {
+            juce::MidiBuffer midi;
+            debt += hitsPerBlock;
+            while (debt >= 1.0)
+            {
+                debt -= 1.0;
+                midi.addEvent (juce::MidiMessage::noteOn (1, notes[next() % notes.size()], (juce::uint8) (1 + next() % 127)),
+                               (int) (next() % (uint32_t) block));
+            }
+
+            buffer.clear();
+            const auto t0 = std::chrono::steady_clock::now();
+            p.processBlock (buffer, midi);
+            const double us = std::chrono::duration<double, std::micro> (std::chrono::steady_clock::now() - t0).count();
+            if (us > out.maxBlockUs)
+                out.maxBlockIndex = b;
+            out.maxBlockUs = std::max (out.maxBlockUs, us);
+            out.slowBlocks += us > 2000.0 ? 1 : 0;
+            total += us;
+
+            for (int ch = 0; ch < std::min (2, buffer.getNumChannels()); ++ch)
+                for (int i = 0; i < block; ++i)
+                {
+                    const float v = buffer.getSample (ch, i);
+                    out.finite = out.finite && std::isfinite (v);
+                    out.peak = std::max (out.peak, std::abs (v));
+                    uint32_t bits;
+                    std::memcpy (&bits, &v, 4);
+                    out.hash = (out.hash ^ bits) * 1099511628211ull;
+                }
+
+            if (! offline)
+                std::this_thread::sleep_until (begin + std::chrono::duration_cast<std::chrono::steady_clock::duration> (
+                                                   std::chrono::duration<double> ((b + 1) * block / rate)));
+        }
+        out.meanBlockUs = total / blocks;
+        out.underruns = p.getStreamer().underruns.load();
+        out.noSlot = p.getStreamer().noSlot.load();
+        out.readErrors = p.getStreamer().readErrors.load();
+        p.releaseResources();
+        return out;
+    }
+}
+
+TEST_CASE ("real library: whole plugin, realtime and offline export", "[.reallib-host]")
+{
+    const char* libPath = std::getenv ("SAMPLIT_REAL_LIB");
+    if (libPath == nullptr)
+        SKIP ("SAMPLIT_REAL_LIB не задана");
+    auto env = [] (const char* name, double fallback)
+    {
+        const char* v = std::getenv (name);
+        return v != nullptr ? std::atof (v) : fallback;
+    };
+    const double seconds = env ("SAMPLIT_HOST_SECONDS", 20);
+    const double hits = env ("SAMPLIT_HOST_HITS", 12);
+
+    const auto live = runHost (libPath, false, seconds, hits, 256);
+    std::cout << "[host] реальное время: блок среднее " << live.meanBlockUs << " мкс, максимум " << live.maxBlockUs << " мкс в блоке " << live.maxBlockIndex << ", дольше 2 мс: " << live.slowBlocks << " (бюджет 5805), пик "
+              << live.peak << ", недогрузок " << live.underruns << ", нет ячейки " << live.noSlot << ", ошибок чтения " << live.readErrors << std::endl;
+    CHECK (live.finite);
+    CHECK (live.peak > 0.0f);
+    CHECK (live.underruns == 0);
+
+    const auto a = runHost (libPath, true, seconds, hits, 4096);
+    const auto b = runHost (libPath, true, seconds, hits, 4096);
+    std::cout << "[host] офлайн: хеш " << a.hash << " / " << b.hash << ", пик " << a.peak << ", недогрузок " << a.underruns << "/" << b.underruns
+              << ", блок максимум " << a.maxBlockUs << " мкс" << std::endl;
+    CHECK (a.finite);
+    CHECK (a.hash == b.hash);
+    CHECK (a.underruns == 0);
+    CHECK (b.underruns == 0);
 }
