@@ -2,6 +2,11 @@
 #include "LicenseManager.h"
 #include "PluginProcessor.h"
 
+#include "samplit/core/LicenseSigning.h"
+#include "kit_fixture.h"
+
+#include <juce_audio_formats/juce_audio_formats.h>
+
 #include <catch2/catch_test_macros.hpp>
 
 #include <atomic>
@@ -10,6 +15,7 @@
 
 using namespace samplit;
 using samplit::license::Status;
+using samplit::pack::operator""_s;
 
 namespace
 {
@@ -61,6 +67,7 @@ namespace
             c.publicKey = pub;
             c.fingerprint = kFingerprint;
             c.now = [this] { return clockNow; };
+            c.enforce = true;       // эти тесты проверяют код лицензии, она в них включена независимо от сборки
             return c;
         }
 
@@ -780,4 +787,118 @@ TEST_CASE ("library mode manifests fall back to packs-src next to the library", 
     CHECK (manager.getManifestDir() == env.dir.getChildFile ("manifests"));
 
     manager.setLibraryRoot ({});
+}
+
+// ---------------------------------------------------------------- лицензия отложена (enforce == false)
+
+namespace
+{
+    LicenseManager::Config disabledConfig (const Env& env)
+    {
+        auto c = env.config();
+        c.enforce = false;
+        return c;
+    }
+
+    // Библиотека из одного 24-битного WAV и манифест пакета «lib-kick» на клавише 36
+    void writeWavLibrary (const Env& env, const juce::File& lib)
+    {
+        lib.getChildFile ("KICK").createDirectory();
+        {
+            juce::WavAudioFormat fmt;
+            std::unique_ptr<juce::OutputStream> os (lib.getChildFile ("KICK/k.wav").createOutputStream());
+            REQUIRE (os != nullptr);
+            auto writer = fmt.createWriterFor (os, juce::AudioFormatWriterOptions{}.withSampleRate (44100.0).withNumChannels (1).withBitsPerSample (24));
+            REQUIRE (writer != nullptr);
+            std::vector<int> data (4000, 1000 * 256);
+            const int* ch[1] = { data.data() };
+            REQUIRE (writer->write (ch, (int) data.size()));
+        }
+
+        pack::Manifest m;
+        m.id = "lib-kick";
+        m.mics = { { "kick_in", "Kick In", "close", 1 } };
+        pack::Piece p;
+        p.id = "kick";
+        p.keys = { 36 };
+        p.layers = { { "all", "center", 1, 127 } };
+        pack::Hit h;
+        h.id = "k0";
+        h.layer = "all";
+        h.key = 36;
+        h.velLo = 1;
+        h.velHi = 127;
+        h.files["kick_in"].path = "KICK/k.wav";
+        p.hits.push_back (h);
+        m.pieces.push_back (p);
+        const auto manifests = env.dir.getChildFile ("manifests");
+        manifests.createDirectory();
+        manifests.getChildFile ("lib-kick.json").replaceWithText (m.toJson());
+    }
+}
+
+TEST_CASE ("disabled licence: no check, no keys, and a WAV library plays", "[licmgr][nolicense]")
+{
+    Env env;
+    env.writeToken ({ { "kick", pack::generateKey() } });   // даже годный токен игнорируется
+    writePreset (env.dir, R"({ "format": 1, "id": "lk", "name": "Lib kick", "packs": ["lib-kick"] })");
+    const auto lib = env.dir.getChildFile ("lib");
+    writeWavLibrary (env, lib);
+
+    kittest::KitFixture f;
+    f.processor.setLicenseManager (std::make_unique<LicenseManager> (disabledConfig (env)));
+    auto& lic = f.processor.getLicense();
+
+    CHECK_FALSE (lic.isEnforced());
+    const auto info = lic.getInfo();
+    CHECK (info.disabled);
+    CHECK_FALSE (info.busy);
+    CHECK_FALSE (info.isValid());
+    CHECK (info.statusText() == "отключена"_s);
+
+    pack::PackKey key;
+    CHECK_FALSE (lic.keyFor ("kick", key));
+    lic.importTokenText ("whatever");       // ничего не делает, фонового обмена нет
+    CHECK_FALSE (lic.getInfo().busy);
+
+    lic.setLibraryRoot (lib);
+    const auto presets = f.processor.scanPresets();
+    REQUIRE (presets.size() == 1);
+    CHECK (presets[0].isPlayable());
+    CHECK (presets[0].isComplete());
+
+    bool called = false, ok = false;
+    f.processor.loadPreset (presets[0].preset, [&] (const KitLoadResult& r) { called = true; ok = r.ok(); });
+    REQUIRE (pumpUntil ([&] { return called; }));
+    REQUIRE (ok);
+
+    const auto out = f.play (36);
+    CHECK (kittest::KitFixture::peak (out, 0) > 0.0f);
+    lic.setLibraryRoot ({});
+}
+
+TEST_CASE ("disabled licence: a preset without a library folder is not playable", "[licmgr][nolicense]")
+{
+    Env env;
+    writePreset (env.dir, R"({ "format": 1, "id": "lk", "name": "Lib kick", "packs": ["lib-kick"] })");
+    writeWavLibrary (env, env.dir.getChildFile ("lib"));       // манифест есть, но папка библиотеки не выбрана
+    writeKickPack (env.dir.getChildFile ("packs"), "lib-kick", pack::generateKey(), 36);   // пакет без лицензии не помогает
+
+    SamplitProcessor processor;
+    processor.setLicenseManager (std::make_unique<LicenseManager> (disabledConfig (env)));
+    REQUIRE (processor.getLicense().getLibraryRoot() == juce::File());
+
+    const auto presets = processor.scanPresets();
+    REQUIRE (presets.size() == 1);
+    CHECK_FALSE (presets[0].isPlayable());
+    REQUIRE (presets[0].packs.size() == 1);
+    CHECK (presets[0].packs[0].second == PackState::NoLibrary);
+
+    bool called = false;
+    KitLoadResult got;
+    processor.loadPreset (presets[0].preset, [&] (const KitLoadResult& r) { called = true; got = r; });
+    REQUIRE (pumpUntil ([&] { return called; }));
+    CHECK_FALSE (got.ok());
+    CHECK (got.error.contains ("папку библиотеки"_s));
+    CHECK (processor.getKit() == nullptr);
 }

@@ -17,7 +17,7 @@ target_compile_options(samplit-snapshot PRIVATE $<$<CXX_COMPILER_ID:MSVC>:/utf-8
 
 target_compile_definitions(samplit-snapshot PRIVATE
     JucePlugin_Name="Samplit"
-    SAMPLIT_OFFLINE_LICENSE=1
+    SAMPLIT_LICENSE_ENABLED=1
     JUCE_MODAL_LOOPS_PERMITTED=1
     JUCE_WEB_BROWSER=0
     JUCE_USE_CURL=0)
@@ -26,6 +26,7 @@ target_link_libraries(samplit-snapshot
     PRIVATE
         SamplitAssets
         samplit_core
+        samplit_signing
         juce::juce_audio_utils
         juce::juce_audio_formats
         juce::juce_gui_basics

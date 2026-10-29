@@ -37,14 +37,15 @@ namespace samplit
 
     std::vector<PresetEntry> scanPresets (const juce::File& presetDir, const juce::File& packDir,
                                           const std::function<bool (const juce::String&, pack::PackKey&)>& keyFor,
-                                          const juce::File& libraryRoot, const juce::File& manifestDir)
+                                          const juce::File& libraryRoot, const juce::File& manifestDir, bool requireLibrary)
     {
         const bool local = libraryRoot != juce::File();
+        const bool noLibrary = requireLibrary && ! local;
         std::set<juce::String> installed;
         if (local)
             for (const auto& f : manifestDir.findChildFiles (juce::File::findFiles, false, "*.json"))
                 installed.insert (f.getFileNameWithoutExtension());
-        else
+        else if (! noLibrary)
         for (const auto& f : packDir.findChildFiles (juce::File::findFiles, false, "*.splpack"))
         {
             juce::String error;
@@ -67,7 +68,7 @@ namespace samplit
             for (const auto& id : e.preset.packs)
             {
                 pack::PackKey key;
-                auto state = PackState::NotInstalled;
+                auto state = noLibrary ? PackState::NoLibrary : PackState::NotInstalled;
                 if (installed.count (id) > 0)
                     state = local || (keyFor && keyFor (id, key)) ? PackState::Ready : PackState::NoLicense;
                 e.packs.emplace_back (id, state);

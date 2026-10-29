@@ -63,6 +63,20 @@ target_link_libraries(samplit_core
         juce::juce_recommended_config_flags
         juce::juce_recommended_warning_flags)
 
+# Подпись токенов приватным ключом: только тесты и инструменты, в плагин и packer не линкуется
+add_library(samplit_signing STATIC
+    include/samplit/core/LicenseSigning.h
+    src/LicenseSigning.cpp)
+set_target_properties(samplit_signing PROPERTIES POSITION_INDEPENDENT_CODE ON)
+target_compile_options(samplit_signing PRIVATE $<$<CXX_COMPILER_ID:MSVC>:/utf-8>)
+target_link_libraries(samplit_signing
+    PUBLIC
+        samplit_core
+    PRIVATE
+        monocypher
+        juce::juce_recommended_config_flags
+        juce::juce_recommended_warning_flags)
+
 # Генератор случайных чисел ОС (PackRandom.cpp)
 if(WIN32)
     target_link_libraries(samplit_core PRIVATE bcrypt)

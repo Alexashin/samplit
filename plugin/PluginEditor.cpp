@@ -10,7 +10,6 @@ namespace samplit
         constexpr int kHeaderHeight = 64;
         constexpr int kMargin = 20;
         constexpr int kOverlayWidth = 460;
-        constexpr bool kLicenseUi = false;      // лицензия скрыта: на WAV-библиотеке она не нужна (код и тесты остаются)
         const juce::Colour kWarning { 0xffffb454 };
         const juce::Colour kOk { 0xff6fd6a1 };
     }
@@ -21,21 +20,27 @@ namespace samplit
     }
 
     SamplitEditor::SamplitEditor (SamplitProcessor& p)
-        : AudioProcessorEditor (&p), processor (p), presets (p), license (p.getLicense()), mixer (p), kitView (p), keyboard (p)
+        : AudioProcessorEditor (&p), processor (p), presets (p), mixer (p), kitView (p), keyboard (p)
     {
         setLookAndFeel (&lookAndFeel);
         logo = juce::Drawable::createFromImageData (BinaryData::lockuphondark_svg, BinaryData::lockuphondark_svgSize);
 
-        // Лицензия поменялась: другие пакеты открыты, у пресетов другое состояние
-        processor.getLicense().onChange = [this]
+        // Лицензия отложена (SAMPLIT_LICENSE=OFF): панели, кнопки и подписки на неё нет
+        if (processor.getLicense().isEnforced())
         {
-            license.refresh();
-            presets.rescan();
-            if (license.isOk() && overlay == Overlay::License)
-                showOverlay (Overlay::None);
-            updateHeader();
-            resized();
-        };
+            license = std::make_unique<LicensePanel> (p.getLicense());
+
+            // Лицензия поменялась: другие пакеты открыты, у пресетов другое состояние
+            processor.getLicense().onChange = [this]
+            {
+                license->refresh();
+                presets.rescan();
+                if (license->isOk() && overlay == Overlay::License)
+                    showOverlay (Overlay::None);
+                updateHeader();
+                resized();
+            };
+        }
 
         presetButton.setTooltip (utf8 ("Список пресетов"));
         presetButton.onClick = [this] { showOverlay (overlay == Overlay::Presets ? Overlay::None : Overlay::Presets); };
@@ -69,8 +74,10 @@ namespace samplit
 
         // Порядок добавления = порядок наложения: подложка и выпадающие панели поверх всего
         for (auto* c : std::initializer_list<juce::Component*> { &mixer, &kitView, &kitTab, &mixerTab, &keyboard, &prevButton,
-                                                                  &nextButton, &presetButton, &licenseButton, &mixButton, &scrim, &presets, &license })
+                                                                  &nextButton, &presetButton, &licenseButton, &mixButton, &scrim, &presets })
             addChildComponent (c);
+        if (license != nullptr)
+            addChildComponent (license.get());
         for (auto* c : std::initializer_list<juce::Component*> { &kitTab, &mixerTab, &keyboard, &prevButton, &nextButton,
                                                                   &presetButton, &licenseButton, &mixButton })
             c->setVisible (true);
@@ -83,9 +90,8 @@ namespace samplit
         setResizeLimits (900, 620, 1800, 1200);
         setSize (1180, 780);
 
-        // Лицензия скрыта (проверка на WAV-библиотеке, решение 29.10): кнопки и окна ввода ключа нет, код остаётся
-        licenseButton.setVisible (kLicenseUi);
-        if (kLicenseUi && ! license.isOk())
+        licenseButton.setVisible (license != nullptr);
+        if (license != nullptr && ! license->isOk())
             showOverlay (Overlay::License);
         startTimerHz (10);
     }
@@ -94,7 +100,8 @@ namespace samplit
     {
         stopTimer();
         juce::Desktop::getInstance().removeFocusChangeListener (this);
-        processor.getLicense().onChange = nullptr;
+        if (license != nullptr)
+            processor.getLicense().onChange = nullptr;
         presets.onPicked = nullptr;
         setLookAndFeel (nullptr);
     }
@@ -149,19 +156,22 @@ namespace samplit
         if (mixButton.getButtonText() != mixLabel)
             mixButton.setButtonText (mixLabel);
 
-        const auto& info = license.getInfo();
-        juce::String chip;
-        if (! license.isOk())
-            chip = utf8 ("    Нет лицензии");
-        else if (info.expires == 0)
-            chip = utf8 ("    Лицензия активна");
-        else
-            chip = utf8 ("    Лицензия до ") + juce::Time (info.expires * 1000).formatted ("%d.%m.%Y");
-        if (licenseButton.getButtonText() != chip)
+        if (license != nullptr)
         {
-            licenseButton.setButtonText (chip);
-            licenseButton.setColour (juce::TextButton::textColourOffId, license.isOk() ? brand::text : kWarning);
-            repaint (headerArea);
+            const auto& info = license->getInfo();
+            juce::String chip;
+            if (! license->isOk())
+                chip = utf8 ("    Нет лицензии");
+            else if (info.expires == 0)
+                chip = utf8 ("    Лицензия активна");
+            else
+                chip = utf8 ("    Лицензия до ") + juce::Time (info.expires * 1000).formatted ("%d.%m.%Y");
+            if (licenseButton.getButtonText() != chip)
+            {
+                licenseButton.setButtonText (chip);
+                licenseButton.setColour (juce::TextButton::textColourOffId, license->isOk() ? brand::text : kWarning);
+                repaint (headerArea);
+            }
         }
 
         if (progress != shownProgress)
@@ -283,7 +293,8 @@ namespace samplit
         overlay = which;
         scrim.setVisible (which != Overlay::None);
         presets.setVisible (which == Overlay::Presets);
-        license.setVisible (which == Overlay::License);
+        if (license != nullptr)
+            license->setVisible (which == Overlay::License);
         if (which == Overlay::Presets)
             presets.rescan();
         resized();
@@ -315,7 +326,7 @@ namespace samplit
         // Шапка: знак слева, пресет со стрелками по центру, лицензия справа
         auto bar = headerArea.reduced (kMargin, 0);
         logoArea = bar.removeFromLeft (150).withSizeKeepingCentre (150, 30);
-        if (kLicenseUi)
+        if (license != nullptr)
         {
             licenseButton.setBounds (bar.removeFromRight (230).withSizeKeepingCentre (230, 34));
             bar.removeFromRight (16);
@@ -352,7 +363,8 @@ namespace samplit
         const int presetsX = juce::jlimit (kMargin, juce::jmax (kMargin, getWidth() - kMargin - width),
                                            presetButton.getBounds().getCentreX() - width / 2);
         presets.setBounds (presetsX, kHeaderHeight + 6, width, panelHeight);
-        license.setBounds (getWidth() - kMargin - width, kHeaderHeight + 6, width, license.isOk() ? 130 : 180);
+        if (license != nullptr)
+            license->setBounds (getWidth() - kMargin - width, kHeaderHeight + 6, width, license->isOk() ? 130 : 180);
     }
 
     void SamplitEditor::paint (juce::Graphics& g)
@@ -379,15 +391,15 @@ namespace samplit
     // Точка состояния лицензии на кнопке и рамка выпадающих панелей
     void SamplitEditor::paintOverChildren (juce::Graphics& g)
     {
-        if (kLicenseUi)
+        if (license != nullptr)
         {
             const auto chip = licenseButton.getBounds();
-            g.setColour (license.isOk() ? kOk : kWarning);
+            g.setColour (license->isOk() ? kOk : kWarning);
             g.fillEllipse (juce::Rectangle<float> (8.0f, 8.0f).withCentre ({ (float) chip.getX() + 16.0f, (float) chip.getCentreY() }));
         }
 
-        for (auto* c : std::initializer_list<juce::Component*> { &presets, &license })
-            if (c->isVisible())
+        for (auto* c : std::initializer_list<juce::Component*> { &presets, license.get() })
+            if (c != nullptr && c->isVisible())
             {
                 g.setColour (brand::line);
                 g.drawRoundedRectangle (c->getBounds().toFloat().expanded (0.5f), 12.5f, 1.0f);

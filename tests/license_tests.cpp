@@ -1,5 +1,6 @@
 #include "samplit/core/License.h"
 #include "samplit/core/LicenseClient.h"
+#include "samplit/core/LicenseSigning.h"
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -210,42 +211,20 @@ TEST_CASE ("a key string carries the same token as the file", "[license]")
     REQUIRE (verifyToken (tokenFromKeyText ("SPL1-@@@@"), optionsFor (keys)).status == Status::NoToken);
 }
 
-TEST_CASE ("a service token (any machine) works anywhere while it has an expiry", "[license]")
+TEST_CASE ("the retired service token (any machine, fingerprint \"*\") is always rejected", "[license]")
 {
     Keys keys (testSeed());
+    const juce::String anyMachine = "*";
     PayloadSpec spec;
-    spec.fingerprint = kAnyMachineFingerprint;
-    const auto token = signToken (makePayload (spec), keys.secret);
+    spec.fingerprint = anyMachine;
 
-    for (const auto& fp : { kFingerprint, juce::String ("win:another-guid:11223344"), juce::String() })
+    for (const int64_t expires : { kNow + 7 * kDay, (int64_t) 0, kNow - kDay })
     {
-        const auto r = verifyToken (token, optionsFor (keys, fp));
-        REQUIRE (r.status == Status::Valid);
-        REQUIRE (r.packs.size() == 2);
-        REQUIRE (r.packs[0].key == packKey (50));   // cymbals идёт первым (сортировка по packId)
+        spec.expires = expires;
+        const auto token = signToken (makePayload (spec), keys.secret);
+        for (const auto& fp : { kFingerprint, juce::String ("win:another-guid:11223344"), juce::String(), anyMachine })
+            REQUIRE (verifyToken (token, optionsFor (keys, fp)).status == Status::WrongMachine);
     }
-}
-
-TEST_CASE ("a perpetual service token is rejected", "[license]")
-{
-    Keys keys (testSeed());
-    PayloadSpec spec;
-    spec.fingerprint = kAnyMachineFingerprint;
-    spec.expires = 0;
-    const auto token = signToken (makePayload (spec), keys.secret);
-
-    REQUIRE (verifyToken (token, optionsFor (keys)).status == Status::WrongMachine);
-}
-
-TEST_CASE ("an expired service token is rejected", "[license]")
-{
-    Keys keys (testSeed());
-    PayloadSpec spec;
-    spec.fingerprint = kAnyMachineFingerprint;
-    spec.expires = kNow - kDay;
-    const auto token = signToken (makePayload (spec), keys.secret);
-
-    REQUIRE (verifyToken (token, optionsFor (keys)).status == Status::Expired);
 }
 
 TEST_CASE ("pack keys do not open for someone who knows only the machine id", "[license]")

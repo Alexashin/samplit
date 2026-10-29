@@ -4,7 +4,7 @@
 ~/.samplit-license), запись в базе лицензий не создаёт.
 
   python tools/make_token.py --fingerprint "win:<guid>:<серийник>" --user "Защита ВКР" --days 120 --out license.token
-  python tools/make_token.py --fingerprint "..." --user "Пачевский Д.Е." --perpetual --out license.token
+  python tools/make_token.py --fingerprint "..." --user "Имя Фамилия" --perpetual --out license.token
 
 Без --packs в лицензию идут все пакеты, ключи которых есть в каталоге секретов. Код компьютера (отпечаток)
 плагин показывает в окне лицензии с кнопкой «Скопировать», на этом компьютере его печатает
@@ -27,10 +27,7 @@ from store import Config, Store, default_dir  # noqa: E402
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--dir", type=pathlib.Path, default=default_dir())
-    who = ap.add_mutually_exclusive_group(required=True)
-    who.add_argument("--fingerprint", help="отпечаток машины (строка целиком)")
-    who.add_argument("--any-machine", action="store_true",
-                     help="служебный токен для любой машины (временная мера; только с --days)")
+    ap.add_argument("--fingerprint", required=True, help="отпечаток машины (строка целиком)")
     ap.add_argument("--packs", default="", help="packId через запятую; по умолчанию все пакеты из секретов")
     ap.add_argument("--user", default="offline")
     term = ap.add_mutually_exclusive_group(required=True)
@@ -42,10 +39,6 @@ def main() -> int:
 
     if args.days is not None and (args.days < 1 or args.days > 3650):
         print("--days: от 1 до 3650", file=sys.stderr)
-        return 1
-
-    if args.any_machine and args.perpetual:
-        print("--any-machine: бессрочный токен не допускается, укажите --days", file=sys.stderr)
         return 1
 
     cfg = Config(args.dir)
@@ -62,7 +55,7 @@ def main() -> int:
         return 1
 
     valid = None if args.perpetual else args.days * 86400
-    payload = lc.build_payload(args.id, args.user, ("*" if args.any_machine else args.fingerprint.strip()), packs, valid_seconds=valid)
+    payload = lc.build_payload(args.id, args.user, args.fingerprint.strip(), packs, valid_seconds=valid)
     token = cfg.signer.sign_payload(payload)
     args.out.write_text(json.dumps(token, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     key = "SPL1-" + base64.b64encode(json.dumps(token, ensure_ascii=False, separators=(",", ":")).encode("utf-8")).decode("ascii")

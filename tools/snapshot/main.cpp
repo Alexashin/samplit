@@ -6,6 +6,7 @@
 // загружает пресет studio600-default, печатает время загрузки и объём в памяти, сохраняет снимок.
 
 #include "PluginEditor.h"
+#include "samplit/core/LicenseSigning.h"
 
 #include <juce_gui_basics/juce_gui_basics.h>
 
@@ -149,6 +150,7 @@ namespace
     std::unique_ptr<LicenseManager> manager (const juce::File& dataDir, const juce::String& fingerprint)
     {
         LicenseManager::Config c;
+        c.enforce = true;       // снимки показывают экран лицензии
         c.dataDir = dataDir;
         testSecret (c.publicKey);
         c.fingerprint = fingerprint;

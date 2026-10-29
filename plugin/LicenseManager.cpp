@@ -23,6 +23,8 @@ namespace samplit
         packDir = config.dataDir.getChildFile ("packs");
         if (const auto saved = config.dataDir.getChildFile ("library.path").loadFileAsString().trim(); saved.isNotEmpty())
             libraryRoot = juce::File (saved);
+        if (! config.enforce)
+            return;             // лицензия отложена: ни проверки, ни таймера, ни сети
         check();
         startTimer (3000);      // первая попытка продления сразу после старта, дальше раз в час
     }
@@ -53,6 +55,12 @@ namespace samplit
     {
         const juce::ScopedLock sl (lock);
         Info i;
+        if (! config.enforce)
+        {
+            i.disabled = true;
+            i.lastError = "Лицензия отключена в этой сборке"_s;
+            return i;
+        }
         i.status = result.status;
         i.user = result.user;
         i.licenseId = result.licenseId;
@@ -60,6 +68,11 @@ namespace samplit
         i.busy = jobs.load() > 0;
         i.lastError = lastError;
         return i;
+    }
+
+    juce::String LicenseManager::Info::statusText() const
+    {
+        return disabled ? "отключена"_s : juce::String();
     }
 
     juce::File LicenseManager::getPackDir() const
@@ -109,6 +122,8 @@ namespace samplit
 
     bool LicenseManager::keyFor (const juce::String& packId, pack::PackKey& out) const
     {
+        if (! config.enforce)
+            return false;
         const juce::ScopedLock sl (lock);
         if (! result.isValid())
             return false;
@@ -124,6 +139,8 @@ namespace samplit
     // Работа в фоне: work возвращает результат обмена с сервером (или ok без сети), потом токен перечитывается
     void LicenseManager::run (std::function<license::ClientResult (const license::Options&)> work)
     {
+        if (! config.enforce)
+            return;
         ++jobs;
         std::weak_ptr<int> alive = lifeToken;
         auto options = makeOptions();
@@ -149,6 +166,7 @@ namespace samplit
                 --jobs;
                 if (onChange)
                     onChange();
+                sendChangeMessage();
             });
         });
     }

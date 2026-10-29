@@ -1,4 +1,4 @@
-﻿# Удаление Samplit. Файл лицензии остаётся, чтобы при повторной установке его не запрашивать заново.
+﻿# Удаление Samplit. Папка данных (настройки, свои пресеты и миксы) остаётся.
 $ErrorActionPreference = 'Stop'
 
 $running = Get-Process -Name 'Cubase*', 'Samplit', 'reaper' -ErrorAction SilentlyContinue
@@ -20,4 +20,4 @@ foreach ($p in $paths) {
     if (Test-Path $p) { Remove-Item $p -Recurse -Force; Write-Host "удалено: $p" }
 }
 Write-Host ''
-Write-Host "Готово. Лицензия осталась в $data (удалите папку вручную, если она не нужна)."
+Write-Host "Готово. Настройки остались в $data (удалите папку вручную, если она не нужна)."

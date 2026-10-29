@@ -35,7 +35,7 @@ namespace samplit
 
         // Выпадающие панели поверх окна (кнопки шапки, снимки окна)
         void openPresets() { showOverlay (Overlay::Presets); }
-        void openLicense() { showOverlay (Overlay::License); }
+        void openLicense() { if (license != nullptr) showOverlay (Overlay::License); }
 
     private:
         // Невидимая подложка под выпадающими панелями: клик мимо закрывает их
@@ -64,7 +64,7 @@ namespace samplit
         juce::Rectangle<int> logoArea, headerArea;
 
         PresetPanel presets;
-        LicensePanel license;
+        std::unique_ptr<LicensePanel> license;     // nullptr, пока лицензия отложена
         MixerPanel mixer;
         KitView kitView;
         juce::TextButton kitTab, mixerTab;

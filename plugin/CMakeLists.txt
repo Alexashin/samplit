@@ -64,10 +64,15 @@ target_sources(Samplit PRIVATE
 # Исходники в UTF-8: русские строки интерфейса
 target_compile_options(Samplit PRIVATE $<$<CXX_COMPILER_ID:MSVC>:/utf-8>)
 
-# Локальная лицензия без сервера (код компьютера и файл лицензии). Временно, пока нет сервера: в проде выключить
-option(SAMPLIT_OFFLINE_LICENSE "Offline licence: machine code and licence file import" ON)
-target_compile_definitions(Samplit PRIVATE
-    SAMPLIT_OFFLINE_LICENSE=$<BOOL:${SAMPLIT_OFFLINE_LICENSE}>)
+# Лицензия отложена: по умолчанию продукт работает без неё, звук берётся из папки WAV («Моя библиотека…»).
+# Код лицензии и пакетов остаётся; SAMPLIT_LICENSE=ON включает проверку токена и экран лицензии
+option(SAMPLIT_LICENSE "Enforce licence (encrypted .splpack packs); OFF: WAV library only" OFF)
+set(SAMPLIT_LICENSE_ENABLED_VALUE 0)
+if(SAMPLIT_LICENSE)
+    set(SAMPLIT_LICENSE_ENABLED_VALUE 1)
+endif()
+target_compile_definitions(Samplit PRIVATE SAMPLIT_LICENSE_ENABLED=${SAMPLIT_LICENSE_ENABLED_VALUE})
+set(SAMPLIT_LICENSE_ENABLED_VALUE ${SAMPLIT_LICENSE_ENABLED_VALUE} PARENT_SCOPE)
 
 target_compile_definitions(Samplit PUBLIC
     JUCE_WEB_BROWSER=0

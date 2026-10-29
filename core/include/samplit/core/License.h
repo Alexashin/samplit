@@ -45,10 +45,6 @@ namespace samplit::license
         bool isValid() const noexcept { return status == Status::Valid; }
     };
 
-    // Особый «отпечаток» служебного токена: принимается на любой машине, только с конечным сроком.
-    // Временная мера для передачи демо; ключи пакетов в таком токене не защищены машиной
-    inline const char* const kAnyMachineFingerprint = "*";
-
     struct Options
     {
         Key32 publicKey {};           // публичный ключ издателя
@@ -93,8 +89,4 @@ namespace samplit::license
                               const std::array<uint8_t, 24>& nonce);
     bool unwrapPackKey (const juce::String& packId, const juce::String& wrappedBase64, const juce::String& fingerprint,
                         Key32& out);
-
-    // Подпись токена приватным ключом (64 байта, формат Monocypher/RFC 8032). Для тестов и инструментов, в плагине не нужна
-    juce::String signToken (const juce::var& payload, const std::array<uint8_t, 64>& secretKey);
-    std::array<uint8_t, 64> secretKeyFromSeed (const Key32& seed, Key32& publicKeyOut);
 }

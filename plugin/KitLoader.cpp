@@ -418,6 +418,11 @@ namespace samplit
 
         // 1. Пакеты пресета: файл, ключ, манифест
         const bool localLibrary = options.libraryRoot != juce::File();
+        if (! localLibrary && options.requireLibrary)
+        {
+            res.error = "выберите папку библиотеки («Моя библиотека…»)"_s;
+            return res;
+        }
         std::map<juce::String, juce::File> files;
         if (! localLibrary)
             for (const auto& f : options.packDir.findChildFiles (juce::File::findFiles, false, "*.splpack"))
@@ -486,7 +491,7 @@ namespace samplit
         if (packs.empty())
         {
             res.error = localLibrary ? "Для пресета нет манифестов в "_s + options.manifestDir.getFullPathName()
-                                      : "Ни один пакет пресета не доступен (нет файла или лицензии)"_s;
+                                      : "Ни один пакет пресета не доступен (нет файла пакета или лицензии)"_s;
             return res;
         }
 

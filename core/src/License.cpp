@@ -15,6 +15,7 @@ namespace samplit::license
         const std::string kIdDomain = "samplit-machine-id-v1";
         const std::string kKeyDomain = "samplit-machine-key-v1";
         const std::string kPackKeyAd = "samplit-packkey-v1:";
+        const char* const kRetiredWildcardFingerprint = "*";   // служебный токен убран, отпечаток всегда отвергается
 
         std::string blake2b32hex (const std::string& domain, const juce::String& text)
         {
@@ -227,26 +228,6 @@ namespace samplit::license
                                    reinterpret_cast<const uint8_t*> (ad.data()), ad.size(), bytes + 24, 32) == 0;
     }
 
-    std::array<uint8_t, 64> secretKeyFromSeed (const Key32& seed, Key32& publicKeyOut)
-    {
-        Key32 seedCopy = seed;  // crypto_ed25519_key_pair затирает сид
-        std::array<uint8_t, 64> secret {};
-        crypto_ed25519_key_pair (secret.data(), publicKeyOut.data(), seedCopy.data());
-        return secret;
-    }
-
-    juce::String signToken (const juce::var& payload, const std::array<uint8_t, 64>& secretKey)
-    {
-        const std::string canon = canonicalJson (payload);
-        uint8_t sig[64];
-        crypto_ed25519_sign (sig, secretKey.data(), reinterpret_cast<const uint8_t*> (canon.data()), canon.size());
-
-        auto* token = new juce::DynamicObject();
-        token->setProperty ("payload", payload);
-        token->setProperty ("sig", juce::Base64::toBase64 (sig, sizeof sig));
-        return juce::JSON::toString (juce::var (token), true);
-    }
-
     // ---------------------------------------------------------------- проверка
 
     CheckResult verifyToken (const juce::String& tokenJson, const Options& options)
@@ -306,12 +287,10 @@ namespace samplit::license
         if (options.now > lastSeen)
             storeLastSeen (options.clockStateFile, options.now);
 
-        // Служебный токен (временная мера для демо): подходит любой машине, но только с конечным сроком
-        const bool anyMachine = machine.toString() == machineId (kAnyMachineFingerprint);
-        if (anyMachine && perpetual)
+        // Бывший служебный токен «любая машина» (отпечаток "*") больше не принимается никогда
+        if (machine.toString() == machineId (kRetiredWildcardFingerprint))
             return fail (Status::WrongMachine);
-        const juce::String effectiveFingerprint = anyMachine ? juce::String (kAnyMachineFingerprint) : options.fingerprint;
-        if (! anyMachine && (options.fingerprint.isEmpty() || machine.toString() != machineId (options.fingerprint)))
+        if (options.fingerprint.isEmpty() || machine.toString() != machineId (options.fingerprint))
             return fail (Status::WrongMachine);
 
         if (! perpetual && options.now + options.clockSkewSeconds < notBefore)
@@ -324,7 +303,7 @@ namespace samplit::license
         {
             PackKey pk;
             pk.packId = prop.name.toString();
-            if (! prop.value.isString() || ! unwrapPackKey (pk.packId, prop.value.toString(), effectiveFingerprint, pk.key))
+            if (! prop.value.isString() || ! unwrapPackKey (pk.packId, prop.value.toString(), options.fingerprint, pk.key))
                 return fail (Status::Malformed);
             keys.push_back (pk);
         }

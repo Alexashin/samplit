@@ -25,6 +25,9 @@ namespace samplit
             if (e.isComplete())
                 return utf8 ("Все пакеты на месте");
 
+            if (! joinPacks (e, PackState::NoLibrary).isEmpty())
+                return utf8 ("Выберите папку библиотеки («Моя библиотека…»)");
+
             juce::StringArray parts;
             if (const auto s = joinPacks (e, PackState::NoLicense); s.isNotEmpty())
                 parts.add (utf8 ("нет лицензии: ") + s);
@@ -81,7 +84,7 @@ namespace samplit
         addPackButton.onClick = [this] { addPack(); };
 
         libraryButton.setButtonText (utf8 ("Моя библиотека…"));
-        libraryButton.setTooltip (utf8 ("Проверка на своих сэмплах: выберите папку с WAV (00-Studio600ru-Drum-LIB). Звук берётся из неё целиком, без пакетов и лицензии. Отмена выбора возвращает обычный режим"));
+        libraryButton.setTooltip (utf8 ("Проверка на своих сэмплах: выберите папку с WAV (00-Studio600ru-Drum-LIB). Звук берётся из неё целиком, без обрезки хвостов. Отмена выбора сбрасывает папку"));
         libraryButton.onClick = [this] { chooseLibrary(); };
 
         saveButton.setButtonText (utf8 ("Сохранить как…"));
@@ -99,6 +102,8 @@ namespace samplit
 
         for (auto* c : std::initializer_list<juce::Component*> { &title, &intro, &rescanButton, &folderButton, &packFolderButton, &addPackButton, &saveButton, &libraryButton, &list, &emptyText })
             addAndMakeVisible (c);
+        packFolderButton.setVisible (processor.getLicense().isEnforced());     // пакеты нужны только при лицензии
+        addPackButton.setVisible (processor.getLicense().isEnforced());
 
         processor.addChangeListener (this);
         rescan();
@@ -144,6 +149,14 @@ namespace samplit
 
     void PresetPanel::updateIntro()
     {
+        if (! processor.getLicense().isEnforced())
+        {
+            intro.setText (utf8 ("Пресет задаёт, какие барабаны играют и как сведены микрофоны. Звук берётся из папки библиотеки («Моя библиотека…»). "
+                                 "Пресетов: ") + juce::String ((int) presets.size())
+                               + utf8 (". Свой вариант сохраняется кнопкой «Сохранить как…», правый клик по нему: переименовать или удалить."),
+                           juce::dontSendNotification);
+            return;
+        }
         const auto packCount = processor.getLicense().getPackDir().findChildFiles (juce::File::findFiles, false, "*.splpack").size();
         intro.setText (utf8 ("Пресет задаёт, какие барабаны играют и как сведены микрофоны. Звук он берёт из пакетов (файлы .splpack). "
                              "Пакетов установлено: ") + juce::String (packCount) + utf8 (", пресетов: ") + juce::String ((int) presets.size())
@@ -225,7 +238,7 @@ namespace samplit
     void PresetPanel::chooseLibrary()
     {
         const auto current = processor.getLicense().getLibraryRoot();
-        chooser = std::make_unique<juce::FileChooser> (utf8 ("Папка с библиотекой (00-Studio600ru-Drum-LIB). Отмена: обычный режим по пакетам"), current);
+        chooser = std::make_unique<juce::FileChooser> (utf8 ("Папка с библиотекой (00-Studio600ru-Drum-LIB). Отмена: сбросить папку"), current);
         chooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectDirectories,
                               [safe = juce::Component::SafePointer<PresetPanel> (this)] (const juce::FileChooser& fc)
         {
@@ -236,8 +249,10 @@ namespace samplit
             if (dir == juce::File())
             {
                 lic.setLibraryRoot ({});
-                safe->statusText = utf8 ("Обычный режим: звук из пакетов");
-                safe->statusWarns = false;
+                const bool enforced = lic.isEnforced();
+                safe->statusText = enforced ? utf8 ("Обычный режим: звук из пакетов")
+                                            : utf8 ("Папка библиотеки не выбрана: выберите её («Моя библиотека…»)");
+                safe->statusWarns = ! enforced;
             }
             else
             {
@@ -246,7 +261,7 @@ namespace samplit
                 safe->statusWarns = manifests == 0;
                 safe->statusText = manifests == 0
                     ? utf8 ("Нет манифестов в ") + lic.getManifestDir().getFullPathName()
-                    : utf8 ("Звук из папки ") + dir.getFullPathName() + utf8 (" (без пакетов и лицензии). Выберите пресет заново");
+                    : utf8 ("Звук из папки ") + dir.getFullPathName() + utf8 (". Выберите пресет заново");
             }
             safe->rescan();
             safe->repaint (safe->statusArea);
@@ -297,8 +312,11 @@ namespace samplit
         const auto& e = presets[(size_t) row];
         if (! e.isPlayable())
         {
-            statusText = utf8 ("«") + e.preset.name + utf8 ("» не зазвучит: ") + packSummary (e).fromFirstOccurrenceOf (", ", false, false)
-                         + utf8 (". Установите пакеты или обновите лицензию.");
+            if (! processor.getLicense().isEnforced())
+                statusText = utf8 ("«") + e.preset.name + utf8 ("» не зазвучит: выберите папку библиотеки («Моя библиотека…»)");
+            else
+                statusText = utf8 ("«") + e.preset.name + utf8 ("» не зазвучит: ") + packSummary (e).fromFirstOccurrenceOf (", ", false, false)
+                             + utf8 (". Установите пакеты или обновите лицензию.");
             statusWarns = true;
             repaint (statusArea);
             return;
@@ -331,8 +349,12 @@ namespace samplit
         }
         else if (last.error.isNotEmpty())
         {
-            statusText = utf8 ("Не удалось загрузить: ") + last.error
-                         + utf8 (". Проверьте лицензию и пакеты, затем выберите пресет снова.");
+            if (processor.getLicense().isEnforced())
+                statusText = utf8 ("Не удалось загрузить: ") + last.error
+                             + utf8 (". Проверьте лицензию и пакеты, затем выберите пресет снова.");
+            else
+                statusText = utf8 ("Не удалось загрузить: ") + last.error
+                             + utf8 (". Выберите папку библиотеки («Моя библиотека…»), затем выберите пресет снова.");
             statusWarns = true;
         }
         else if (const auto kit = processor.getKit(); kit != nullptr)
@@ -352,6 +374,11 @@ namespace samplit
                  lic.getLibraryRoot() != juce::File() && lic.getManifestDir().findChildFiles (juce::File::findFiles, false, "*.json").isEmpty())
         {
             statusText = utf8 ("Режим «Моя библиотека»: нет манифестов в ") + lic.getManifestDir().getFullPathName();
+            statusWarns = true;
+        }
+        else if (! processor.getLicense().isEnforced() && processor.getLicense().getLibraryRoot() == juce::File())
+        {
+            statusText = utf8 ("Выберите папку библиотеки («Моя библиотека…»)");
             statusWarns = true;
         }
         else
@@ -468,12 +495,19 @@ namespace samplit
         saveButton.setBounds (first.removeFromLeft (w2));
         first.removeFromLeft (6);
         rescanButton.setBounds (first);
-        const int w3 = (second.getWidth() - 12) / 3;
-        folderButton.setBounds (second.removeFromLeft (w3));
-        second.removeFromLeft (6);
-        packFolderButton.setBounds (second.removeFromLeft (w3));
-        second.removeFromLeft (6);
-        addPackButton.setBounds (second);
+        if (! processor.getLicense().isEnforced())
+        {
+            folderButton.setBounds (second);
+        }
+        else
+        {
+            const int w3 = (second.getWidth() - 12) / 3;
+            folderButton.setBounds (second.removeFromLeft (w3));
+            second.removeFromLeft (6);
+            packFolderButton.setBounds (second.removeFromLeft (w3));
+            second.removeFromLeft (6);
+            addPackButton.setBounds (second);
+        }
         area.removeFromBottom (8);
 
         list.setBounds (area);

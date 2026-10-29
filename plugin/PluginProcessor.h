@@ -20,6 +20,7 @@ namespace samplit
                                    public juce::ChangeBroadcaster,
                                    private juce::AudioProcessorParameter::Listener,
                                    private juce::AsyncUpdater,
+                                   private juce::ChangeListener,       // смена лицензии (только при включённой лицензии)
                                    private juce::Timer
     {
     public:
@@ -187,6 +188,7 @@ namespace samplit
         void parameterValueChanged (int, float) override { triggerAsyncUpdate(); }
         void parameterGestureChanged (int, bool) override {}
         void handleAsyncUpdate() override;
+        void changeListenerCallback (juce::ChangeBroadcaster*) override;
 
         void applyPicks();
 
@@ -200,6 +202,9 @@ namespace samplit
         std::map<juce::String, float> savedPieces;          // по id барабана, под stateLock
         std::array<juce::AudioParameterFloat*, kAutomatedMics> levelParams {}, panParams {};
         bool restoreMixPending = false;                     // только message thread
+        // Проект открыли раньше, чем проверилась лицензия: пакеты не нашлись. Как только лицензия изменится и станет
+        // действительной, пресет восстанавливается заново. Только message thread; при отложенной лицензии всегда false
+        bool restoreRetryPending = false;
         std::atomic<bool> kitLoading { false };
         std::atomic<float> kitProgress { 0.0f };
         std::shared_ptr<std::atomic<bool>> kitCancel;       // только message thread

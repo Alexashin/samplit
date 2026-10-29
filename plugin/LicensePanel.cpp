@@ -37,19 +37,13 @@ namespace samplit
                 code.grabKeyboardFocus();
                 return;
             }
-           #if SAMPLIT_OFFLINE_LICENSE
             license.importTokenText (text);
-           #else
-            license.activate (text);
-           #endif
             refresh();
         };
 
-       #if SAMPLIT_OFFLINE_LICENSE
-        offline = true;
+        offline = true;     // лицензия без сервера: ключ или файл
         code.setTextToShowWhenEmpty (utf8 ("Ключ лицензии"), brand::textMuted);
         code.setTitle (utf8 ("Ключ лицензии"));
-       #endif
 
         copyCodeButton.setButtonText (utf8 ("Скопировать код"));
         copyCodeButton.setTooltip (utf8 ("Отправьте этот код владельцу лицензий: по нему выпускают файл лицензии для этого компьютера"));

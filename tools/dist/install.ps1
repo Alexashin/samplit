@@ -19,12 +19,12 @@ if ($running) {
 
 New-Item -ItemType Directory -Force $vst3Dir, $appDir, (Join-Path $data 'packs'), (Join-Path $data 'manifests'), (Join-Path $data 'presets'), (Join-Path $data 'presets\mixes') | Out-Null
 
-Write-Host '1/4  Плагин VST3'
+Write-Host '1/3  Плагин VST3'
 $vst3 = Join-Path $vst3Dir 'Samplit.vst3'
 if (Test-Path $vst3) { Remove-Item $vst3 -Recurse -Force }
 Copy-Item (Join-Path $src 'Plugin\Samplit.vst3') $vst3 -Recurse
 
-Write-Host '2/4  Отдельное приложение и ярлык на рабочем столе'
+Write-Host '2/3  Отдельное приложение и ярлык на рабочем столе'
 Copy-Item (Join-Path $src 'Plugin\Samplit.exe') (Join-Path $appDir 'Samplit.exe') -Force
 $shell = New-Object -ComObject WScript.Shell
 $link = $shell.CreateShortcut((Join-Path ([Environment]::GetFolderPath('Desktop')) 'Samplit.lnk'))
@@ -32,25 +32,12 @@ $link.TargetPath = Join-Path $appDir 'Samplit.exe'
 $link.WorkingDirectory = $appDir
 $link.Save()
 
-Write-Host '3/4  Пресеты и пакеты с сэмплами, если они есть в дистрибутиве (с пакетами около 1 ГБ, подождите)'
+Write-Host '3/3  Пресеты и пакеты с сэмплами, если они есть в дистрибутиве (с пакетами около 1 ГБ, подождите)'
 if (Test-Path (Join-Path $src 'Data\packs\*.splpack')) { Copy-Item (Join-Path $src 'Data\packs\*.splpack') (Join-Path $data 'packs') -Force }
 # Манифесты для режима «Моя библиотека…» (звук из папки с WAV, без пакетов)
 if (Test-Path (Join-Path $src 'Data\manifests')) { Copy-Item (Join-Path $src 'Data\manifests\*.json') (Join-Path $data 'manifests') -Force }
 Copy-Item (Join-Path $src 'Data\presets\*.json') (Join-Path $data 'presets') -Force
 Copy-Item (Join-Path $src 'Data\presets\mixes\*.json') (Join-Path $data 'presets\mixes') -Force
-
-$token = Join-Path $src 'license.token'
-# Лицензия скрыта в плагине (решение 29.10): шаг показываем, только если лицензию положили в дистрибутив
-if ((Test-Path $token) -or (Test-Path (Join-Path $src 'Лицензия'))) { Write-Host '4/4  Лицензия' }
-if (Test-Path $token) {
-    Copy-Item $token (Join-Path $data 'license.token') -Force
-    Write-Host '     файл лицензии из папки установлен'
-}
-elseif (Test-Path (Join-Path $src 'Лицензия')) {
-    Write-Host '     Лицензия вводится в плагине вручную. Откройте Samplit (окно лицензии откроется само) и либо'
-    Write-Host '     вставьте ключ из файла license.key.txt в поле «Ключ лицензии», либо нажмите «Выбрать файл»'
-    Write-Host '     и укажите license.token. Оба файла лежат в папке «Лицензия» рядом с установщиком.'
-}
 
 Write-Host ''
 Write-Host 'Готово.'

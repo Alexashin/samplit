@@ -9,14 +9,24 @@
 #include <functional>
 #include <memory>
 
+// Лицензия отложена: по умолчанию 0 (SAMPLIT_LICENSE=OFF в CMake), продукт работает без неё
+#ifndef SAMPLIT_LICENSE_ENABLED
+ #define SAMPLIT_LICENSE_ENABLED 0
+#endif
+
 namespace samplit
 {
     // Лицензия в плагине: читает и проверяет токен, продлевает его в фоне, выдаёт ключи пакетов загрузчику.
     // Проверка и сеть идут в отдельном потоке и звук не трогают. Без токена, с просроченным токеном и с токеном
     // другой машины ключей нет: пакеты не открываются (демо без пакетов), сами файлы остаются зашифрованными.
     //
+    // Если лицензия отложена (Config::enforce == false): токен не читается, фонового потока и сети нет, ключей нет,
+    // activate/renew/import ничего не делают. Пути (пакеты, пресеты, папка библиотеки) работают как обычно.
+    //
     // Методы check/activate/renew/getInfo/onChange: message thread. keyFor можно звать из любого потока.
-    class LicenseManager : private juce::Timer
+    // После каждого изменения Info (в message thread) рассылается и ChangeBroadcaster: на него подписывается процессор
+    class LicenseManager : private juce::Timer,
+                           public juce::ChangeBroadcaster
     {
     public:
         struct Config
@@ -28,7 +38,12 @@ namespace samplit
             bool allowInsecureHttp = false;
             std::function<int64_t()> now;       // Unix, секунды; пусто: системные часы
             int renewIntervalHours = 24;        // как часто пробовать продлить, пока плагин открыт
+            bool enforce = SAMPLIT_LICENSE_ENABLED != 0;    // false: лицензия отложена, проверки нет
         };
+
+        // Включена ли проверка лицензии в этой сборке (SAMPLIT_LICENSE=ON)
+        static constexpr bool enabled() noexcept { return SAMPLIT_LICENSE_ENABLED != 0; }
+        bool isEnforced() const noexcept { return config.enforce; }
 
         // Каталог данных пользователя, встроенный ключ и отпечаток этой машины. Адрес сервера берётся из
         // SAMPLIT_LICENSE_URL (определение при сборке), по умолчанию пустой
@@ -43,8 +58,10 @@ namespace samplit
             juce::String user, licenseId;
             int64_t expires = 0;
             bool busy = false;                  // идёт проверка или обмен с сервером
+            bool disabled = false;              // лицензия отложена (enforce == false): status не значим
             juce::String lastError;             // последняя ошибка сети или сервера, пусто если всё хорошо
             bool isValid() const noexcept { return status == license::Status::Valid; }
+            juce::String statusText() const;    // «отключена» при disabled
         };
 
         Info getInfo() const;
@@ -74,7 +91,7 @@ namespace samplit
         // Код этого компьютера (отпечаток): по нему выпускают файл лицензии без сервера
         juce::String getMachineCode() const { return config.fingerprint; }
 
-        // Локальная лицензия без сервера (временно, до запуска сервера; в проде SAMPLIT_OFFLINE_LICENSE=OFF).
+        // Локальная лицензия без сервера (временно, до запуска сервера).
         // Проверяет присланный файл: подпись, этот компьютер, срок. Годный файл заменяет текущий токен,
         // негодный не трогает его, причина попадает в Info::lastError
         void importTokenFile (const juce::File&);

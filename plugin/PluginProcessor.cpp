@@ -18,6 +18,7 @@ namespace samplit
     {
         kitEngine.setStreamer (&streamer);
         license = std::make_unique<LicenseManager> (LicenseManager::defaultConfig());
+        license->addChangeListener (this);
 
         // Параметры автоматизации: имена общие, потому что микрофоны зависят от кита (Mic 1 = первый микрофон кита)
         for (int i = 0; i < kAutomatedMics; ++i)
@@ -43,6 +44,8 @@ namespace samplit
             p->removeListener (this);
         cancelPendingUpdate();
         stopTimer();
+        if (license != nullptr)
+            license->removeChangeListener (this);
         lifeToken.reset();
         cancelKitLoad();
         kitLoaderPool.removeAllJobs (true, 10000);
@@ -187,7 +190,21 @@ namespace samplit
 
     void SamplitProcessor::setLicenseManager (std::unique_ptr<LicenseManager> manager)
     {
+        if (license != nullptr)
+            license->removeChangeListener (this);
         license = std::move (manager);
+        restoreRetryPending = false;
+        if (license != nullptr)
+            license->addChangeListener (this);
+    }
+
+    // Лицензия проверилась или обновилась (message thread). Если проект открылся раньше и пакеты не нашлись, повторяем
+    void SamplitProcessor::changeListenerCallback (juce::ChangeBroadcaster*)
+    {
+        if (! restoreRetryPending || license == nullptr || ! license->isEnforced() || ! license->getInfo().isValid())
+            return;
+        restoreRetryPending = false;
+        restorePreset();
     }
 
     void SamplitProcessor::loadPreset (const Preset& preset, std::function<void (const KitLoadResult&)> done)
@@ -199,6 +216,7 @@ namespace samplit
             options.libraryRoot = root;
             options.manifestDir = license->getManifestDir();
         }
+        options.requireLibrary = ! license->isEnforced();
         options.keyFor = [this] (const juce::String& id, pack::PackKey& key) { return license->keyFor (id, key); };
         loadKitAsync (preset, std::move (options), std::move (done));
     }
@@ -305,12 +323,14 @@ namespace samplit
         const auto root = license->getLibraryRoot();
         return samplit::scanPresets (license->getPresetDir(), license->getPackDir(),
                                      [this] (const juce::String& id, pack::PackKey& key) { return license->keyFor (id, key); },
-                                     root.isDirectory() ? root : juce::File(), license->getManifestDir());
+                                     root.isDirectory() ? root : juce::File(), license->getManifestDir(),
+                                     ! license->isEnforced());
     }
 
     void SamplitProcessor::selectPreset (const Preset& preset, std::function<void (const KitLoadResult&)> done)
     {
         restoreMixPending = false;
+        restoreRetryPending = false;        // пользователь выбрал пресет сам: прежнее восстановление не нужно
         setPresetName (preset.id);
 
         // Микс переживает смену кита: правки пользователя переносятся по id микрофонов, выбранный микс читается с диска заново,
@@ -613,7 +633,15 @@ namespace samplit
             if (e.preset.id == id)
             {
                 restoreMixPending = true;
-                loadPreset (e.preset);
+                std::weak_ptr<int> alive = lifeToken;
+                loadPreset (e.preset, [this, alive] (const KitLoadResult& r)
+                {
+                    // Кит не собрался из-за пакетов, а лицензия ещё не проверена: ждём её (при отложенной лицензии не ждём)
+                    if (alive.expired())
+                        return;
+                    restoreRetryPending = license->isEnforced() && ! r.cancelled && ! r.missingPacks.empty()
+                                          && ! license->getInfo().isValid();
+                });
                 return true;
             }
         return false;

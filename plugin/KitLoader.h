@@ -89,6 +89,8 @@ namespace samplit
         // из исходных манифестов <manifestDir>/<id пакета>.json. Пакеты и лицензия не нужны
         juce::File libraryRoot;
         juce::File manifestDir;
+        // Лицензия отложена: пакеты .splpack не ищутся, без libraryRoot загрузка сразу отказывает с просьбой выбрать папку
+        bool requireLibrary = false;
         // Локальная библиотека: в памяти остаётся голова каждого длинного 24-битного моно WAV (столько секунд), а хвост
         // читается с диска во время игры (DiskStreamer). 0: файлы целиком в память
         double headSeconds = 0.35;
