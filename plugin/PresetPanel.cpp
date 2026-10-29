@@ -348,6 +348,12 @@ namespace samplit
                 statusWarns = true;
             }
         }
+        else if (const auto& lic = processor.getLicense();
+                 lic.getLibraryRoot() != juce::File() && lic.getManifestDir().findChildFiles (juce::File::findFiles, false, "*.json").isEmpty())
+        {
+            statusText = utf8 ("Режим «Моя библиотека»: нет манифестов в ") + lic.getManifestDir().getFullPathName();
+            statusWarns = true;
+        }
         else
         {
             statusText = presets.empty() ? juce::String() : utf8 ("Выберите пресет: клик или Enter");

@@ -74,6 +74,17 @@ namespace samplit
         packDir = dir;
     }
 
+    juce::File LicenseManager::getManifestDir() const
+    {
+        const auto installed = config.dataDir.getChildFile ("manifests");
+        if (installed.findChildFiles (juce::File::findFiles, false, "*.json").isEmpty())
+            if (const auto root = getLibraryRoot(); root != juce::File())
+                if (const auto source = root.getSiblingFile ("packs-src");
+                    ! source.findChildFiles (juce::File::findFiles, false, "*.json").isEmpty())
+                    return source;
+        return installed;
+    }
+
     juce::File LicenseManager::getLibraryRoot() const
     {
         const juce::ScopedLock sl (lock);

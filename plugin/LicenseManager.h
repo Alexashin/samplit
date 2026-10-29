@@ -57,7 +57,9 @@ namespace samplit
         // манифестов <id пакета>.json. Путь хранится в library.path рядом с токеном; пусто: обычный режим по пакетам
         juce::File getLibraryRoot() const;
         void setLibraryRoot (const juce::File&);
-        juce::File getManifestDir() const { return config.dataDir.getChildFile ("manifests"); }
+        // Сначала <данные>/manifests (кладёт установщик); если там нет *.json, исходные манифесты рядом с папкой
+        // библиотеки (<родитель>/packs-src, как в репозитории)
+        juce::File getManifestDir() const;
 
         // Ключ пакета из действующего токена. false: токена нет, он недействителен или пакета в нём нет
         bool keyFor (const juce::String& packId, pack::PackKey& out) const;

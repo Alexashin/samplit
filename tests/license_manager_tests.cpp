@@ -796,3 +796,24 @@ TEST_CASE ("a licence file can be imported without a server", "[licmgr]")
         CHECK_FALSE (installed.existsAsFile());
     }
 }
+
+// Манифесты режима библиотеки: сначала папка данных, иначе packs-src рядом с папкой библиотеки
+TEST_CASE ("library mode manifests fall back to packs-src next to the library", "[license][library]")
+{
+    Env env;
+    LicenseManager manager (env.config());
+    const auto lib = env.dir.getChildFile ("lib").getChildFile ("00-Drums");
+    const auto source = env.dir.getChildFile ("lib").getChildFile ("packs-src");
+    lib.createDirectory();
+    source.createDirectory();
+    source.getChildFile ("kick.json").replaceWithText ("{}");
+
+    manager.setLibraryRoot (lib);
+    CHECK (manager.getManifestDir() == source);
+
+    env.dir.getChildFile ("manifests").createDirectory();
+    env.dir.getChildFile ("manifests").getChildFile ("kick.json").replaceWithText ("{}");
+    CHECK (manager.getManifestDir() == env.dir.getChildFile ("manifests"));
+
+    manager.setLibraryRoot ({});
+}
