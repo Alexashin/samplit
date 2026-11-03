@@ -68,11 +68,10 @@ namespace kittest
             return (int) p.hits.size() - 1;
         }
 
-        std::shared_ptr<const Kit> done (HitSelect mode = HitSelect::Live, int spread = 0,
+        std::shared_ptr<const Kit> done (HitSelect mode = HitSelect::Live,
                                          VelocityGain gain = VelocityGain::None)
         {
             kit->mode = mode;
-            kit->spread = spread;
             kit->velocityGain = gain;
             REQUIRE (kit->buildIndex());
             return kit;

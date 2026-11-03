@@ -128,7 +128,6 @@ TEST_CASE ("Preset parses the default preset file", "[loader]")
     CHECK (p.id == "studio600-default");
     CHECK (p.packs.size() == 5);
     CHECK (p.mode == HitSelect::Live);
-    CHECK (p.layerSpread == 1);
     CHECK (p.velocityToGain == 0.0f);
     CHECK (p.mixId == "mix-balanced-main");   // микс микрофонов лежит в tools/presets/mixes
     CHECK (! p.includeUnverified);
@@ -190,7 +189,6 @@ TEST_CASE ("Preset survives a round trip through toJson (saving a user preset)",
     p.comment = "комментарий";
     p.packs = { "a", "b" };
     p.includeUnverified = true;
-    p.layerSpread = 1;
     p.mics["oh"] = { -4.5f, 0.25f, 7, true };
     p.pick.push_back ({ "Хэт", { "hat" }, 48, 78, Pick::Cycle, true });
     p.pick.push_back ({ "Бочка", { "kick" }, 0, 127, Pick::Exact, false });
@@ -203,7 +201,6 @@ TEST_CASE ("Preset survives a round trip through toJson (saving a user preset)",
     CHECK (q.comment == p.comment);
     CHECK (q.packs == p.packs);
     CHECK (q.includeUnverified);
-    CHECK (q.layerSpread == 1);
     REQUIRE (q.mics.count ("oh") == 1);
     CHECK (q.mics["oh"].levelDb == -4.5f);
     CHECK (q.mics["oh"].pan == 0.25f);
@@ -217,6 +214,14 @@ TEST_CASE ("Preset survives a round trip through toJson (saving a user preset)",
     CHECK (q.pick[1].mode == Pick::Exact);
     CHECK (q.pick[1].keyLo == 0);
     CHECK (q.pick[1].keyHi == 127);
+}
+
+TEST_CASE ("Preset accepts obsolete layerSpread without writing it back", "[loader]")
+{
+    Preset p;
+    juce::String error;
+    REQUIRE (Preset::fromJson (R"({"id":"legacy","select":{"mode":"live","layerSpread":2}})", p, error));
+    CHECK_FALSE (p.toJson().contains ("layerSpread"));
 }
 
 TEST_CASE ("shipped mixes and kit presets are consistent", "[loader]")

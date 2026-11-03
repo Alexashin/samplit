@@ -17,17 +17,17 @@
     { "id": "kick_out",  "source": "KICK-OUT",        "name": "Kick Out",                 "role": "close",    "out": 2 },
     { "id": "sn_top",    "source": "SN-top",          "name": "Snare Top",                "role": "close",    "out": 3 },
     { "id": "sn_bot",    "source": "SN-bot",          "name": "Snare Bottom",             "role": "close",    "out": 4 },
-    { "id": "oh_1",      "source": "OVER-1-Hat",      "name": "Overhead 1 (со стороны хэта)", "role": "overhead", "out": 5 },
-    { "id": "oh_2",      "source": "OVER-2-Ride",     "name": "Overhead 2 (со стороны райда)", "role": "overhead", "out": 6 },
-    { "id": "room_1",    "source": "Room-1-Hat",      "name": "Room 1 (со стороны хэта)", "role": "room",     "out": 7 },
-    { "id": "room_2",    "source": "Room-2-Ride",     "name": "Room 2 (со стороны райда)", "role": "room",     "out": 8 },
-    { "id": "room_mid",  "source": "ROOM-MID-Center", "name": "Room Mid (центр)",         "role": "room",     "out": 9 },
+    { "id": "oh_1",      "source": "OVER-1-Hat",      "name": "Over Hat",                "role": "overhead", "out": 5 },
+    { "id": "oh_2",      "source": "OVER-2-Ride",     "name": "Over Ride",               "role": "overhead", "out": 6 },
+    { "id": "room_1",    "source": "Room-1-Hat",      "name": "Room Hat",                "role": "room",     "out": 7 },
+    { "id": "room_2",    "source": "Room-2-Ride",     "name": "Room Ride",               "role": "room",     "out": 8 },
+    { "id": "room_mid",  "source": "ROOM-MID-Center", "name": "Room Mid",                "role": "room",     "out": 9 },
     { "id": "hat",       "source": "HAT",             "name": "Hi-Hat",                   "role": "close",    "out": 10 },
     { "id": "ride",      "source": "RIDE",            "name": "Ride",                     "role": "close",    "out": 11 },
-    { "id": "tom_a1",    "source": "A1",              "name": "Том 10\" (A1)",            "role": "tom",      "out": 12 },
-    { "id": "tom_a2",    "source": "A2",              "name": "Том 14\" (A2)",            "role": "tom",      "out": 13 },
-    { "id": "tom_a3",    "source": "A3",              "name": "Том 16\" средний (A3)",    "role": "tom",      "out": 14 },
-    { "id": "tom_a4",    "source": "A4",              "name": "Том 16\" низкий (A4)",     "role": "tom",      "out": 15 }
+    { "id": "tom_a1",    "source": "A1",              "name": "Альт 10",                "role": "tom",      "out": 12 },
+    { "id": "tom_a2",    "source": "A2",              "name": "Альт 12",                "role": "tom",      "out": 13 },
+    { "id": "tom_a3",    "source": "A3",              "name": "Том 14",                 "role": "tom",      "out": 14 },
+    { "id": "tom_a4",    "source": "A4",              "name": "Флор том 16",            "role": "tom",      "out": 15 }
   ],
   "packs": [
     { "id": "studio600-core",        "title": "Studio600 Drum LIB: кик и томы",              "tier": "base",  "requires": [] },
@@ -68,19 +68,19 @@
     },
 
     {
-      "id": "tom_16l", "name": "Том 16\" напольный, низкая настройка", "pack": "studio600-core", "source": "base", "choke": null,
+      "id": "tom_16l", "name": "Флор том 16", "pack": "studio600-core", "source": "base", "choke": null,
       "template": "tom", "keyOffset": 96
     },
     {
-      "id": "tom_16m", "name": "Том 16\" напольный, средняя настройка", "pack": "studio600-core", "source": "base", "choke": null,
+      "id": "tom_16m", "name": "Том 14", "pack": "studio600-core", "source": "base", "choke": null,
       "template": "tom", "keyOffset": 98
     },
     {
-      "id": "tom_14", "name": "Том 14\" подвесной", "pack": "studio600-core", "source": "base", "choke": null,
+      "id": "tom_14", "name": "Альт 12", "pack": "studio600-core", "source": "base", "choke": null,
       "template": "tom", "keyOffset": 100
     },
     {
-      "id": "tom_10", "name": "Том 10\" подвесной", "pack": "studio600-core", "source": "base", "choke": null,
+      "id": "tom_10", "name": "Альт 10", "pack": "studio600-core", "source": "base", "choke": null,
       "template": "tom", "keyOffset": 102
     },
 

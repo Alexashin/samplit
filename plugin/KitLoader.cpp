@@ -1,4 +1,5 @@
 #include "KitLoader.h"
+#include "Studio600Names.h"
 #include "DiskStreamer.h"
 
 #include "samplit/core/Wav.h"
@@ -154,7 +155,6 @@ namespace samplit
                 error = "Пресет: неизвестный режим выбора удара "_s + mode;
                 return false;
             }
-            p.layerSpread = juce::jmax (0, (int) sel->getProperty ("layerSpread"));
             p.velocityToGain = (float) (double) sel->getProperty ("velocityToGain");
 
             if (auto* rules = sel->getProperty ("pick").getArray())
@@ -226,7 +226,6 @@ namespace samplit
 
         auto* sel = new juce::DynamicObject();
         sel->setProperty ("mode", mode == HitSelect::Kontakt ? "kontakt" : "live");
-        sel->setProperty ("layerSpread", layerSpread);
         sel->setProperty ("noRepeat", true);
         sel->setProperty ("velocityToGain", (double) velocityToGain);
         juce::Array<juce::var> rules;
@@ -512,7 +511,6 @@ namespace samplit
         kit->id = preset.id.toStdString();
         kit->title = preset.name.toStdString();
         kit->mode = preset.mode;
-        kit->spread = preset.layerSpread;
         kit->velocityGain = preset.velocityToGain > 0.0f ? VelocityGain::Linear : VelocityGain::None;
 
         std::map<juce::String, int> micIndex;
@@ -531,7 +529,8 @@ namespace samplit
                 const bool hasSet = set != preset.mics.end();
                 const int out = hasSet && set->second.out >= 0 ? set->second.out : m.out;
                 micIndex[m.id] = (int) kit->mics.size();
-                kit->mics.push_back ({ m.id.toStdString(), m.name.toStdString(), m.role.toStdString(),
+                const auto name = pk.id.startsWith ("studio600-") ? studio600MicName (m.id.toStdString()) : nullptr;
+                kit->mics.push_back ({ m.id.toStdString(), name != nullptr ? name : m.name.toStdString(), m.role.toStdString(),
                                        juce::jlimit (0, kNumOutputs, out) });
 
                 MicMix mix;
@@ -563,7 +562,8 @@ namespace samplit
                     pieceIndex[mp.id] = p;
                     Piece np;
                     np.id = mp.id.toStdString();
-                    np.name = mp.name.toStdString();
+                    const auto name = packs[(size_t) pi].id.startsWith ("studio600-") ? studio600PieceName (np.id) : nullptr;
+                    np.name = name != nullptr ? name : mp.name.toStdString();
                     if (mp.choke.isNotEmpty())
                     {
                         const int id = (int) chokeIds.size();

@@ -35,7 +35,6 @@ namespace samplit
     class KitEngine
     {
     public:
-        static constexpr int kMaxPieces = 32;    // барабанов с отдельной громкостью
         static constexpr int kMaxStrikes = 256;  // одновременно звучащих ударов (каждый до kMaxMics голосов)
         static constexpr int kSoftFreeStrikes = 8;   // меньше стольких свободных мест: старейший удар заранее затухает
 
@@ -50,14 +49,13 @@ namespace samplit
 
         void prepare (double sampleRate) noexcept;
 
-        // Message thread: новый кит. Режим выбора удара и разброс берутся из кита, потом их можно поменять отдельно.
+        // Message thread: новый кит. Режим выбора удара берётся из кита.
         // Звучащие удары доигрывают из своих клипов
         void setKit (const Kit* kit) noexcept;
         const Kit* getKit() const noexcept { return current.load(); }
 
         // Message thread
         void setSelectMode (HitSelect mode) noexcept { selectMode.store ((int) mode); }
-        void setSpread (int layers) noexcept { spread.store (layers < 0 ? 0 : layers); }
 
         // Message thread, до первой игры: стример хвостов с диска. nullptr: потоковые клипы играют только голову
         void setStreamer (DiskStreamer* s) noexcept { streamer = s; }
@@ -74,9 +72,6 @@ namespace samplit
 
         // Message thread: уровень (дБ) и панорама микрофона. Панорама действует, когда микрофон идёт в Main
         void setMicMix (int mic, float levelDb, float pan) noexcept;
-
-        // Message thread: громкость барабана кита (дБ), действует на удары, которые начнутся после вызова
-        void setPieceLevel (int piece, float levelDb) noexcept;
 
         // Message thread: выход микрофона поверх выхода из кита. -1: как в ките
         void setMicOutput (int mic, int out) noexcept;
@@ -170,8 +165,6 @@ namespace samplit
         DiskStreamer* streamer = nullptr;
         std::atomic<bool> offline { false };
         std::atomic<int> selectMode { (int) HitSelect::Live };
-        std::atomic<int> spread { 0 };
-        std::array<std::atomic<float>, kMaxPieces> pieceGain;
         std::array<std::atomic<float>, Kit::kMaxMics> micLevel;
         std::array<std::atomic<float>, Kit::kMaxMics> micPan;
         std::array<std::atomic<int>, Kit::kMaxMics> micOut;

@@ -1,6 +1,7 @@
 #include "KitEngine.h"
 #include "PluginProcessor.h"
 #include "kit_fixture.h"
+#include "Studio600Names.h"
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -226,7 +227,7 @@ TEST_CASE ("kit: the layer follows velocity", "[kit]")
     REQUIRE (r.hitOnce (60, 64).layer == 1);
 }
 
-TEST_CASE ("kit: velocity in a gap picks the nearest layer", "[kit]")
+TEST_CASE ("kit: unassigned velocity between layers is silent", "[kit]")
 {
     KitBuilder b;
     b.mic ("m", 1);
@@ -237,9 +238,11 @@ TEST_CASE ("kit: velocity in a gap picks the nearest layer", "[kit]")
 
     Rig r;
     r.engine.setKit (kit.get());
-    REQUIRE (r.hitOnce (60, 50).layer == 0);
-    REQUIRE (r.hitOnce (60, 75).layer == 1);
-    REQUIRE (r.hitOnce (60, 60).layer == 0);   // ровно посередине: берём мягче
+    for (int v : { 41, 50, 60, 75, 79 })
+        REQUIRE (r.hitOnce (60, v).voices == 0);
+    REQUIRE (r.hitOnce (60, 1).layer == 0);
+    REQUIRE (r.hitOnce (60, 40).layer == 0);
+    REQUIRE (r.hitOnce (60, 80).layer == 1);
     REQUIRE (r.hitOnce (60, 127).layer == 1);
 }
 
@@ -306,7 +309,7 @@ TEST_CASE ("kit: a layer with a single hit may repeat", "[kit]")
     REQUIRE (r.engine.noteOn (60, 100).hit == 0);
 }
 
-TEST_CASE ("kit: spread takes hits from neighbouring layers", "[kit]")
+TEST_CASE ("kit: random selection stays inside the assigned layer", "[kit]")
 {
     KitBuilder b;
     b.mic ("m", 1);
@@ -315,24 +318,15 @@ TEST_CASE ("kit: spread takes hits from neighbouring layers", "[kit]")
     b.hit (p, b.layer (p, 43, 84), 60, { 0.2f });
     b.hit (p, b.layer (p, 85, 127), 60, { 0.3f });
 
-    auto usedLayers = [&] (int spread, int velocity)
+    const auto kit = b.done();
+    Rig r;
+    r.engine.setKit (kit.get());
+    for (int i = 0; i < 100; ++i)
     {
-        auto kit = b.done (HitSelect::Live, spread);
-        Rig r;
-        r.engine.setKit (kit.get());
-        std::map<int, int> used;
-        for (int i = 0; i < 300; ++i)
-            ++used[r.engine.noteOn (60, velocity).layer];
-        return used;
-    };
-
-    REQUIRE (usedLayers (0, 60).size() == 1);
-    const auto mid = usedLayers (1, 60);
-    REQUIRE (mid.size() == 3);
-
-    const auto soft = usedLayers (1, 10);   // с края только два соседних слоя
-    REQUIRE (soft.size() == 2);
-    REQUIRE (soft.count (2) == 0);
+        REQUIRE (r.engine.noteOn (60, 10).layer == 0);
+        REQUIRE (r.engine.noteOn (60, 60).layer == 1);
+        REQUIRE (r.engine.noteOn (60, 100).layer == 2);
+    }
 }
 
 TEST_CASE ("kit: only keys of a piece play", "[kit]")
@@ -374,7 +368,7 @@ TEST_CASE ("kit: velocity does not change the loudness unless asked", "[kit]")
 
     SECTION ("none")
     {
-        const auto kit = b.done (HitSelect::Live, 0, VelocityGain::None);
+        const auto kit = b.done (HitSelect::Live, VelocityGain::None);
         Rig r;
         r.engine.setKit (kit.get());
         r.hitOnce (60, 20);
@@ -385,7 +379,7 @@ TEST_CASE ("kit: velocity does not change the loudness unless asked", "[kit]")
     }
     SECTION ("linear")
     {
-        const auto kit = b.done (HitSelect::Live, 0, VelocityGain::Linear);
+        const auto kit = b.done (HitSelect::Live, VelocityGain::Linear);
         Rig r;
         r.engine.setKit (kit.get());
         r.hitOnce (60, 64);
@@ -512,7 +506,7 @@ TEST_CASE ("kit: without a kit nothing plays", "[kit]")
     REQUIRE (r.level (0) == 0.0f);
 }
 
-TEST_CASE ("kit: a layer with pick exact plays only the exact hit, without spread or repeats", "[kit]")
+TEST_CASE ("kit: exact selection plays only its assigned hit", "[kit]")
 {
     KitBuilder b;
     b.mic ("m", 1);
@@ -523,7 +517,7 @@ TEST_CASE ("kit: a layer with pick exact plays only the exact hit, without sprea
     b.hit (p, soft, 60, { 0.05f });
     for (int v = 120; v <= 127; ++v)
         b.hit (p, exact, 60, { 0.01f * (float) (v - 119) }, v, v);
-    const auto kit = b.done (HitSelect::Live, 2);   // разброс включён, но слой его игнорирует
+    const auto kit = b.done();
 
     Rig r;
     r.engine.setKit (kit.get());
@@ -534,10 +528,7 @@ TEST_CASE ("kit: a layer with pick exact plays only the exact hit, without sprea
         REQUIRE (info.hit == 1 + (123 - 120));   // всегда один и тот же, повтор подряд разрешён
     }
 
-    // Щель ниже окна слоя: ближайший слой и ближайший к velocity удар
-    REQUIRE (r.engine.noteOn (60, 112).hit == 1);
-    // Слой без pick по-прежнему работает по общим правилам: при разбросе 2 удар может прийти и из соседнего слоя
-    r.engine.setSpread (0);
+    REQUIRE (r.engine.noteOn (60, 112).voices == 0);
     REQUIRE (r.engine.noteOn (60, 50).layer == soft);
 }
 
@@ -553,13 +544,14 @@ TEST_CASE ("kit: a layer with pick cycle plays its hits in velocity order and wr
     // Удары в манифесте не по порядку velocity: круг всё равно идёт от мягкого к сильному
     for (int v : { 124, 120, 127, 122 })
         b.hit (p, loud, 60, { 0.1f }, v, v);
-    const auto kit = b.done (HitSelect::Live, 2);   // разброс включён, но слой по кругу его игнорирует
+    const auto kit = b.done();
 
     Rig r;
     r.engine.setKit (kit.get());
     std::vector<int> played;
-    for (int v : { 120, 127, 111, 125, 119, 122, 127, 121 })   // velocity любая внутри и около слоя
+    for (int v : { 120, 127, 124, 122, 127, 120, 122, 124 })
     {
+        REQUIRE (r.engine.noteOn (60, 121).voices == 0); // пустой слот не продвигает круг
         const auto info = r.engine.noteOn (60, v);
         REQUIRE (info.layer == loud);
         played.push_back (info.hit);
@@ -572,7 +564,7 @@ TEST_CASE ("kit: a layer with pick cycle plays its hits in velocity order and wr
     r.engine.setKit (nullptr);
     r.engine.setKit (kit.get());
     r.engine.noteOn (0, 1);
-    const auto kit2 = b.done (HitSelect::Live, 0);
+    const auto kit2 = b.done();
     r.engine.setKit (kit2.get());
     REQUIRE (r.engine.noteOn (60, 127).hit == 2);
     REQUIRE (r.engine.noteOn (60, 127).hit == 4);
@@ -588,7 +580,7 @@ TEST_CASE ("kit: a pick choice switches its layers between random and cycle", "[
     b.kit->choices.push_back ({ "p:60-60", "P", Pick::Random });
     for (int v = 112; v <= 127; ++v)
         b.hit (p, l, 60, { 0.1f }, v, v);
-    const auto kit = b.done (HitSelect::Live, 0);
+    const auto kit = b.done();
 
     Rig r;
     r.engine.setSeed (7);
@@ -650,7 +642,7 @@ TEST_CASE ("kit: Hermite interpolation follows a sine when the rates differ", "[
 
 // ---------------------------------------------------------------- процессор: 16 моно-выходов и кит
 
-TEST_CASE ("16 mono outputs: Main is stereo, Out 1..16 are mono and off by default", "[kit]")
+TEST_CASE ("16 mono outputs: Main is stereo, named outputs are mono and off by default", "[kit]")
 {
     SamplitProcessor p;
 
@@ -660,7 +652,7 @@ TEST_CASE ("16 mono outputs: Main is stereo, Out 1..16 are mono and off by defau
     {
         REQUIRE_FALSE (p.getBus (false, bus)->isEnabled());
         REQUIRE (p.getBus (false, bus)->getDefaultLayout() == juce::AudioChannelSet::mono());
-        REQUIRE (p.getBus (false, bus)->getName() == "Out " + juce::String (bus));
+        REQUIRE (p.getBus (false, bus)->getName() == juce::String::fromUTF8 (studio600OutputName (bus)));
     }
 }
 

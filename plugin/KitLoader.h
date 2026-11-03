@@ -42,7 +42,6 @@ namespace samplit
         std::vector<juce::String> pieces;   // пусто: все барабаны пакетов
         bool includeUnverified = false;
         HitSelect mode = HitSelect::Live;
-        int layerSpread = 0;
         float velocityToGain = 0.0f;
         std::map<juce::String, MicSetting> mics;
         std::vector<PickRule> pick;

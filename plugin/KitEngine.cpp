@@ -82,8 +82,6 @@ namespace samplit
 
     KitEngine::KitEngine()
     {
-        for (auto& g : pieceGain)
-            g.store (1.0f);
         for (auto& l : micLevel)
             l.store (1.0f);
         for (auto& p : micPan)
@@ -149,7 +147,6 @@ namespace samplit
         if (kit != nullptr)
         {
             selectMode.store ((int) kit->mode);
-            spread.store (std::max (0, kit->spread));
         }
         for (auto& c : choicePick)
             c.store (-1);
@@ -160,12 +157,6 @@ namespace samplit
     {
         if (choice >= 0 && choice < Kit::kMaxChoices)
             choicePick[(size_t) choice].store (pick < 0 ? -1 : std::min (pick, (int) Pick::Exact));
-    }
-
-    void KitEngine::setPieceLevel (int piece, float levelDb) noexcept
-    {
-        if (piece >= 0 && piece < kMaxPieces)
-            pieceGain[(size_t) piece].store (juce::Decibels::decibelsToGain (levelDb, -100.0f));
     }
 
     void KitEngine::setMicMix (int mic, float levelDb, float pan) noexcept
@@ -380,20 +371,26 @@ namespace samplit
             return -1;
         }
 
-        // Live: слой, в который попала velocity, а в щели между окнами ближайший (при равенстве мягче).
-        // Слой с pick "exact" играет только точный удар, "cycle" идёт по кругу; оба без соседних слоёв
+        // В live-режиме пустое значение velocity всегда молчит. Даже если окно слоя включает
+        // значение, после исключения unverified ударов оно может остаться без файла.
         const int numLayers = (int) map.layers.size();
         int chosen = -1;
-        int bestDistance = 1 << 30;
         for (int i = 0; i < numLayers; ++i)
         {
             const auto& l = map.layers[(size_t) i];
-            const int distance = velocity < l.velLo ? l.velLo - velocity : (velocity > l.velHi ? velocity - l.velHi : 0);
-            if (distance < bestDistance)
+            if (velocity < l.velLo || velocity > l.velHi)
+                continue;
+            for (int h : l.hits)
             {
-                bestDistance = distance;
-                chosen = i;
+                const auto& hit = piece.hits[(size_t) h];
+                if (velocity >= hit.velLo && velocity <= hit.velHi)
+                {
+                    chosen = i;
+                    break;
+                }
             }
+            if (chosen >= 0)
+                break;
         }
         if (chosen < 0)
             return -1;
@@ -416,49 +413,37 @@ namespace samplit
 
         if (pick == Pick::Exact)
         {
-            int best = -1;
-            int bestHitDistance = 1 << 30;
             for (int h : map.layers[(size_t) chosen].hits)
             {
                 const auto& hit = piece.hits[(size_t) h];
-                const int d = velocity < hit.velLo ? hit.velLo - velocity : (velocity > hit.velHi ? velocity - hit.velHi : 0);
-                if (d < bestHitDistance)
-                {
-                    bestHitDistance = d;
-                    best = h;
-                }
+                if (velocity >= hit.velLo && velocity <= hit.velHi)
+                    return h;
             }
-            return best;
+            return -1;
         }
 
-        const int sp = spread.load();
-        const int first = std::max (0, chosen - sp);
-        const int last = std::min (numLayers - 1, chosen + sp);
-
-        // Случайный удар из выбранных слоёв, но не тот, что играл на этой клавише в прошлый раз
+        // Случайный удар только из выбранного слоя, без повтора подряд.
         const int previous = lastHit[(size_t) note];
         int total = 0;
         bool hasPrevious = false;
-        for (int i = first; i <= last; ++i)
-            for (int h : map.layers[(size_t) i].hits)
-            {
-                ++total;
-                hasPrevious = hasPrevious || h == previous;
-            }
+        for (int h : layer.hits)
+        {
+            ++total;
+            hasPrevious = hasPrevious || h == previous;
+        }
 
         const int candidates = hasPrevious && total > 1 ? total - 1 : total;
         if (candidates <= 0)
             return -1;
 
         int k = (int) (nextRandom() % (uint32_t) candidates);
-        for (int i = first; i <= last; ++i)
-            for (int h : map.layers[(size_t) i].hits)
-            {
-                if (hasPrevious && total > 1 && h == previous)
-                    continue;
-                if (k-- == 0)
-                    return h;
-            }
+        for (int h : layer.hits)
+        {
+            if (hasPrevious && total > 1 && h == previous)
+                continue;
+            if (k-- == 0)
+                return h;
+        }
         return -1;
     }
 
@@ -523,8 +508,7 @@ namespace samplit
         }
 
         auto& s = strikes[(size_t) slot];
-        const float pieceGainNow = map.piece < kMaxPieces ? pieceGain[(size_t) map.piece].load() : 1.0f;
-        const float velGain = pieceGainNow * (kit->velocityGain == VelocityGain::Linear ? (float) velocity / 127.0f : 1.0f);
+        const float velGain = kit->velocityGain == VelocityGain::Linear ? (float) velocity / 127.0f : 1.0f;
         int started = 0, missing = 0;
         for (int m = 0; m < (int) hit.files.size(); ++m)
         {

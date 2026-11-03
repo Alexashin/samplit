@@ -1,5 +1,6 @@
 #include "MixerPanel.h"
 #include "Brand.h"
+#include "Studio600Names.h"
 
 namespace samplit
 {
@@ -131,7 +132,7 @@ namespace samplit
                         if (! heading)
                             output.addSectionHeading (on ? utf8 ("Включены в DAW") : utf8 ("Выключены в DAW, играют в Main"));
                         heading = true;
-                        output.addItem ("Out " + juce::String (i), i + 1);
+                        output.addItem (juce::String::fromUTF8 (studio600OutputName (i)), i + 1);
                     }
                 }
                 outputsBuilt = true;

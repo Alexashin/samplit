@@ -124,10 +124,6 @@ namespace samplit
         MicState getMicState (int mic) const;
         void setMicState (int mic, const MicState&);
 
-        // ---- Громкость барабана (message thread, дБ −24…+12). Индекс как в Kit::pieces; сохраняется в проекте ----
-        float getPieceLevel (int piece) const;
-        void setPieceLevel (int piece, float levelDb);
-
         // ---- Автоматизация в DAW: уровень и панорама первых kAutomatedMics микрофонов кита (параметры "micNN_level", "micNN_pan").
         // Хост двигает параметр, микшер следует за ним, и наоборот. Mute, Solo и выход не автоматизируются ----
         static constexpr int kAutomatedMics = Kit::kMaxMics;
@@ -186,7 +182,6 @@ namespace samplit
         std::atomic<uint64_t> activeLo { 0 }, activeHi { 0 };
         std::atomic<uint32_t> enabledOutputs { 0 };
         void applyMixer();
-        void applyPieceLevels();
         void pushParam (int mic);
         void pushAllParams();
         // Может вызываться из audio thread хоста: только флаг (triggerAsyncUpdate берёт мьютекс и аллоцирует).
@@ -206,8 +201,6 @@ namespace samplit
         std::vector<Pick> picks;                            // только message thread, по индексу Kit::choices
         std::map<juce::String, Pick> savedPicks;            // по id переключателя, под stateLock: пишется в проект
         KitLoadResult lastLoad;                             // только message thread
-        std::vector<float> pieceLevels;                     // дБ, только message thread
-        std::map<juce::String, float> savedPieces;          // по id барабана, под stateLock
         std::array<juce::AudioParameterFloat*, kAutomatedMics> levelParams {}, panParams {};
         bool restoreMixPending = false;                     // только message thread
         // Проект открыли раньше, чем проверилась лицензия: пакеты не нашлись. Как только лицензия изменится и станет

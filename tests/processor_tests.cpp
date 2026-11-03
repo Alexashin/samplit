@@ -1,4 +1,5 @@
 #include "PluginProcessor.h"
+#include "Studio600Names.h"
 #include "kit_fixture.h"
 
 #include <catch2/catch_test_macros.hpp>
@@ -9,6 +10,19 @@ using namespace samplit;
 using namespace kittest;
 
 // Процессор с китом (setKit): звук, раскладка по выходам, состояние проекта. Шины и раскладки проверяет kit_engine_tests
+
+TEST_CASE ("processor: Studio600 mono buses use microphone names", "[processor]")
+{
+    SamplitProcessor processor;
+    REQUIRE (processor.getBusCount (false) == 17);
+    CHECK (processor.getBus (false, 0)->getName() == "Main");
+    for (int i = 1; i <= kNumOutputs; ++i)
+    {
+        const auto* bus = processor.getBus (false, i);
+        REQUIRE (bus != nullptr);
+        CHECK (bus->getName() == juce::String::fromUTF8 (studio600OutputName (i)));
+    }
+}
 
 TEST_CASE ("processor without a kit is silent", "[processor]")
 {
@@ -195,8 +209,5 @@ TEST_CASE ("a project saved by the old sampler (GROUP, ZONE, folder) still loads
     CHECK (pick->getStringAttribute ("id") == "snare");
     CHECK (pick->getStringAttribute ("mode") == pickToString (Pick::Cycle));
 
-    const auto* piece = out->getChildByName ("PIECE");
-    REQUIRE (piece != nullptr);
-    CHECK (piece->getStringAttribute ("id") == "kick");
-    CHECK (piece->getDoubleAttribute ("level") == -6.0);
+    CHECK (out->getChildByName ("PIECE") == nullptr);
 }

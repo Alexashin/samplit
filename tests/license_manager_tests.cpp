@@ -473,7 +473,7 @@ TEST_CASE ("mixes: a preset takes its mix, a mix applies without reload, edits a
     CHECK (p.isMixModified());
 }
 
-TEST_CASE ("piece level scales the drum, is saved with the project and renamed or deleted files are guarded", "[licmgr]")
+TEST_CASE ("renamed or deleted user mix files are guarded", "[licmgr]")
 {
     Env env;
     const auto kickKey = pack::generateKey();
@@ -481,55 +481,12 @@ TEST_CASE ("piece level scales the drum, is saved with the project and renamed o
     writePreset (env.dir, kPresetJson);
     env.writeToken ({ { "kick", kickKey } });
 
-    juce::MemoryBlock saved;
-    float loud = 0.0f;
-    {
-        SamplitProcessor p;
-        p.prepareToPlay (44100.0, 512);
-        p.setLicenseManager (started (env));
-        bool called = false;
-        p.selectPreset (p.scanPresets()[0].preset, [&] (const KitLoadResult&) { called = true; });
-        REQUIRE (pumpUntil ([&] { return called; }));
-
-        auto renderNote = [&]
-        {
-            juce::AudioBuffer<float> buffer (p.getTotalNumOutputChannels(), 512);
-            buffer.clear();
-            juce::MidiBuffer midi;
-            midi.addEvent (juce::MidiMessage::noteOn (1, 36, (juce::uint8) 100), 0);
-            p.processBlock (buffer, midi);
-            float peak = 0.0f;
-            for (int ch = 0; ch < buffer.getNumChannels(); ++ch)
-                peak = std::max (peak, buffer.getMagnitude (ch, 0, 512));
-            return peak;
-        };
-
-        loud = renderNote();
-        REQUIRE (loud > 0.0f);
-        CHECK (p.getPieceLevel (0) == 0.0f);
-        p.setPieceLevel (0, -12.0f);
-        CHECK (p.getPieceLevel (0) == -12.0f);
-        const float quiet = renderNote();
-        CHECK (quiet < loud * 0.3f);
-        CHECK (quiet > loud * 0.2f);
-        p.setPieceLevel (0, 100.0f);
-        CHECK (p.getPieceLevel (0) == 12.0f);
-        p.setPieceLevel (0, -12.0f);
-        p.getStateInformation (saved);
-    }
-
     SamplitProcessor b;
     b.prepareToPlay (44100.0, 512);
     b.setLicenseManager (started (env));
-    b.setStateInformation (saved.getData(), (int) saved.getSize());
-    REQUIRE (pumpUntil ([&] { return b.getKit() != nullptr && ! b.isKitLoading(); }));
-    CHECK (b.getPieceLevel (0) == -12.0f);
-
-    // Выбор пресета заново возвращает 0 дБ
     bool called = false;
     b.selectPreset (b.scanPresets()[0].preset, [&] (const KitLoadResult&) { called = true; });
     REQUIRE (pumpUntil ([&] { return called; }));
-    CHECK (b.getPieceLevel (0) == 0.0f);
 
     // Свои файлы: переименование меняет только название, чужие трогать нельзя
     juce::String error;
@@ -630,7 +587,6 @@ TEST_CASE ("switching kits while the audio thread keeps playing stays finite and
         bool called = false;
         p.selectPreset (presets[(size_t) (i % 2)].preset, [&] (const KitLoadResult&) { called = true; });
         REQUIRE (pumpUntil ([&] { return called; }));
-        p.setPieceLevel (0, (float) (i % 5) - 2.0f);
         auto m = p.getMicState (0);
         m.levelDb = -(float) i;
         p.setMicState (0, m);

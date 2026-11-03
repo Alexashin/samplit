@@ -171,7 +171,6 @@ namespace samplit
         std::vector<Piece> pieces;
         VelocityGain velocityGain = VelocityGain::None;
         HitSelect mode = HitSelect::Live;
-        int spread = 0;                 // Live: брать удар из ±spread соседних слоёв
         std::vector<PickChoice> choices;    // не больше kMaxChoices
         std::array<NoteMap, 128> notes {};
 

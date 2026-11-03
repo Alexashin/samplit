@@ -60,9 +60,12 @@ namespace
             m.mics.push_back ({ mic.id, mic.name, "close", mic.out });
 
         const std::vector<PieceDef> pieces = {
-            { "kick", "Бочка", { 36 } },   { "tom_10", "Том 10\"", { 48 } }, { "tom_14", "Том 14\"", { 45 } },
-            { "tom_16m", "Том 16\"", { 43 } }, { "hat", "Хай-хэт", { 42, 44, 46 } }, { "ride", "Райд", { 51, 53 } },
-            { "crash_a", "Крэш A", { 49 } }, { "crash_b", "Крэш B", { 57 } }
+            { "kick", "Бочка", { 36 } }, { "snare_live", "Малый", { 38 } },
+            { "tom_10", "Альт 10", { 48 } }, { "tom_14", "Альт 12", { 45 } },
+            { "tom_16m", "Том 14", { 43 } }, { "tom_16l", "Флор том 16", { 41 } },
+            { "hat", "Хай-хэт", { 42, 44, 46 } }, { "ride", "Райд", { 51, 53 } },
+            { "crash_a", "Крэш A", { 49 } }, { "crash_b", "Крэш B", { 57 } },
+            { "china", "China", { 58 } }, { "splash", "Splash", { 59 } }
         };
         for (const auto& pd : pieces)
         {

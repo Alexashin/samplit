@@ -1,4 +1,5 @@
 #include "PluginProcessor.h"
+#include "Studio600Names.h"
 #include "Brand.h"
 
 #include <algorithm>
@@ -10,7 +11,7 @@ namespace samplit
         // Шина 0 это Main (стерео). Шины 1..16 это отдельные моно-выходы групп и микрофонов. DAW включает их сама
         auto props = BusesProperties().withOutput ("Main", juce::AudioChannelSet::stereo(), true);
         for (int i = 0; i < kNumOutputs; ++i)
-            props = props.withOutput ("Out " + juce::String (i + 1), juce::AudioChannelSet::mono(), false);
+            props = props.withOutput (juce::String::fromUTF8 (studio600OutputName (i + 1)), juce::AudioChannelSet::mono(), false);
         return props;
     }
 
@@ -312,18 +313,6 @@ namespace samplit
                     }
                     applyPicks();
 
-                    // Громкость барабанов: как в проекте при восстановлении, иначе 0 дБ
-                    {
-                        const juce::ScopedLock sl (stateLock);
-                        pieceLevels.assign (result->kit->pieces.size(), 0.0f);
-                        for (size_t i = 0; i < pieceLevels.size(); ++i)
-                            if (const auto saved = savedPieces.find (juce::String (result->kit->pieces[i].id)); keepMix && saved != savedPieces.end())
-                                pieceLevels[i] = saved->second;
-                        savedPieces.clear();
-                        for (size_t i = 0; i < pieceLevels.size(); ++i)
-                            savedPieces[juce::String (result->kit->pieces[i].id)] = pieceLevels[i];
-                    }
-                    applyPieceLevels();
                 }
 
                 lastLoad = *result;
@@ -690,32 +679,6 @@ namespace samplit
         pushParam (mic);
     }
 
-    // ---------------------------------------------------------------- громкость барабанов и параметры
-
-    float SamplitProcessor::getPieceLevel (int piece) const
-    {
-        return juce::isPositiveAndBelow (piece, (int) pieceLevels.size()) ? pieceLevels[(size_t) piece] : 0.0f;
-    }
-
-    void SamplitProcessor::setPieceLevel (int piece, float levelDb)
-    {
-        const auto current = getKit();
-        if (current == nullptr || ! juce::isPositiveAndBelow (piece, (int) pieceLevels.size()) || piece >= (int) current->pieces.size())
-            return;
-        pieceLevels[(size_t) piece] = juce::jlimit (-24.0f, 12.0f, levelDb);
-        {
-            const juce::ScopedLock sl (stateLock);
-            savedPieces[juce::String (current->pieces[(size_t) piece].id)] = pieceLevels[(size_t) piece];
-        }
-        applyPieceLevels();
-    }
-
-    void SamplitProcessor::applyPieceLevels()
-    {
-        for (int i = 0; i < KitEngine::kMaxPieces; ++i)
-            kitEngine.setPieceLevel (i, i < (int) pieceLevels.size() ? pieceLevels[(size_t) i] : 0.0f);
-    }
-
     // Микшер → параметр хоста (только если значение действительно другое: без лишних уведомлений)
     void SamplitProcessor::pushParam (int mic)
     {
@@ -856,13 +819,6 @@ namespace samplit
                 v.setProperty ("out", m.out, nullptr);
                 state.appendChild (v, nullptr);
             }
-            for (const auto& [id, level] : savedPieces)
-            {
-                juce::ValueTree v ("PIECE");
-                v.setProperty ("id", id, nullptr);
-                v.setProperty ("level", level, nullptr);
-                state.appendChild (v, nullptr);
-            }
             for (const auto& [id, pick] : savedPicks)
             {
                 juce::ValueTree v ("PICK");
@@ -888,14 +844,10 @@ namespace samplit
 
         std::map<juce::String, MicState> mix;
         std::map<juce::String, Pick> pickModes;
-        std::map<juce::String, float> pieceMap;
         for (const auto& v : state)
         {
             if (v.hasType ("PIECE"))
-            {
-                pieceMap[v.getProperty ("id").toString()] = juce::jlimit (-24.0f, 12.0f, (float) v.getProperty ("level", 0.0));
                 continue;
-            }
 
             if (v.hasType ("PICK"))
             {
@@ -926,7 +878,6 @@ namespace samplit
             mixModified = (bool) state.getProperty ("mixModified");
             savedMix = std::move (mix);
             savedPicks = std::move (pickModes);
-            savedPieces = std::move (pieceMap);
         }
 
         // Хост может звать setState не из message thread, а загрузка кита и микшер живут только там

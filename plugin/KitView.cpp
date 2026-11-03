@@ -7,17 +7,16 @@ namespace samplit
 {
     namespace
     {
-        constexpr int kDetailWidth = 340;
+        constexpr int kDetailWidth = 300;
         constexpr int kGap = 14;
         constexpr int kRowHeight = 58;
-        constexpr int kLegendHeight = 92;
-        constexpr int kLegendMinStage = 330;
-        constexpr float kStageWidth = 1.7f, kStageHeight = 1.0f;
+        constexpr int kLegendHeight = 88;
+        constexpr float kStageWidth = 1.65f, kStageHeight = 1.0f;
 
         const juce::Colour kBrass { 0xffc9a85c };
         const juce::Colour kBrassDark { 0xff6f5a2c };
 
-        // Место барабана на схеме (вид спереди). Координаты в долях сцены 1,7 × 1,0
+        // Вид сверху: положение инструментов как на схеме Studio600.
         struct Place
         {
             const char* id;
@@ -27,19 +26,19 @@ namespace samplit
         };
 
         const Place kPlaces[] = {
-            { "crash_a",   0.36f, 0.20f, 0.19f, 0.055f, true,  "Crash 18\"" },
-            { "splash",    0.60f, 0.10f, 0.08f, 0.030f, true,  "Splash" },
-            { "china",     0.80f, 0.11f, 0.13f, 0.040f, true,  "China" },
-            { "crash_b",   1.12f, 0.16f, 0.17f, 0.050f, true,  "Crash 16\"" },
-            { "ride",      1.50f, 0.27f, 0.21f, 0.062f, true,  "Ride" },
-            { "cymbals_x", 1.58f, 0.08f, 0.09f, 0.032f, true,  "C7–G#7" },
-            { "hat",       0.17f, 0.57f, 0.14f, 0.045f, true,  "Hi-hat" },
-            { "kick",      0.86f, 0.71f, 0.27f, 0.27f,  false, "Бочка" },
-            { "snare",     0.47f, 0.66f, 0.15f, 0.15f,  false, "Малый" },
-            { "tom_10",    0.69f, 0.38f, 0.115f, 0.115f, false, "Том 10\"" },
-            { "tom_14",    1.04f, 0.38f, 0.125f, 0.125f, false, "Том 14\"" },
-            { "tom_16m",   1.30f, 0.64f, 0.15f, 0.15f,  false, "16\" ср." },
-            { "tom_16l",   1.54f, 0.64f, 0.12f, 0.12f,  false, "16\" низ." },
+            { "kick",      0.84f, 0.30f, 0.27f, 0.23f, false, "Бочка" },
+            { "tom_10",    0.62f, 0.45f, 0.095f, 0.095f, false, "Альт 10" },
+            { "tom_14",    0.83f, 0.49f, 0.11f, 0.11f, false, "Альт 12" },
+            { "tom_16m",   1.08f, 0.50f, 0.12f, 0.12f, false, "Том 14" },
+            { "tom_16l",   1.25f, 0.76f, 0.15f, 0.15f, false, "Флор том 16" },
+            { "snare",     0.61f, 0.76f, 0.14f, 0.14f, false, "Малый" },
+            { "hat",       0.23f, 0.68f, 0.13f, 0.045f, true, "Hi-hat" },
+            { "crash_b",   0.18f, 0.45f, 0.14f, 0.045f, true, "Crash 16\"" },
+            { "crash_a",   0.38f, 0.24f, 0.17f, 0.055f, true, "Crash 18\"" },
+            { "ride",      1.33f, 0.22f, 0.17f, 0.060f, true, "Ride" },
+            { "china",     0.12f, 0.18f, 0.075f, 0.030f, true, "China" },
+            { "splash",    0.79f, 0.10f, 0.070f, 0.026f, true, "Splash" },
+            { "cymbals_x", 1.55f, 0.11f, 0.060f, 0.025f, true, "C7–G#7" },
         };
 
         const Place* placeFor (const std::string& id)
@@ -62,8 +61,8 @@ namespace samplit
         };
 
         const ModeText kModes[] = {
-            { "Случайно", "Velocity выбирает слой громкости, а внутри слоя удар берётся случайно, без повтора подряд." },
-            { "По кругу", "Velocity выбирает слой громкости, а записанные в нём удары идут по очереди, потом снова с первого. Повторы звучат чуть по-разному." },
+            { "Случайно", "Velocity выбирает группу записанных ударов. Внутри неё удар выбирается случайно, без повтора подряд." },
+            { "По кругу", "Velocity выбирает группу записанных ударов. Они идут по очереди и затем повторяются с первого." },
             { "По velocity", "Velocity выбирает конкретный записанный удар, как в Kontakt. Нужно для сбивок, крещендо и закрывания хэта." },
         };
     }
@@ -141,8 +140,6 @@ namespace samplit
         noChoices.setText (utf8 ("У этого барабана режим не настраивается: удар выбирает velocity."), juce::dontSendNotification);
         muted (noChoices);
         noChoices.setJustificationType (juce::Justification::topLeft);
-        tryTitle.setText (utf8 ("Попробовать: сила удара"), juce::dontSendNotification);
-        muted (tryTitle);
 
         emptyText.setText (utf8 ("Выберите пресет в шапке окна, и здесь появится установка."), juce::dontSendNotification);
         muted (emptyText, 13.0f);
@@ -156,39 +153,8 @@ namespace samplit
                 selectPiece (pieceBox.getSelectedId() - 1);
         };
 
-        levelTitle.setText (utf8 ("Громкость"), juce::dontSendNotification);
-        muted (levelTitle);
-        levelSlider.setSliderStyle (juce::Slider::LinearHorizontal);
-        levelSlider.setRange (-24.0, 12.0, 0.1);
-        levelSlider.setDoubleClickReturnValue (true, 0.0);
-        levelSlider.setTextBoxStyle (juce::Slider::TextBoxRight, false, 62, 22);
-        levelSlider.setTextValueSuffix (" dB");
-        levelSlider.setTitle (utf8 ("Громкость барабана"));
-        levelSlider.setTooltip (utf8 ("Громкость этого барабана целиком, на всех микрофонах. Двойной клик: 0 dB. Действует на следующие удары"));
-        levelSlider.setColour (juce::Slider::trackColourId, brand::accent);
-        levelSlider.setColour (juce::Slider::backgroundColourId, brand::line);
-        levelSlider.setColour (juce::Slider::thumbColourId, brand::text);
-        levelSlider.setColour (juce::Slider::textBoxTextColourId, brand::text);
-        levelSlider.setColour (juce::Slider::textBoxOutlineColourId, juce::Colours::transparentBlack);
-        levelSlider.onValueChange = [this]
-        {
-            if (! updating && selected >= 0)
-                processor.setPieceLevel (selected, (float) levelSlider.getValue());
-        };
-
-        trySoft.setButtonText (utf8 ("Тихо"));
-        tryMedium.setButtonText (utf8 ("Средне"));
-        tryHard.setButtonText (utf8 ("Сильно"));
-        trySoft.setTooltip (utf8 ("Сыграть барабан с velocity 40"));
-        tryMedium.setTooltip (utf8 ("Сыграть барабан с velocity 80"));
-        tryHard.setTooltip (utf8 ("Сыграть барабан с velocity 120"));
-        trySoft.onClick = [this] { playPiece (selected, 40); };
-        tryMedium.onClick = [this] { playPiece (selected, 80); };
-        tryHard.onClick = [this] { playPiece (selected, 120); };
-
         for (auto* c : std::initializer_list<juce::Component*> { &pieceTitle, &pieceName, &pieceKeysLabel, &choicesTitle, &noChoices,
-                                                                  &emptyText, &tryTitle, &pieceBox, &trySoft, &tryMedium, &tryHard,
-                                                                  &levelTitle, &levelSlider })
+                                                                  &emptyText, &pieceBox })
             addChildComponent (c);
         emptyText.setVisible (true);
 
@@ -210,11 +176,6 @@ namespace samplit
         {
             for (auto& r : rows)
                 r->update();
-            if (selected >= 0 && ! levelSlider.isMouseButtonDown())
-            {
-                const juce::ScopedValueSetter<bool> guard (updating, true);
-                levelSlider.setValue (processor.getPieceLevel (selected), juce::dontSendNotification);
-            }
         }
     }
 
@@ -277,6 +238,8 @@ namespace samplit
     void KitView::layoutSpots()
     {
         spots.clear();
+        decorativeRide = {};
+        stool = {};
         if (kit == nullptr)
             return;
 
@@ -287,11 +250,12 @@ namespace samplit
 
         auto stage = stageArea.reduced (12, 10);
         auto chips = extra.empty() ? juce::Rectangle<int>() : stage.removeFromBottom (30);
-        legendArea = {};
-        if (stage.getHeight() >= kLegendMinStage)
-            legendArea = stage.removeFromBottom (kLegendHeight).reduced (4, 0);
         const float scale = juce::jmin ((float) stage.getWidth() / kStageWidth, (float) stage.getHeight() / kStageHeight);
         const auto origin = stage.toFloat().getCentre() - juce::Point<float> (kStageWidth, kStageHeight) * (scale * 0.5f);
+        decorativeRide = juce::Rectangle<float> (0.25f * scale, 0.09f * scale)
+                             .withCentre (origin + juce::Point<float> (1.48f, 0.49f) * scale);
+        stool = juce::Rectangle<float> (0.17f * scale, 0.13f * scale)
+                    .withCentre (origin + juce::Point<float> (0.88f, 0.91f) * scale);
 
         for (int i = 0; i < (int) kit->pieces.size(); ++i)
         {
@@ -301,7 +265,7 @@ namespace samplit
             Spot s;
             s.piece = i;
             s.cymbal = pl->cymbal;
-            s.order = pl->cymbal ? 0 : (std::string (pl->id) == "kick" ? 1 : 2);
+            s.order = std::string (pl->id) == "kick" ? 0 : (pl->cymbal ? 2 : 1);
             s.label = utf8 (pl->label);
             s.bounds = juce::Rectangle<float> (pl->rx * 2.0f * scale, pl->ry * 2.0f * scale)
                            .withCentre (origin + juce::Point<float> (pl->x, pl->y) * scale);
@@ -369,7 +333,6 @@ namespace samplit
         if (selected >= 0)
         {
             const juce::ScopedValueSetter<bool> guard (updating, true);
-            levelSlider.setValue (processor.getPieceLevel (selected), juce::dontSendNotification);
             pieceName.setText (juce::String::fromUTF8 (kit->pieces[(size_t) selected].name.c_str()), juce::dontSendNotification);
             pieceKeysLabel.setText (keysText (selected), juce::dontSendNotification);
         }
@@ -392,8 +355,7 @@ namespace samplit
             }
 
         const bool has = kit != nullptr && selected >= 0;
-        for (auto* c : std::initializer_list<juce::Component*> { &pieceTitle, &pieceName, &pieceKeysLabel, &choicesTitle, &tryTitle,
-                                                                  &pieceBox, &trySoft, &tryMedium, &tryHard, &levelTitle, &levelSlider })
+        for (auto* c : std::initializer_list<juce::Component*> { &pieceTitle, &pieceName, &pieceKeysLabel, &choicesTitle, &pieceBox })
             c->setVisible (has);
         noChoices.setVisible (has && rows.empty());
         emptyText.setVisible (kit == nullptr);
@@ -412,6 +374,7 @@ namespace samplit
     void KitView::mouseMove (const juce::MouseEvent& e)
     {
         const int piece = pieceAt (e.position);
+        setTooltip (decorativeRide.contains (e.position) ? utf8 ("Райд 18″: в библиотеке нет отдельного сэмпла") : juce::String());
         if (piece != hovered)
         {
             hovered = piece;
@@ -422,6 +385,7 @@ namespace samplit
 
     void KitView::mouseExit (const juce::MouseEvent&)
     {
+        setTooltip ({});
         if (hovered >= 0)
         {
             hovered = -1;
@@ -446,27 +410,15 @@ namespace samplit
         pieceKeysLabel.setBounds (d.removeFromTop (18));
         d.removeFromTop (12);
 
-        auto levelRow = d.removeFromBottom (26);
-        levelTitle.setBounds (levelRow.removeFromLeft (72));
-        levelSlider.setBounds (levelRow);
-        d.removeFromBottom (10);
-        auto bottom = d.removeFromBottom (48);
-        tryTitle.setBounds (bottom.removeFromTop (18));
-        const int w = (bottom.getWidth() - 12) / 3;
-        trySoft.setBounds (bottom.removeFromLeft (w));
-        bottom.removeFromLeft (6);
-        tryMedium.setBounds (bottom.removeFromLeft (w));
-        bottom.removeFromLeft (6);
-        tryHard.setBounds (bottom);
-
         choicesTitle.setBounds (d.removeFromTop (18));
         d.removeFromTop (6);
-        noChoices.setBounds (d.removeFromTop (54));
+        noChoices.setBounds (noChoices.isVisible() ? d.removeFromTop (54) : juce::Rectangle<int>());
         for (auto& r : rows)
         {
             r->setBounds (d.removeFromTop (kRowHeight));
             d.removeFromTop (8);
         }
+        legendArea = d.getHeight() >= kLegendHeight ? d.removeFromBottom (kLegendHeight) : juce::Rectangle<int>();
         repaint();
     }
 
@@ -523,6 +475,26 @@ namespace samplit
         if (kit == nullptr)
             return;
 
+        if (! stool.isEmpty())
+        {
+            g.setColour (brand::pad.brighter (0.25f));
+            g.fillEllipse (stool);
+            g.setColour (brand::line);
+            g.drawEllipse (stool, 1.0f);
+        }
+
+        if (! decorativeRide.isEmpty())
+        {
+            g.setColour (kBrass.withAlpha (0.17f));
+            g.fillEllipse (decorativeRide);
+            g.setColour (kBrass.withAlpha (0.45f));
+            g.drawEllipse (decorativeRide, 1.0f);
+            g.setColour (brand::textMuted.withAlpha (0.65f));
+            g.setFont (juce::FontOptions (11.0f));
+            g.drawText (utf8 ("Ride 18″"), decorativeRide.withY (decorativeRide.getBottom() + 2.0f)
+                          .withHeight (16.0f).expanded (10.0f, 0.0f), juce::Justification::centred, false);
+        }
+
         for (const auto& s : spots)
         {
             const bool sel = s.piece == selected, hot = s.piece == hovered;
@@ -558,24 +530,20 @@ namespace samplit
             }
         }
 
-        // Пояснение режимов под схемой: если места хватает
+        // Короткая подсказка в свободном месте панели; подробности есть в подсказках кнопок.
         if (! legendArea.isEmpty())
         {
             auto legend = legendArea;
             g.setColour (brand::line);
             g.fillRect (legend.removeFromTop (1));
-            legend.removeFromTop (10);
-            const int w = legend.getWidth() / 3;
-            for (int i = 0; i < 3; ++i)
-            {
-                auto col = legend.removeFromLeft (w).reduced (6, 0);
-                g.setColour (brand::text);
-                g.setFont (juce::FontOptions (12.0f, juce::Font::bold));
-                g.drawText (utf8 (kModes[i].title), col.removeFromTop (16), juce::Justification::centredLeft);
-                g.setColour (brand::textMuted);
-                g.setFont (juce::FontOptions (11.5f));
-                g.drawFittedText (utf8 (kModes[i].text), col, juce::Justification::topLeft, 4, 1.0f);
-            }
+            legend.removeFromTop (9);
+            g.setColour (brand::text);
+            g.setFont (juce::FontOptions (12.0f, juce::Font::bold));
+            g.drawText (utf8 ("Как это работает"), legend.removeFromTop (19), juce::Justification::centredLeft);
+            g.setColour (brand::textMuted);
+            g.setFont (juce::FontOptions (11.5f));
+            g.drawFittedText (utf8 ("Пустые значения velocity молчат. Режим меняет выбор записи внутри выбранной группы ударов."),
+                              legend, juce::Justification::topLeft, 3, 1.0f);
         }
     }
 }

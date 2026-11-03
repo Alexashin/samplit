@@ -12,6 +12,7 @@ namespace samplit
     // Схема барабанной установки: клик по барабану выбирает его и играет, справа его настройки
     // (как выбирается удар: случайно, по кругу, по velocity). Тот же барабан можно выбрать из списка
     class KitView final : public juce::Component,
+                          public juce::SettableTooltipClient,
                           private juce::ChangeListener,
                           private juce::Timer
     {
@@ -34,7 +35,7 @@ namespace samplit
             int piece = -1;
             juce::Rectangle<float> bounds;
             bool cymbal = false, chip = false;
-            int order = 2;                  // порядок рисования: тарелки, бочка, остальное
+            int order = 2;                  // порядок рисования: бочка, томы, тарелки
             juce::String label;
         };
 
@@ -58,12 +59,10 @@ namespace samplit
         int selected = -1, hovered = -1;
 
         juce::Rectangle<int> stageArea, detailArea, legendArea;
+        juce::Rectangle<float> decorativeRide, stool;
 
-        juce::Label pieceTitle, pieceName, pieceKeysLabel, choicesTitle, noChoices, emptyText, tryTitle;
+        juce::Label pieceTitle, pieceName, pieceKeysLabel, choicesTitle, noChoices, emptyText;
         juce::ComboBox pieceBox;
-        juce::Slider levelSlider;
-        juce::Label levelTitle;
-        juce::TextButton trySoft, tryMedium, tryHard;
         std::vector<std::unique_ptr<ChoiceRow>> rows;
         bool updating = false;
 

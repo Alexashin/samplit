@@ -28,7 +28,6 @@
   "includeUnverified": false,
   "select": {
     "mode": "live",
-    "layerSpread": 1,
     "noRepeat": true,
     "velocityToGain": 0.0,
     "pick": [
