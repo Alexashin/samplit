@@ -92,6 +92,8 @@ def expand_templates(kit):
         if not name:
             continue
         tpl = templates[name]
+        for gid, gdef in tpl.get('groups', {}).items():
+            piece.setdefault('groups', {}).setdefault(gid, copy.deepcopy(gdef))
         keys = []
         for spec in tpl['keys']:
             spec = copy.deepcopy(spec)
@@ -187,6 +189,36 @@ def file_entry(rec, library_root, frames_cache):
     return {'path': path, 'gainDb': gain, 'start': start, 'end': end}, problems
 
 
+def piece_type(piece, report):
+    t = piece.get('type')
+    if t is None:
+        if piece['id'] != 'orphan':
+            report['problems'].append(f"барабан {piece['id']}: нет type")
+        return 'other'
+    return t
+
+
+def build_groups(piece, layers, layer_group):
+    """Группы барабана для манифеста (порядок как в разметке); пустые группы отбрасываются."""
+    out = []
+    for gid, gdef in piece.get('groups', {}).items():
+        members = [l['id'] for l in layers if layer_group.get(l['id']) == gid]
+        if not members:
+            continue
+        g = {'id': gid, 'name': gdef['name']}
+        if gdef.get('hint'):
+            g['hint'] = gdef['hint']
+        g['role'] = gdef['role']
+        g['layers'] = members
+        g['pick'] = gdef.get('pick', 'random')
+        if gdef.get('picks'):
+            g['picks'] = list(gdef['picks'])
+        if gdef.get('pair'):
+            g['pair'] = copy.deepcopy(gdef['pair'])
+        out.append(g)
+    return out
+
+
 def build_packs(kit, mappings, library_root=None):
     """Возвращает (пакеты, отчёт). Пакеты: id -> манифест. Отчёт: словарь для --check."""
     kit = expand_templates(kit)
@@ -203,9 +235,12 @@ def build_packs(kit, mappings, library_root=None):
     # pack id -> piece id -> {'piece':..., 'hits': [...], 'layers': {...}}
     store = defaultdict(dict)
 
-    def put_hit(pack_id, piece, hit, layer, unverified, files):
-        entry = store[pack_id].setdefault(piece['id'], {'piece': piece, 'hits': [], 'layers': {}})
+    def put_hit(pack_id, opid, piece, hit, layer, gid, files):
+        entry = store[pack_id].setdefault(opid, {'piece': piece, 'hits': [], 'layers': {}, 'layer_group': {}})
         entry['layers'][layer['id']] = layer
+        if gid:
+            entry['layer_group'][layer['id']] = gid
+        unverified = bool(layer.get('unverified'))
         h = {
             'id': hit['id'], 'layer': layer['id'], 'key': hit['key'],
             'velLo': hit['vel'], 'velHi': hit['vel'], 'files': files,
@@ -258,12 +293,21 @@ def build_packs(kit, mappings, library_root=None):
                 run_hits = [h for h in key_hits if lo <= h['vel'] <= hi]
                 label = win.get('label', 'unknown') if win else 'unlisted'
                 verified = bool(win) and win.get('verified', True) and spec.get('verified', True)
-                pick = (win or {}).get('pick', 'random')
                 merged_run = any(h['merged'] for h in run_hits)
                 peer = d or merged_run
-                unverified = (not verified) or peer
-                lid = f'k{key}_{lo}_{hi}' + ('_d' if peer else '')
-                layer = {'id': lid, 'key': key, 'artic': spec['artic'], 'label': label,
+                # peerOk: удар из группы -D проверен по руководству/заметке и идёт в основной пакет
+                unverified = (not verified) or (peer and not (win or {}).get('peerOk'))
+                # outId/outKey: имена в основном пакете (бочки: четыре папки .nki на клавише 24);
+                # в непроверенном пакете остаются исходные, чтобы барабаны не склеились
+                okey = key if unverified else spec.get('outKey', key)
+                opid = pid if unverified else piece.get('outId', pid)
+                gid = None if unverified else (win or {}).get('group')
+                if gid and gid not in piece.get('groups', {}):
+                    report['problems'].append(f'{pid}: группа {gid} не описана')
+                    gid = None
+                pick = (win or {}).get('pick') or piece.get('groups', {}).get(gid, {}).get('pick', 'random')
+                lid = f'k{okey}_{lo}_{hi}' + ('_d' if peer else '')
+                layer = {'id': lid, 'key': okey, 'artic': spec['artic'], 'label': label,
                          'velLo': lo, 'velHi': hi}
                 if pick != 'random':
                     layer['pick'] = pick
@@ -284,14 +328,14 @@ def build_packs(kit, mappings, library_root=None):
                         files[mic['id']], probs = file_entry(rec, library_root, frames_cache)
                         for pr in probs:
                             report['problems'].append(f"{pid} клавиша {key} velocity {h['vel']} {mic['id']}: {pr}")
-                    hid = f"{pid}_{key}_{h['vel']}" + ('_d' if (h['d'] and not h['merged']) else '')
+                    hid = f"{opid}_{okey}_{h['vel']}" + ('_d' if (h['d'] and not h['merged']) else '')
                     if any(f['path'] in exclude for f in files.values()):
                         report['excluded'].append(hid)
                         stat['zones_excluded'] += len(files)
                         continue
-                    hit = {'id': hid, 'key': key, 'vel': h['vel'], 'd': peer}
+                    hit = {'id': hid, 'key': okey, 'vel': h['vel'], 'd': peer}
                     pack_id = unverified_pack if unverified else piece['pack']
-                    put_hit(pack_id, piece, hit, layer, unverified, files)
+                    put_hit(pack_id, opid, piece, hit, layer, gid, files)
                     stat['hits_out'] += 1
                     stat['zones_out'] += len(files)
 
@@ -304,7 +348,7 @@ def build_packs(kit, mappings, library_root=None):
             continue
         used_mics = set()
         pieces = []
-        for pid in sorted(store[pack_id], key=lambda p: piece_order[p]):
+        for pid in sorted(store[pack_id], key=lambda p: piece_order[store[pack_id][p]['piece']['id']]):
             entry = store[pack_id][pid]
             piece = entry['piece']
             hits = sorted(entry['hits'], key=lambda h: (h['key'], h['velLo'], h['id']))
@@ -312,8 +356,13 @@ def build_packs(kit, mappings, library_root=None):
                 used_mics.update(h['files'])
             layers = sorted(entry['layers'].values(), key=lambda l: (l['key'], l['velLo'], l['id']))
             keys = sorted({h['key'] for h in hits})
-            pieces.append({'id': pid, 'name': piece['name'], 'keys': keys, 'choke': piece.get('choke'),
-                           'layers': layers, 'hits': hits})
+            out_piece = {'id': pid, 'name': piece['name'], 'type': piece_type(piece, report),
+                         'keys': keys, 'choke': piece.get('choke'), 'layers': layers}
+            groups = build_groups(piece, layers, entry['layer_group'])
+            if groups:
+                out_piece['groups'] = groups
+            out_piece['hits'] = hits
+            pieces.append(out_piece)
         mics = [{'id': m['id'], 'name': m['name'], 'role': m['role'], 'out': m['out']}
                 for m in sorted(kit['mics'], key=lambda m: m['out']) if m['id'] in used_mics]
         manifests[pack_id] = {
@@ -342,6 +391,57 @@ def pack_files(manifest):
     return {f['path'] for p in manifest['pieces'] for h in p['hits'] for f in h['files'].values()}
 
 
+ROLES = {'main', 'ghost', 'rimshot', 'rimclick', 'fill', 'roll', 'crescendo', 'flam', 'choke', 'open',
+         'closed', 'half', 'pedal', 'closing', 'bell', 'edge', 'bow', 'other'}
+PICKS = {'random', 'cycle', 'exact'}
+
+
+def check_groups(manifest, manifests, out, require=False):
+    """Проверка разметки групп (setup-spec §3.2). Возвращает число ошибок.
+    require: каждый слой основного пакета обязан входить в группу."""
+    errors = 0
+    verified_pack = require and manifest['tier'] != 'unverified'
+    for p in manifest['pieces']:
+        layer_ids = {l['id'] for l in p['layers']}
+        seen = {}
+        gids = set()
+        for g in p.get('groups', []):
+            if g['id'] in gids:
+                out(f"!  {p['id']}: группа {g['id']} повторяется")
+                errors += 1
+            gids.add(g['id'])
+            if g['role'] not in ROLES:
+                out(f"!  {p['id']}/{g['id']}: неизвестная роль {g['role']}")
+                errors += 1
+            if g['pick'] not in PICKS or any(x not in PICKS for x in g.get('picks', [])):
+                out(f"!  {p['id']}/{g['id']}: неизвестный режим")
+                errors += 1
+            if g.get('picks') and g['pick'] not in g['picks']:
+                out(f"!  {p['id']}/{g['id']}: pick не входит в picks")
+                errors += 1
+            for lid in g['layers']:
+                if lid not in layer_ids:
+                    out(f"!  {p['id']}/{g['id']}: нет слоя {lid}")
+                    errors += 1
+                if lid in seen:
+                    out(f"!  {p['id']}: слой {lid} в группах {seen[lid]} и {g['id']}")
+                    errors += 1
+                seen[lid] = g['id']
+            pair = g.get('pair')
+            if pair:
+                ok = any(q['type'] == pair['type'] and any(x['id'] == pair['group'] for x in q.get('groups', []))
+                         for mm in manifests.values() for q in mm['pieces'])
+                if not ok:
+                    out(f"!  {p['id']}/{g['id']}: парная группа {pair} не найдена")
+                    errors += 1
+        if verified_pack:
+            loose = sorted(layer_ids - set(seen))
+            if loose:
+                out(f"!  {p['id']}: слои без группы: {loose}")
+                errors += 1
+    return errors
+
+
 def check(kit, mappings, library_root, out=print, expected=(EXPECTED_HITS, EXPECTED_ZONES)):
     """Печатает отчёт и возвращает число ошибок. expected=None отключает сверку с docs/library-structure.md."""
     manifests, report = build_packs(kit, mappings, library_root)
@@ -354,6 +454,7 @@ def check(kit, mappings, library_root, out=print, expected=(EXPECTED_HITS, EXPEC
         out(f'! {line}')
         errors += 1
 
+    grouped = any(p.get('groups') for m in manifests.values() for p in m['pieces'])
     sizes = {}
     for pack_id, m in manifests.items():
         hits = [h for p in m['pieces'] for h in p['hits']]
@@ -386,6 +487,7 @@ def check(kit, mappings, library_root, out=print, expected=(EXPECTED_HITS, EXPEC
                 seen[(p['id'], h['key'], h['velLo'])].append(h['id'])
         clash = {k: v for k, v in seen.items() if len(v) > 1}
         out(f'   пересечений velocity на одной клавише: {len(clash)}')
+        errors += check_groups(m, manifests, out, require=grouped)
         for (pid, key, vel), ids in sorted(clash.items())[:5]:
             out(f'     {pid} клавиша {key} velocity {vel}: {ids}')
         errors += len(clash)

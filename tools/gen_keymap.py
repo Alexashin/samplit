@@ -29,7 +29,7 @@ def rows_for(piece, templates):
             key = k["key"] if "key" in k else k.get("offset", 0) + offset
             yield key, k
     else:
-        yield from ((k["key"], k) for k in piece.get("keys", []))
+        yield from ((k.get("outKey", k["key"]), k) for k in piece.get("keys", []))
 
 
 def build() -> str:

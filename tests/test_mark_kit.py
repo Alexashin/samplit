@@ -61,15 +61,15 @@ def synthetic_kit():
             {'id': 'unv', 'title': 'Непроверенное', 'tier': 'unverified', 'requires': []},
         ],
         'pieces': [
-            {'id': 'kick', 'name': 'Кик', 'pack': 'core', 'source': 'base', 'choke': None,
+            {'id': 'kick', 'type': 'kick', 'name': 'Кик', 'pack': 'core', 'source': 'base', 'choke': None,
              'keys': [{'key': 21, 'artic': 'a', 'windows': [{'lo': 80, 'hi': 83, 'label': 'strong'}]}]},
-            {'id': 'snare', 'name': 'Малый', 'pack': 'core', 'source': 'base', 'choke': None,
+            {'id': 'snare', 'type': 'snare', 'name': 'Малый', 'pack': 'core', 'source': 'base', 'choke': None,
              'keys': [{'key': 26, 'artic': 'center',
                        'windows': [{'lo': 120, 'hi': 121, 'label': 'strong', 'pick': 'exact'}]}]},
-            {'id': 'crash', 'name': 'Крэш', 'pack': 'cym', 'source': 'base', 'choke': 'cymbals',
+            {'id': 'crash', 'type': 'crash', 'name': 'Крэш', 'pack': 'cym', 'source': 'base', 'choke': 'cymbals',
              'keys': [{'key': 36, 'artic': 'calm',
                        'windows': [{'lo': 120, 'hi': 121, 'label': 'calm'}]}]},
-            {'id': 'ride', 'name': 'Райд', 'pack': 'cym', 'source': 'base', 'choke': None,
+            {'id': 'ride', 'type': 'ride', 'name': 'Райд', 'pack': 'cym', 'source': 'base', 'choke': None,
              'keys': [{'key': 93, 'artic': 'dome', 'windows': [{'lo': 108, 'hi': 108, 'label': 'dome'}]}]},
         ],
     }
@@ -197,6 +197,67 @@ class MarkKitTest(unittest.TestCase):
             errors = mark_kit.check(synthetic_kit(), {'FAKE': mapping}, tmp, out=lines.append, expected=None)
         self.assertEqual(errors, 0, '\n'.join(lines))
 
+    def test_type_is_written_and_missing_type_is_reported(self):
+        packs, _ = self.build()
+        self.assertEqual({p['id']: p['type'] for m in packs.values() for p in m['pieces']}['crash'], 'crash')
+        kit = synthetic_kit()
+        del kit['pieces'][0]['type']
+        _, report = mark_kit.build_packs(kit, {'FAKE': synthetic_mapping()}, None)
+        self.assertEqual(report['problems'], ['барабан kick: нет type'])
+
+    def grouped_kit(self):
+        kit = synthetic_kit()
+        kick, snare = kit['pieces'][0], kit['pieces'][1]
+        kick['outId'] = 'kick_out'
+        kick['groups'] = {'main': {'name': 'Удары', 'role': 'main', 'pick': 'cycle'}}
+        kick['keys'][0]['outKey'] = 24
+        kick['keys'][0]['windows'][0]['group'] = 'main'
+        snare['groups'] = {'center': {'name': 'Центр', 'hint': 'Обычные', 'role': 'main', 'pick': 'exact',
+                                      'picks': ['exact'], 'pair': {'type': 'kick', 'group': 'main'}}}
+        snare['keys'][0]['windows'][0] = {'lo': 120, 'hi': 121, 'label': 'strong', 'group': 'center'}
+        return kit
+
+    def test_groups_out_id_and_out_key(self):
+        packs, report = mark_kit.build_packs(self.grouped_kit(), {'FAKE': synthetic_mapping()}, None)
+        self.assertEqual(report['problems'], [])
+        kick = next(p for p in packs['core']['pieces'] if p['id'] == 'kick_out')
+        self.assertEqual(kick['keys'], [24])
+        self.assertEqual(kick['layers'][0]['id'], 'k24_80_83')
+        self.assertEqual([h['id'] for h in kick['hits']][0], 'kick_out_24_80')
+        self.assertEqual(kick['groups'], [{'id': 'main', 'name': 'Удары', 'role': 'main',
+                                           'layers': ['k24_80_83'], 'pick': 'cycle'}])
+        snare = next(p for p in packs['core']['pieces'] if p['id'] == 'snare')
+        g = snare['groups'][0]
+        self.assertEqual((g['pick'], g['picks'], g['pair']), ('exact', ['exact'], {'type': 'kick', 'group': 'main'}))
+        self.assertEqual(snare['layers'][0]['pick'], 'exact')   # режим группы запечён в слой
+        # непроверенное остаётся под исходными именами и без групп
+        unv_ids = {p['id'] for p in packs['unv']['pieces']}
+        self.assertNotIn('kick_out', unv_ids)
+
+    def test_unknown_group_is_reported(self):
+        kit = self.grouped_kit()
+        kit['pieces'][0]['keys'][0]['windows'][0]['group'] = 'nope'
+        _, report = mark_kit.build_packs(kit, {'FAKE': synthetic_mapping()}, None)
+        self.assertEqual(report['problems'], ['kick: группа nope не описана'])
+
+    def test_peer_ok_keeps_peer_hit_in_main_pack(self):
+        kit = synthetic_kit()
+        kit['pieces'][2]['keys'][0]['windows'].append({'lo': 112, 'hi': 113, 'label': 'd', 'peerOk': True})
+        packs, _ = mark_kit.build_packs(kit, {'FAKE': synthetic_mapping()}, None)
+        self.assertIn('crash_36_112_d', self.hits_of(packs['cym']))
+        self.assertNotIn('crash_36_112_d', self.hits_of(packs['unv']))
+
+    def test_check_groups_finds_errors(self):
+        packs, _ = mark_kit.build_packs(self.grouped_kit(), {'FAKE': synthetic_mapping()}, None)
+        out = []
+        self.assertEqual(sum(mark_kit.check_groups(m, packs, out.append) for m in packs.values()), 0)
+        bad = json.loads(json.dumps(packs))
+        snare = next(p for p in bad['core']['pieces'] if p['id'] == 'snare')
+        snare['groups'][0]['role'] = 'weird'
+        snare['groups'].append(dict(snare['groups'][0], id='dup', role='main'))   # слой в двух группах
+        errors = mark_kit.check_groups(bad['core'], bad, out.append)
+        self.assertGreaterEqual(errors, 2)
+
     def test_missing_mapping_is_reported(self):
         kit = synthetic_kit()
         kit['sources']['base'] = 'ABSENT'
@@ -212,6 +273,8 @@ class MarkKitTest(unittest.TestCase):
         self.assertEqual(len({m['id'] for m in kit['mics']}), 15)
         packs = {p['id'] for p in kit['packs']}
         self.assertTrue({p['pack'] for p in kit['pieces']} <= packs)
+        self.assertTrue(all(p.get('type') for p in kit['pieces']))
+        self.assertFalse({'studio600-core', 'studio600-cymbals'} & packs)
 
 
 if __name__ == '__main__':
