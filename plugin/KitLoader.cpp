@@ -589,7 +589,8 @@ namespace samplit
                     l.velHi = ml.velHi;
                     l.label = ml.extra.getWithDefault ("label", {}).toString().toStdString();
                     l.key = (int) ml.extra.getWithDefault ("key", -1);
-                    l.pick = ml.extra.getWithDefault ("pick", {}).toString() == "exact" ? Pick::Exact : Pick::Random;
+                    if (! pickFromString (ml.extra.getWithDefault ("pick", {}).toString(), l.pick))
+                        l.pick = Pick::Random;
                     l.peerGroup = ml.extra.getWithDefault ("peerGroup", {}).toString().toStdString();
                     l.unverified = (bool) ml.extra.getWithDefault ("unverified", false);
                     layerIndex[(size_t) p][ml.id] = (int) piece.layers.size();

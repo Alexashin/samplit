@@ -70,6 +70,54 @@ namespace samplit::pack
         }
     }
 
+    bool isKnownGroupRole (const juce::String& role)
+    {
+        static const char* const roles[] = { "main", "ghost", "rimshot", "rimclick", "fill", "roll", "crescendo", "flam",
+                                             "choke", "open", "closed", "half", "pedal", "closing", "bell", "edge",
+                                             "bow", "other" };
+        for (const char* r : roles)
+            if (role == r)
+                return true;
+        return false;
+    }
+
+    juce::String deriveDrumType (const juce::String& pieceId)
+    {
+        const auto id = pieceId.toLowerCase();
+        for (const char* t : { "kick", "snare", "tom", "hat", "ride", "crash", "china", "splash" })
+            if (id.startsWith (t))
+                return t;
+        return "other";
+    }
+
+    namespace
+    {
+        bool isKnownType (const juce::String& t)
+        {
+            for (const char* k : { "kick", "snare", "tom", "hat", "crash", "china", "splash", "ride", "other" })
+                if (t == k)
+                    return true;
+            return false;
+        }
+
+        std::vector<juce::String> stringList (const juce::var& v, const char* name)
+        {
+            std::vector<juce::String> out;
+            if (const auto* a = v.getProperty (name, juce::var()).getArray())
+                for (const auto& e : *a)
+                    out.push_back (e.toString());
+            return out;
+        }
+
+        juce::var stringArray (const std::vector<juce::String>& list)
+        {
+            juce::Array<juce::var> a;
+            for (const auto& s : list)
+                a.add (s);
+            return a;
+        }
+    }
+
     // ---------------------------------------------------------------- разбор
 
     bool Manifest::fromJson (const juce::String& json, Manifest& out, juce::String& error)
@@ -112,7 +160,29 @@ namespace samplit::pack
                 piece.id = strProp (pv, "id");
                 piece.name = strProp (pv, "name");
                 piece.choke = strProp (pv, "choke");
-                piece.extra = extraOf (pv, { "id", "name", "keys", "choke", "layers", "hits" });
+                piece.extra = extraOf (pv, { "id", "name", "type", "groups", "keys", "choke", "layers", "hits" });
+                piece.type = strProp (pv, "type");
+                if (piece.type.isEmpty())
+                    piece.type = deriveDrumType (piece.id);
+                if (const auto* groups = pv.getProperty ("groups", juce::var()).getArray())
+                    for (const auto& gv : *groups)
+                    {
+                        Group g;
+                        g.id = strProp (gv, "id");
+                        g.name = strProp (gv, "name");
+                        g.hint = strProp (gv, "hint");
+                        g.role = strProp (gv, "role");
+                        if (! isKnownGroupRole (g.role))
+                            g.role = "other";
+                        g.layers = stringList (gv, "layers");
+                        g.pick = strProp (gv, "pick");
+                        g.picks = stringList (gv, "picks");
+                        const auto pr = gv.getProperty ("pair", juce::var());
+                        g.pair.type = strProp (pr, "type");
+                        g.pair.place = strProp (pr, "place");
+                        g.pair.group = strProp (pr, "group");
+                        piece.groups.push_back (std::move (g));
+                    }
                 if (const auto* keys = pv.getProperty ("keys", juce::var()).getArray())
                     for (const auto& k : *keys)
                         piece.keys.push_back ((int) k);
@@ -204,6 +274,7 @@ namespace samplit::pack
             auto* po = new juce::DynamicObject();
             po->setProperty ("id", p.id);
             po->setProperty ("name", p.name);
+            po->setProperty ("type", p.type.isEmpty() ? deriveDrumType (p.id) : p.type);
             juce::Array<juce::var> keys;
             for (int k : p.keys)
                 keys.add (k);
@@ -222,6 +293,38 @@ namespace samplit::pack
                 layerArr.add (juce::var (lo));
             }
             po->setProperty ("layers", layerArr);
+
+            if (! p.groups.empty())
+            {
+                juce::Array<juce::var> groupArr;
+                for (const auto& g : p.groups)
+                {
+                    auto* go = new juce::DynamicObject();
+                    go->setProperty ("id", g.id);
+                    go->setProperty ("name", g.name);
+                    if (g.hint.isNotEmpty())
+                        go->setProperty ("hint", g.hint);
+                    go->setProperty ("role", g.role);
+                    go->setProperty ("layers", stringArray (g.layers));
+                    if (g.pick.isNotEmpty())
+                        go->setProperty ("pick", g.pick);
+                    if (! g.picks.empty())
+                        go->setProperty ("picks", stringArray (g.picks));
+                    if (! g.pair.empty())
+                    {
+                        auto* pr = new juce::DynamicObject();
+                        if (g.pair.type.isNotEmpty())
+                            pr->setProperty ("type", g.pair.type);
+                        if (g.pair.place.isNotEmpty())
+                            pr->setProperty ("place", g.pair.place);
+                        if (g.pair.group.isNotEmpty())
+                            pr->setProperty ("group", g.pair.group);
+                        go->setProperty ("pair", juce::var (pr));
+                    }
+                    groupArr.add (juce::var (go));
+                }
+                po->setProperty ("groups", groupArr);
+            }
 
             juce::Array<juce::var> hitArr;
             for (const auto& h : p.hits)
@@ -326,6 +429,33 @@ namespace samplit::pack
                     err (where + "слой "_s + l.id + " объявлен дважды"_s);
                 if (l.velLo < 1 || l.velHi > 127 || l.velLo > l.velHi)
                     err (where + "слой "_s + l.id + ": неверное окно velocity"_s);
+            }
+
+            if (piece.type.isNotEmpty() && ! isKnownType (piece.type))
+                warn (where + "неизвестный type "_s + piece.type);
+
+            std::set<juce::String> groupIds, groupedLayers;
+            for (const auto& g : piece.groups)
+            {
+                const auto gw = where + "группа "_s + g.id + ": ";
+                if (g.id.isEmpty())
+                    err (where + "группа без id"_s);
+                else if (! groupIds.insert (g.id).second)
+                    err (gw + "id повторяется"_s);
+                if (g.name.isEmpty())
+                    err (gw + "пустое имя"_s);
+                if (g.layers.empty())
+                    err (gw + "нет слоёв"_s);
+                for (const auto& lid : g.layers)
+                {
+                    if (! layerIds.count (lid))
+                        err (gw + "неизвестный слой "_s + lid);
+                    else if (! groupedLayers.insert (lid).second)
+                        err (gw + "слой "_s + lid + " уже входит в другую группу"_s);
+                }
+                if (! g.picks.empty() && g.pick.isNotEmpty()
+                    && std::find (g.picks.begin(), g.picks.end(), g.pick) == g.picks.end())
+                    err (gw + "pick "_s + g.pick + " не входит в picks"_s);
             }
 
             // key -> окна velocity ударов

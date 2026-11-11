@@ -164,7 +164,7 @@ namespace samplit
     {
         KitSerial serial;               // идентичность кита для движка (lastKit), см. KitSerial
         static constexpr int kMaxMics = kNumOutputs;
-        static constexpr int kMaxChoices = 32;
+        static constexpr int kMaxChoices = 128;
 
         std::string id, title;
         std::vector<Mic> mics;          // не больше kMaxMics

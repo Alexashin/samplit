@@ -55,9 +55,34 @@ namespace samplit::pack
         juce::NamedValueSet extra;              // например unverified; peerGroup тоже сохраняется здесь
     };
 
+    // Парная группа другого инструмента (данные для помощника, движок не использует): тип или место + id группы
+    struct GroupPair
+    {
+        juce::String type, place, group;
+        bool empty() const noexcept { return type.isEmpty() && place.isEmpty() && group.isEmpty(); }
+    };
+
+    // Смысловая группа слоёв (docs/setup-spec.md §3.2): то, что видит пользователь вместо сырых слоёв
+    struct Group
+    {
+        juce::String id, name, hint;
+        juce::String role = "other";        // из списка ролей; незнакомое значение читается как "other"
+        std::vector<juce::String> layers;   // id слоёв барабана
+        juce::String pick;                  // random / cycle / exact; пусто = по умолчанию (random)
+        std::vector<juce::String> picks;    // какие режимы доступны пользователю; пусто = все три
+        GroupPair pair;
+    };
+
+    // Известные роли групп
+    bool isKnownGroupRole (const juce::String& role);
+    // Тип барабана по префиксу id (для старых паков без поля type): kick, snare, tom, hat, ride, crash, china, splash, иначе other
+    juce::String deriveDrumType (const juce::String& pieceId);
+
     struct Piece
     {
         juce::String id, name;
+        juce::String type;  // kick | snare | tom | hat | crash | china | splash | ride | other; при разборе выводится по id
+        std::vector<Group> groups;
         std::vector<int> keys;
         juce::String choke;  // пусто = нет choke-группы
         std::vector<Layer> layers;
@@ -93,6 +118,7 @@ namespace samplit::pack
     };
 
     // Проверка структуры манифеста без обращения к файлам: удары без файлов, неизвестные микрофоны,
-    // повторы id, неверные окна velocity, дыры и пересечения velocity внутри клавиши
+    // повторы id, неверные окна velocity, дыры и пересечения velocity внутри клавиши,
+    // группы (слой в двух группах, неизвестный слой, повтор id, пустые поля, pick вне picks)
     VerifyReport verifyManifest (const Manifest&);
 }

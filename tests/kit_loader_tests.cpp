@@ -45,7 +45,7 @@ namespace
     };
 
     TestPack writePack (const juce::File& dir, const juce::String& id, const juce::String& pieceId, int key,
-                        bool withUnverified = false)
+                        bool withUnverified = false, const juce::String& layerPick = {})
     {
         TestPack t;
         juce::String error;
@@ -66,6 +66,8 @@ namespace
         p.name = pieceId;
         p.keys = { key };
         p.layers = { { "all", "center", 1, 127 } };
+        if (layerPick.isNotEmpty())
+            p.layers[0].extra.set ("pick", layerPick);
 
         auto addHit = [&] (const juce::String& hid, int velLo, int velHi, int chunkIn, int chunkOh, bool unverified)
         {
@@ -151,6 +153,26 @@ TEST_CASE ("Preset reads pick rules and the default preset carries them", "[load
 
     CHECK_FALSE (Preset::fromJson ("{\"id\":\"x\",\"select\":{\"pick\":[{\"name\":\"a\",\"pieces\":[\"k\"],\"mode\":\"zzz\"}]}}", p, error));
     CHECK_FALSE (Preset::fromJson ("{\"id\":\"x\",\"select\":{\"pick\":[{\"name\":\"a\",\"mode\":\"cycle\"}]}}", p, error));
+}
+
+TEST_CASE ("loadKit reads layer pick from the manifest: random, cycle, exact", "[loader]")
+{
+    const auto dir = loaderDir();
+    const auto cycle = writePack (dir, "pc", "kick", 36, false, "cycle");
+    const auto exact = writePack (dir, "pe", "snare", 38, false, "exact");
+    const auto plain = writePack (dir, "pr", "tom", 40, false, "zzz");
+
+    const auto res = loadKit (presetOf ({ "pc", "pe", "pr" }),
+                              optionsFor (dir, { { "pc", cycle.key }, { "pe", exact.key }, { "pr", plain.key } }));
+    REQUIRE (res.ok());
+    REQUIRE (res.kit->pieces.size() == 3);
+    for (const auto& piece : res.kit->pieces)
+    {
+        REQUIRE (piece.layers.size() == 1);
+        if (piece.id == "kick")       CHECK (piece.layers[0].pick == Pick::Cycle);
+        else if (piece.id == "snare") CHECK (piece.layers[0].pick == Pick::Exact);
+        else                          CHECK (piece.layers[0].pick == Pick::Random);
+    }
 }
 
 TEST_CASE ("loadKit applies pick rules: the layer follows the rule and becomes a switch", "[loader]")

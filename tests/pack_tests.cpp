@@ -743,3 +743,87 @@ TEST_CASE ("verifyPack reports files made of zeros", "[pack]")
         REQUIRE_FALSE (verifyPack (*reader, key, true).ok());
     }
 }
+
+TEST_CASE ("manifest reads piece type, groups, pair and picks and writes them back", "[pack]")
+{
+    const char* json = R"({"format":1,"id":"g","pieces":[
+        {"id":"tom1","name":"T","type":"tom","keys":[41],
+         "layers":[{"id":"a","artic":"x","velLo":1,"velHi":127},{"id":"b","artic":"x","velLo":1,"velHi":127}],
+         "groups":[
+           {"id":"center","name":"Centre","hint":"h","role":"main","layers":["a"],"pick":"cycle"},
+           {"id":"cres","name":"Cres","role":"crescendo","layers":["b"],"pick":"exact","picks":["exact"],
+            "pair":{"type":"tom","group":"cres"}},
+           {"id":"odd","name":"Odd","role":"martian","layers":[]}
+         ],"hits":[]}]})";
+    Manifest m;
+    juce::String error;
+    REQUIRE (Manifest::fromJson (json, m, error));
+    const auto& p = m.pieces[0];
+    CHECK (p.type == "tom");
+    CHECK_FALSE (p.extra.contains ("type"));
+    CHECK_FALSE (p.extra.contains ("groups"));
+    REQUIRE (p.groups.size() == 3);
+    CHECK (p.groups[0].hint == "h");
+    CHECK (p.groups[0].role == "main");
+    CHECK (p.groups[0].pick == "cycle");
+    CHECK (p.groups[0].layers == std::vector<juce::String> { "a" });
+    CHECK (p.groups[1].picks == std::vector<juce::String> { "exact" });
+    CHECK (p.groups[1].pair.type == "tom");
+    CHECK (p.groups[1].pair.group == "cres");
+    CHECK (p.groups[1].pair.place.isEmpty());
+    CHECK (p.groups[2].role == "other");
+
+    Manifest back;
+    REQUIRE (Manifest::fromJson (m.toJson(), back, error));
+    CHECK (back.toJson() == m.toJson());
+    CHECK (back.pieces[0].groups[1].pair.group == "cres");
+    CHECK (back.pieces[0].groups[2].role == "other");
+}
+
+TEST_CASE ("old manifest without type and groups gets the type from the piece id", "[pack]")
+{
+    Manifest m;
+    juce::String error;
+    REQUIRE (Manifest::fromJson (R"({"format":1,"id":"o","pieces":[{"id":"snare_main"},{"id":"hat"},{"id":"crash2"},
+        {"id":"tom3"},{"id":"ride"},{"id":"china"},{"id":"splash"},{"id":"kick"},{"id":"cowbell"}]})", m, error));
+    const std::vector<juce::String> want { "snare", "hat", "crash", "tom", "ride", "china", "splash", "kick", "other" };
+    REQUIRE (m.pieces.size() == want.size());
+    for (size_t i = 0; i < want.size(); ++i)
+    {
+        CHECK (m.pieces[i].type == want[i]);
+        CHECK (m.pieces[i].groups.empty());
+    }
+    Manifest back;
+    REQUIRE (Manifest::fromJson (m.toJson(), back, error));
+    CHECK (back.pieces[8].type == "other");
+    CHECK (back.toJson() == m.toJson());
+}
+
+TEST_CASE ("verifyManifest checks groups", "[pack]")
+{
+    auto m = makeManifest ("grp", { 0, 1 });
+    auto& p = m.pieces[0];
+    p.layers = { { "a", "x", 1, 60 }, { "b", "x", 61, 127 } };
+    for (auto& h : p.hits)
+        h.layer = "a";
+    Group g1; g1.id = "g1"; g1.name = "G1"; g1.layers = { "a" };
+    Group g2; g2.id = "g2"; g2.name = "G2"; g2.layers = { "b" };
+    p.groups = { g1, g2 };
+    REQUIRE (verifyManifest (m).ok());
+
+    SECTION ("layer in two groups") { p.groups[1].layers = { "a" }; REQUIRE_FALSE (verifyManifest (m).ok()); }
+    SECTION ("unknown layer")       { p.groups[1].layers = { "zz" }; REQUIRE_FALSE (verifyManifest (m).ok()); }
+    SECTION ("duplicate group id")  { p.groups[1].id = "g1"; REQUIRE_FALSE (verifyManifest (m).ok()); }
+    SECTION ("empty id")            { p.groups[1].id = ""; REQUIRE_FALSE (verifyManifest (m).ok()); }
+    SECTION ("empty name")          { p.groups[1].name = ""; REQUIRE_FALSE (verifyManifest (m).ok()); }
+    SECTION ("empty layers")        { p.groups[1].layers.clear(); REQUIRE_FALSE (verifyManifest (m).ok()); }
+    SECTION ("pick not in picks")   { p.groups[1].pick = "cycle"; p.groups[1].picks = { "exact" }; REQUIRE_FALSE (verifyManifest (m).ok()); }
+    SECTION ("pick in picks")       { p.groups[1].pick = "exact"; p.groups[1].picks = { "exact" }; REQUIRE (verifyManifest (m).ok()); }
+    SECTION ("unknown type warns")
+    {
+        p.type = "cowbell";
+        const auto r = verifyManifest (m);
+        REQUIRE (r.ok());
+        REQUIRE (r.warnings.size() == 1);
+    }
+}
