@@ -117,13 +117,13 @@ TEST_CASE ("processor: the buffer is overwritten, not mixed with what the host l
     REQUIRE (std::abs (KitFixture::peak (buffer, 2) - 0.3f) < 1e-3f);   // kick_in на Out 1
 }
 
-TEST_CASE ("garbage state data does not change the preset name", "[processor]")
+TEST_CASE ("garbage state data does not change the setup", "[processor]")
 {
     SamplitProcessor p;
-    p.setPresetName ("Studio600 Rock");
+    const auto before = p.getSetup().toJson();
 
     const char junk[] = "definitely not a plugin state";
     p.setStateInformation (junk, (int) sizeof (junk));
 
-    REQUIRE (p.getPresetName() == "Studio600 Rock");
+    REQUIRE (p.getSetup().toJson() == before);
 }

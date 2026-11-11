@@ -7,10 +7,7 @@ namespace samplit
 {
     namespace
     {
-        constexpr int kDetailWidth = 300;
-        constexpr int kGap = 14;
-        constexpr int kRowHeight = 58;
-        constexpr int kLegendHeight = 88;
+        constexpr int kHintHeight = 26;
         constexpr float kStageWidth = 1.65f, kStageHeight = 1.0f;
 
         const juce::Colour kBrass { 0xffc9a85c };
@@ -38,125 +35,31 @@ namespace samplit
             { "ride",      1.45f, 0.48f, 0.17f, 0.060f, true, "Ride" },
             { "china",     1.55f, 0.10f, 0.075f, 0.030f, true, "China" },
             { "splash",    0.62f, 0.10f, 0.070f, 0.026f, true, "Splash" },
-            { "cymbals_x", 0.99f, 0.06f, 0.060f, 0.025f, true, "C7–G#7" },
         };
 
-        const Place* placeFor (const std::string& id)
+        // Подписи режимов выбора удара в меню места
+        const char* pickLabel (Pick p)
         {
-            for (const auto& p : kPlaces)
-                if (id == p.id || (std::string (p.id) == "snare" && id.rfind ("snare", 0) == 0))
-                    return &p;
-            return nullptr;
-        }
-
-        juce::String keyName (int note)
-        {
-            return juce::MidiMessage::getMidiNoteName (note, true, true, 3);
-        }
-
-        struct ModeText
-        {
-            const char* title;
-            const char* text;
-        };
-
-        const ModeText kModes[] = {
-            { "Случайно", "Velocity выбирает группу записанных ударов. Внутри неё удар выбирается случайно, без повтора подряд." },
-            { "По кругу", "Velocity выбирает группу записанных ударов. Они идут по очереди и затем повторяются с первого." },
-            { "По velocity", "Velocity выбирает конкретный записанный удар, как в Kontakt. Нужно для сбивок, крещендо и закрывания хэта." },
-        };
-    }
-
-    // Строка настроек: название группы клавиш барабана и три кнопки режима. Выбор сразу уходит в процессор
-    class KitView::ChoiceRow final : public juce::Component
-    {
-    public:
-        ChoiceRow (SamplitProcessor& p, int c, const PickChoice& choice) : processor (p), index (c)
-        {
-            name.setText (juce::String::fromUTF8 (choice.name.c_str()), juce::dontSendNotification);
-            name.setFont (juce::FontOptions (13.0f, juce::Font::bold));
-            name.setMinimumHorizontalScale (0.75f);
-            addAndMakeVisible (name);
-
-            for (int i = 0; i < 3; ++i)
+            switch (p)
             {
-                auto& b = buttons[(size_t) i];
-                b.setButtonText (utf8 (kModes[i].title));
-                b.setTooltip (utf8 (kModes[i].text));
-                b.setClickingTogglesState (true);
-                b.setRadioGroupId (2000 + c);
-                b.setConnectedEdges ((i > 0 ? juce::Button::ConnectedOnLeft : 0) | (i < 2 ? juce::Button::ConnectedOnRight : 0));
-                b.onClick = [this, i]
-                {
-                    if (! updating)
-                        processor.setPickChoice (index, (Pick) i);
-                };
-                addAndMakeVisible (b);
+                case Pick::Cycle:  return "По кругу";
+                case Pick::Random: return "Случайно";
+                case Pick::Exact:  return "Точно по силе удара";
             }
-            update();
+            return "";
         }
-
-        void update()
-        {
-            const juce::ScopedValueSetter<bool> guard (updating, true);
-            const int current = (int) processor.getPickChoice (index);
-            for (int i = 0; i < 3; ++i)
-                buttons[(size_t) i].setToggleState (i == current, juce::dontSendNotification);
-        }
-
-        void resized() override
-        {
-            auto area = getLocalBounds();
-            name.setBounds (area.removeFromTop (20));
-            area.removeFromTop (4);
-            const int w = area.getWidth() / 3;
-            for (int i = 0; i < 3; ++i)
-                buttons[(size_t) i].setBounds (i < 2 ? area.removeFromLeft (w) : area);
-        }
-
-    private:
-        SamplitProcessor& processor;
-        int index;
-        bool updating = false;
-        juce::Label name;
-        juce::TextButton buttons[3];
-    };
+    }
 
     KitView::KitView (SamplitProcessor& p) : processor (p)
     {
-        const auto muted = [] (juce::Label& l, float size = 12.0f)
-        {
-            l.setColour (juce::Label::textColourId, brand::textMuted);
-            l.setFont (juce::FontOptions (size));
-        };
-
-        pieceTitle.setText (utf8 ("Барабан"), juce::dontSendNotification);
-        muted (pieceTitle);
-        pieceName.setFont (juce::FontOptions (15.0f, juce::Font::bold));
-        pieceName.setMinimumHorizontalScale (0.7f);
-        muted (pieceKeysLabel);
-        choicesTitle.setText (utf8 ("Как выбирается удар"), juce::dontSendNotification);
-        muted (choicesTitle);
-        noChoices.setText (utf8 ("У этого барабана режим не настраивается: удар выбирает velocity."), juce::dontSendNotification);
-        muted (noChoices);
-        noChoices.setJustificationType (juce::Justification::topLeft);
-
-        emptyText.setText (utf8 ("Выберите пресет в шапке окна, и здесь появится установка."), juce::dontSendNotification);
-        muted (emptyText, 13.0f);
+        emptyText.setColour (juce::Label::textColourId, brand::textMuted);
+        emptyText.setFont (juce::FontOptions (13.0f));
         emptyText.setJustificationType (juce::Justification::centred);
+        emptyText.setText (utf8 ("Звук пока не загружен. Выберите папку библиотеки («Моя библиотека…») в шапке окна."),
+                           juce::dontSendNotification);
+        addChildComponent (emptyText);
 
-        pieceBox.setTitle (utf8 ("Барабан"));
-        pieceBox.setTooltip (utf8 ("Выбрать барабан из списка (то же, что клик по схеме)"));
-        pieceBox.onChange = [this]
-        {
-            if (! updating)
-                selectPiece (pieceBox.getSelectedId() - 1);
-        };
-
-        for (auto* c : std::initializer_list<juce::Component*> { &pieceTitle, &pieceName, &pieceKeysLabel, &choicesTitle, &noChoices,
-                                                                  &emptyText, &pieceBox })
-            addChildComponent (c);
-        emptyText.setVisible (true);
+        setTooltip (utf8 ("Клик по барабану: сыграть его и открыть меню места (включить, выбрать звук, режим ударов)"));
 
         processor.addChangeListener (this);
         rebuild();
@@ -173,10 +76,7 @@ namespace samplit
         if (processor.getKit() != kit)
             rebuild();
         else
-        {
-            for (auto& r : rows)
-                r->update();
-        }
+            refreshState();
     }
 
     // Подсветка барабанов, которые только что сыграли (с клавиатуры, мышью или из DAW)
@@ -202,16 +102,11 @@ namespace samplit
 
     void KitView::rebuild()
     {
-        const auto previousId = (kit != nullptr && juce::isPositiveAndBelow (selected, (int) kit->pieces.size()))
-                                    ? kit->pieces[(size_t) selected].id : std::string();
         kit = processor.getKit();
         flash.clear();
         pieceKeys.clear();
-        selected = -1;
         hovered = -1;
 
-        const juce::ScopedValueSetter<bool> guard (updating, true);
-        pieceBox.clear (juce::dontSendNotification);
         if (kit != nullptr)
         {
             flash.assign (kit->pieces.size(), 0.0f);
@@ -219,80 +114,69 @@ namespace samplit
             for (int k = 0; k < 128; ++k)
                 if (const int p = kit->notes[(size_t) k].piece; p >= 0)
                     pieceKeys[(size_t) p].push_back (k);
-            for (int i = 0; i < (int) kit->pieces.size(); ++i)
-            {
-                pieceBox.addItem (juce::String::fromUTF8 (kit->pieces[(size_t) i].name.c_str()), i + 1);
-                if (kit->pieces[(size_t) i].id == previousId)
-                    selected = i;
-            }
-            if (selected < 0 && ! kit->pieces.empty())
-                selected = 0;
         }
 
         layoutSpots();
-        selectPiece (selected);
+        emptyText.setVisible (kit == nullptr && ! processor.isKitLoading());
         repaint();
     }
 
-    // Пересчёт экранных прямоугольников барабанов по размеру сцены
+    // Только состояние мест (включено, какой барабан играет): кит прежний
+    void KitView::refreshState()
+    {
+        const auto setup = processor.getSetup();
+        for (auto& s : spots)
+            if (const auto* ps = setup.find (s.placeId))
+                s.enabled = ps->enabled;
+        emptyText.setVisible (kit == nullptr && ! processor.isKitLoading());
+        repaint (stageArea);
+    }
+
+    // Пересчёт экранных прямоугольников мест по размеру сцены. Барабан кита ищется по месту (Piece::slot)
     void KitView::layoutSpots()
     {
         spots.clear();
         stool = {};
-        if (kit == nullptr)
-            return;
-
-        std::vector<int> extra;
-        for (int i = 0; i < (int) kit->pieces.size(); ++i)
-            if (placeFor (kit->pieces[(size_t) i].id) == nullptr)
-                extra.push_back (i);
 
         auto stage = stageArea.reduced (12, 10);
-        auto chips = extra.empty() ? juce::Rectangle<int>() : stage.removeFromBottom (30);
         const float scale = juce::jmin ((float) stage.getWidth() / kStageWidth, (float) stage.getHeight() / kStageHeight);
         const auto origin = stage.toFloat().getCentre() - juce::Point<float> (kStageWidth, kStageHeight) * (scale * 0.5f);
         stool = juce::Rectangle<float> (0.17f * scale, 0.13f * scale)
                     .withCentre (origin + juce::Point<float> (0.88f, 0.91f) * scale);
 
-        for (int i = 0; i < (int) kit->pieces.size(); ++i)
+        const auto setup = processor.getSetup();
+        for (const auto& pl : kPlaces)
         {
-            const auto* pl = placeFor (kit->pieces[(size_t) i].id);
-            if (pl == nullptr)
+            const auto* def = findPlace (pl.id);
+            if (def == nullptr)
                 continue;
             Spot s;
-            s.piece = i;
-            s.cymbal = pl->cymbal;
-            s.order = std::string (pl->id) == "kick" ? 0 : (pl->cymbal ? 2 : 1);
-            s.label = utf8 (pl->label);
-            s.bounds = juce::Rectangle<float> (pl->rx * 2.0f * scale, pl->ry * 2.0f * scale)
-                           .withCentre (origin + juce::Point<float> (pl->x, pl->y) * scale);
-            spots.push_back (s);
-        }
-
-        // Барабаны, которых нет на схеме, идут рядом кнопками
-        float x = (float) chips.getX();
-        for (int i : extra)
-        {
-            Spot s;
-            s.piece = i;
-            s.chip = true;
-            s.label = juce::String::fromUTF8 (kit->pieces[(size_t) i].id.c_str());
-            s.bounds = { x, (float) chips.getY(), 120.0f, (float) chips.getHeight() };
-            x += 126.0f;
+            s.placeId = pl.id;
+            s.slot = def->slot;
+            s.cymbal = pl.cymbal;
+            s.order = std::string (pl.id) == "kick" ? 0 : (pl.cymbal ? 2 : 1);
+            s.label = utf8 (pl.label);
+            if (const auto* ps = setup.find (s.placeId))
+                s.enabled = ps->enabled;
+            if (kit != nullptr)
+                for (int i = 0; i < (int) kit->pieces.size(); ++i)
+                    if (kit->pieces[(size_t) i].slot == def->slot)
+                        s.piece = i;
+            s.bounds = juce::Rectangle<float> (pl.rx * 2.0f * scale, pl.ry * 2.0f * scale)
+                           .withCentre (origin + juce::Point<float> (pl.x, pl.y) * scale);
             spots.push_back (s);
         }
         std::stable_sort (spots.begin(), spots.end(), [] (const Spot& a, const Spot& b) { return a.order < b.order; });
     }
 
-    int KitView::pieceAt (juce::Point<float> p) const
+    int KitView::spotAt (juce::Point<float> p) const
     {
-        for (auto it = spots.rbegin(); it != spots.rend(); ++it)
+        for (int i = (int) spots.size() - 1; i >= 0; --i)
         {
-            const auto& b = it->bounds;
-            if (it->chip ? b.contains (p)
-                         : (std::pow ((p.x - b.getCentreX()) / (b.getWidth() * 0.5f), 2.0f)
-                                + std::pow ((p.y - b.getCentreY()) / (b.getHeight() * 0.5f), 2.0f)) <= 1.0f)
-                return it->piece;
+            const auto& b = spots[(size_t) i].bounds;
+            if ((std::pow ((p.x - b.getCentreX()) / (b.getWidth() * 0.5f), 2.0f)
+                     + std::pow ((p.y - b.getCentreY()) / (b.getHeight() * 0.5f), 2.0f)) <= 1.0f)
+                return i;
         }
         return -1;
     }
@@ -303,85 +187,176 @@ namespace samplit
                    ? pieceKeys[(size_t) piece].front() : -1;
     }
 
-    juce::String KitView::keysText (int piece) const
+    // Меню места: включено, звук (пак) и режимы групп слоёв текущего кита. Все изменения идут через процессор
+    void KitView::showPlaceMenu (int spotIndex)
     {
-        if (firstKeyOf (piece) < 0)
-            return {};
-        const auto& keys = pieceKeys[(size_t) piece];
-        if (keys.size() == 1)
-            return utf8 ("Клавиша: ") + keyName (keys.front());
-        return utf8 ("Клавиши: ") + keyName (keys.front()) + utf8 (" … ") + keyName (keys.back())
-               + utf8 ("  (") + juce::String ((int) keys.size()) + utf8 (")");
-    }
+        if (! juce::isPositiveAndBelow (spotIndex, (int) spots.size()))
+            return;
+        const auto spot = spots[(size_t) spotIndex];
+        const auto* def = findPlace (spot.placeId);
+        const auto setup = processor.getSetup();
+        const auto* ps = setup.find (spot.placeId);
+        if (def == nullptr || ps == nullptr)
+            return;
 
-    void KitView::playPiece (int piece, int velocity)
-    {
-        if (const int key = firstKeyOf (piece); key >= 0)
-            processor.triggerNote (key, velocity);
-    }
+        juce::PopupMenu menu;
+        menu.addSectionHeader (spot.label);
+        menu.addItem (1, utf8 ("Включено"), true, ps->enabled);
 
-    void KitView::selectPiece (int piece)
-    {
-        selected = kit != nullptr && juce::isPositiveAndBelow (piece, (int) kit->pieces.size()) ? piece : -1;
+        // Звук (пак): паки с барабанами нужного типа; барабаны выбираются, если в паке их несколько этого типа
+        struct PackChoice { juce::String packId, pieceId; };
+        std::vector<PackChoice> packChoices;
+        constexpr int kPackBase = 100;
+        const auto catalog = processor.getCatalog();
+        const auto packs = packsForPlace (catalog, *def);
+        const juce::String currentPack (ps->packId), currentPiece (ps->pieceId);
+
+        juce::PopupMenu soundMenu;
+        bool found = false;
+        for (const auto& pk : packs)
         {
-            const juce::ScopedValueSetter<bool> guard (updating, true);
-            pieceBox.setSelectedId (selected + 1, juce::dontSendNotification);
+            const auto title = pk.title.isNotEmpty() ? pk.title : pk.packId;
+            const bool isCurrent = pk.packId == currentPack;
+            found = found || isCurrent;
+            if (pk.pieces.size() == 1)
+            {
+                packChoices.push_back ({ pk.packId, pk.pieces[0].id });
+                soundMenu.addItem (kPackBase + (int) packChoices.size() - 1, title, true, isCurrent);
+                continue;
+            }
+            juce::PopupMenu drums;
+            for (const auto& piece : pk.pieces)
+            {
+                packChoices.push_back ({ pk.packId, piece.id });
+                const bool tick = isCurrent && (currentPiece.isEmpty() || currentPiece == piece.id);
+                drums.addItem (kPackBase + (int) packChoices.size() - 1, piece.name.isNotEmpty() ? piece.name : piece.id, true, tick);
+            }
+            soundMenu.addSubMenu (title, drums, true, juce::Image(), isCurrent);
         }
-        if (selected >= 0)
+        if (! found && currentPack.isNotEmpty())
         {
-            const juce::ScopedValueSetter<bool> guard (updating, true);
-            pieceName.setText (juce::String::fromUTF8 (kit->pieces[(size_t) selected].name.c_str()), juce::dontSendNotification);
-            pieceKeysLabel.setText (keysText (selected), juce::dontSendNotification);
+            if (soundMenu.getNumItems() > 0)
+                soundMenu.addSeparator();
+            soundMenu.addItem (-1, utf8 ("Пак не найден: ") + currentPack, false);
         }
-        rebuildChoiceRows();
-        repaint();
-    }
+        if (soundMenu.getNumItems() == 0)
+            soundMenu.addItem (-1, utf8 ("Подходящих паков нет"), false);
+        menu.addSubMenu (utf8 ("Звук (пак)"), soundMenu);
 
-    // Переключатели, которые относятся к выбранному барабану
-    void KitView::rebuildChoiceRows()
-    {
-        rows.clear();
-        if (kit != nullptr && selected >= 0)
+        // Режимы групп слоёв барабана этого места в текущем ките. Группа с одним допустимым режимом переключателя не имеет
+        struct PickChoiceItem { juce::String choiceId; Pick pick; };
+        std::vector<PickChoiceItem> pickChoices;
+        constexpr int kPickBase = 1000;
+        if (kit != nullptr && spot.piece >= 0)
+        {
+            const CatalogPiece* catalogPiece = nullptr;
+            for (const auto& pk : catalog)
+                if (pk.packId == currentPack)
+                    for (const auto& piece : pk.pieces)
+                        if (piece.id == juce::String (kit->pieces[(size_t) spot.piece].id))
+                            catalogPiece = &piece;
+
+            juce::PopupMenu groups;
+            const auto prefix = juce::String (spot.placeId) + ":";
             for (int c = 0; c < (int) kit->choices.size(); ++c)
             {
-                const auto& pieces = kit->choices[(size_t) c].pieces;
-                if (std::find (pieces.begin(), pieces.end(), selected) == pieces.end())
+                const auto& choice = kit->choices[(size_t) c];
+                const juce::String choiceId (choice.id);
+                if (! choiceId.startsWith (prefix))
                     continue;
-                rows.push_back (std::make_unique<ChoiceRow> (processor, c, kit->choices[(size_t) c]));
-                addAndMakeVisible (*rows.back());
-            }
 
-        const bool has = kit != nullptr && selected >= 0;
-        for (auto* c : std::initializer_list<juce::Component*> { &pieceTitle, &pieceName, &pieceKeysLabel, &choicesTitle, &pieceBox })
-            c->setVisible (has);
-        noChoices.setVisible (has && rows.empty());
-        emptyText.setVisible (kit == nullptr);
-        resized();
+                std::vector<Pick> allowed { Pick::Cycle, Pick::Random, Pick::Exact };
+                if (catalogPiece != nullptr)
+                    for (const auto& g : catalogPiece->groups)
+                        if (g.id == choiceId.substring (prefix.length()) && ! g.picks.empty())
+                        {
+                            std::vector<Pick> only;
+                            for (auto pick : allowed)
+                                if (std::find (g.picks.begin(), g.picks.end(), pickToString (pick)) != g.picks.end())
+                                    only.push_back (pick);
+                            allowed = std::move (only);
+                        }
+                if (allowed.size() < 2)
+                    continue;
+
+                const auto current = processor.getPickChoice (c);
+                juce::PopupMenu modes;
+                for (auto pick : allowed)
+                {
+                    pickChoices.push_back ({ choiceId, pick });
+                    modes.addItem (kPickBase + (int) pickChoices.size() - 1, utf8 (pickLabel (pick)), true, pick == current);
+                }
+                groups.addSubMenu (juce::String::fromUTF8 (choice.name.c_str()), modes);
+            }
+            if (groups.getNumItems() > 0)
+            {
+                menu.addSeparator();
+                menu.addSectionHeader (utf8 ("Как выбирается удар"));
+                // Группы идут в одном подменю, если их много, иначе прямо в меню
+                if (groups.getNumItems() > 4)
+                    menu.addSubMenu (utf8 ("Режимы групп"), groups);
+                else
+                {
+                    juce::PopupMenu::MenuItemIterator it (groups);
+                    while (it.next())
+                        menu.addItem (it.getItem());
+                }
+            }
+        }
+
+        const auto target = juce::Rectangle<int> (spot.bounds.toNearestInt()).translated (getScreenX(), getScreenY());
+        menu.showMenuAsync (juce::PopupMenu::Options().withTargetScreenArea (target),
+                            [safe = juce::Component::SafePointer<KitView> (this), placeId = juce::String (spot.placeId),
+                             enabled = ps->enabled, packChoices, pickChoices] (int result)
+        {
+            if (safe == nullptr || result <= 0)
+                return;
+            auto& p = safe->processor;
+            if (result == 1)
+            {
+                p.setPlaceEnabled (placeId, ! enabled);
+                safe->refreshState();
+            }
+            else if (result >= kPickBase)
+            {
+                const auto index = (size_t) (result - kPickBase);
+                if (index < pickChoices.size())
+                    p.setGroupPick (pickChoices[index].choiceId, pickChoices[index].pick);
+            }
+            else if (result >= kPackBase)
+            {
+                const auto index = (size_t) (result - kPackBase);
+                if (index < packChoices.size())
+                    p.setPlacePack (placeId, packChoices[index].packId, packChoices[index].pieceId);
+            }
+        });
     }
 
     void KitView::mouseDown (const juce::MouseEvent& e)
     {
-        const int piece = pieceAt (e.position);
-        if (piece < 0)
+        const int index = spotAt (e.position);
+        if (index < 0)
             return;
-        selectPiece (piece);
-        playPiece (piece, 100);
+        const auto& spot = spots[(size_t) index];
+        if (spot.enabled)
+            if (const int key = firstKeyOf (spot.piece); key >= 0)
+                processor.triggerNote (key, 100);
+        showPlaceMenu (index);
     }
 
     void KitView::mouseMove (const juce::MouseEvent& e)
     {
-        const int piece = pieceAt (e.position);
-        if (piece != hovered)
+        const int index = spotAt (e.position);
+        if (index != hovered)
         {
-            hovered = piece;
-            setMouseCursor (piece >= 0 ? juce::MouseCursor::PointingHandCursor : juce::MouseCursor::NormalCursor);
+            hovered = index;
+            setMouseCursor (index >= 0 ? juce::MouseCursor::PointingHandCursor : juce::MouseCursor::NormalCursor);
             repaint (stageArea);
         }
     }
 
     void KitView::mouseExit (const juce::MouseEvent&)
     {
-        setTooltip ({});
         if (hovered >= 0)
         {
             hovered = -1;
@@ -392,29 +367,10 @@ namespace samplit
     void KitView::resized()
     {
         auto area = getLocalBounds();
-        detailArea = area.removeFromRight (kDetailWidth);
-        area.removeFromRight (kGap);
+        hintArea = area.removeFromBottom (kHintHeight);
         stageArea = area;
         layoutSpots();
-        emptyText.setBounds (stageArea);
-
-        auto d = detailArea.reduced (16, 14);
-        pieceTitle.setBounds (d.removeFromTop (18));
-        pieceBox.setBounds (d.removeFromTop (30));
-        d.removeFromTop (8);
-        pieceName.setBounds (d.removeFromTop (22));
-        pieceKeysLabel.setBounds (d.removeFromTop (18));
-        d.removeFromTop (12);
-
-        choicesTitle.setBounds (d.removeFromTop (18));
-        d.removeFromTop (6);
-        noChoices.setBounds (noChoices.isVisible() ? d.removeFromTop (54) : juce::Rectangle<int>());
-        for (auto& r : rows)
-        {
-            r->setBounds (d.removeFromTop (kRowHeight));
-            d.removeFromTop (8);
-        }
-        legendArea = d.getHeight() >= kLegendHeight ? d.removeFromBottom (kLegendHeight) : juce::Rectangle<int>();
+        emptyText.setBounds (stageArea.reduced (40, 0).withSizeKeepingCentre (stageArea.getWidth() - 80, 60));
         repaint();
     }
 
@@ -466,10 +422,6 @@ namespace samplit
     {
         g.setColour (brand::surface);
         g.fillRoundedRectangle (stageArea.toFloat(), 12.0f);
-        g.fillRoundedRectangle (detailArea.toFloat(), 12.0f);
-
-        if (kit == nullptr)
-            return;
 
         if (! stool.isEmpty())
         {
@@ -479,31 +431,24 @@ namespace samplit
             g.drawEllipse (stool, 1.0f);
         }
 
-        for (const auto& s : spots)
+        for (int i = 0; i < (int) spots.size(); ++i)
         {
-            const bool sel = s.piece == selected, hot = s.piece == hovered;
-            const float f = flash[(size_t) s.piece];
-            if (s.chip)
-            {
-                g.setColour (sel ? brand::accentSoft : brand::pad);
-                g.fillRoundedRectangle (s.bounds, 8.0f);
-                g.setColour (sel ? brand::accent : brand::line);
-                g.drawRoundedRectangle (s.bounds.reduced (0.5f), 8.0f, sel ? 2.0f : 1.0f);
-                g.setColour (brand::text);
-                g.setFont (juce::FontOptions (12.0f));
-                g.drawText (s.label, s.bounds.toNearestInt(), juce::Justification::centred, true);
-                continue;
-            }
+            const auto& s = spots[(size_t) i];
+            const bool hot = i == hovered;
+            const float f = juce::isPositiveAndBelow (s.piece, (int) flash.size()) ? flash[(size_t) s.piece] : 0.0f;
 
+            // Выключенное место приглушено
+            if (! s.enabled)
+                g.beginTransparencyLayer (0.35f);
             if (s.cymbal)
-                drawCymbal (g, s.bounds, f, sel, hot);
+                drawCymbal (g, s.bounds, f, false, hot);
             else
-                drawDrum (g, s.bounds, f, sel, hot, s.order == 1);
+                drawDrum (g, s.bounds, f, false, hot, s.order == 1);
 
             g.setFont (juce::FontOptions (juce::jlimit (11.0f, 13.0f, s.bounds.getHeight() * 0.35f), juce::Font::bold));
             if (s.cymbal)
             {
-                g.setColour (sel || hot ? brand::text : brand::textMuted);
+                g.setColour (hot ? brand::text : brand::textMuted);
                 g.drawText (s.label, s.bounds.withY (s.bounds.getBottom() + 1.0f).withHeight (16.0f).expanded (30.0f, 0.0f),
                             juce::Justification::centred, false);
             }
@@ -512,22 +457,13 @@ namespace samplit
                 g.setColour (brand::text);
                 g.drawText (s.label, s.bounds.toNearestInt(), juce::Justification::centred, true);
             }
+            if (! s.enabled)
+                g.endTransparencyLayer();
         }
 
-        // Короткая подсказка в свободном месте панели; подробности есть в подсказках кнопок.
-        if (! legendArea.isEmpty())
-        {
-            auto legend = legendArea;
-            g.setColour (brand::line);
-            g.fillRect (legend.removeFromTop (1));
-            legend.removeFromTop (9);
-            g.setColour (brand::text);
-            g.setFont (juce::FontOptions (12.0f, juce::Font::bold));
-            g.drawText (utf8 ("Как это работает"), legend.removeFromTop (19), juce::Justification::centredLeft);
-            g.setColour (brand::textMuted);
-            g.setFont (juce::FontOptions (11.5f));
-            g.drawFittedText (utf8 ("Пустые значения velocity молчат. Режим меняет выбор записи внутри выбранной группы ударов."),
-                              legend, juce::Justification::topLeft, 3, 1.0f);
-        }
+        g.setColour (brand::textMuted);
+        g.setFont (juce::FontOptions (11.5f));
+        g.drawText (utf8 ("Клик по барабану: включить или выключить, выбрать звук и режим выбора удара."), hintArea.reduced (14, 0),
+                    juce::Justification::centredLeft, true);
     }
 }

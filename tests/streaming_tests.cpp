@@ -1,6 +1,7 @@
 #include "DiskStreamer.h"
 #include "KitEngine.h"
 #include "KitLoader.h"
+#include "spec_helper.h"
 
 #include "samplit/core/Pack.h"
 #include "samplit/core/Wav.h"
@@ -646,11 +647,7 @@ TEST_CASE ("a manifest with a split file (tailChunk) is rejected clearly", "[str
     opts.libraryRoot = lib;
     opts.manifestDir = manifests;
     opts.threads = 1;
-    Preset preset;
-    preset.id = "t";
-    preset.name = "T";
-    preset.packs = { "local" };
-    const auto res = loadKit (preset, opts);
+    const auto res = loadKit (testspec::oneSpec ("local", "kick", 36), opts);
     CHECK_FALSE (res.ok());
     CHECK (res.error.contains ("tailChunk"));
 }
@@ -718,11 +715,8 @@ TEST_CASE ("loadKit keeps only the head of a long local WAV and describes the ta
     opts.threads = 2;
     opts.headSeconds = 0.1;     // 4410 кадров
 
-    Preset preset;
-    preset.id = "t";
-    preset.name = "T";
-    preset.packs = { "local" };
-    const auto res = loadKit (preset, opts);
+    const auto spec = testspec::oneSpec ("local", "kick", 36);
+    const auto res = loadKit (spec, opts);
     REQUIRE (res.ok());
 
     const auto& hits = res.kit->pieces[0].hits;
@@ -745,7 +739,7 @@ TEST_CASE ("loadKit keeps only the head of a long local WAV and describes the ta
 
     // Короткий файл (не длиннее головы + порции) остаётся целиком в памяти
     opts.headSeconds = 1.4;
-    const auto shortRes = loadKit (preset, opts);
+    const auto shortRes = loadKit (spec, opts);
     REQUIRE (shortRes.ok());
     CHECK_FALSE (shortRes.kit->pieces[0].hits[0].files[0].clip->isStreamed());
     CHECK (shortRes.kit->pieces[0].hits[0].files[0].clip->frames() == kTotal);

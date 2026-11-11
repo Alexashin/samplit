@@ -15,6 +15,7 @@ target_sources(SamplitTests PRIVATE
     editor_stub.cpp
     juce_setup.cpp
     kit_fixture.h
+    spec_helper.h
     kit_engine_tests.cpp
     kit_loader_tests.cpp
     setup_tests.cpp

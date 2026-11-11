@@ -1,4 +1,4 @@
-﻿# Дистрибутив Samplit для передачи: плагин VST3, отдельное приложение, пакеты, пресеты, установщик, инструкция.
+﻿# Дистрибутив Samplit для передачи: плагин VST3, отдельное приложение, пакеты, установщик, инструкция.
 #
 #   .\tools\make_dist.ps1                          dist\Samplit-<версия>\ и dist\Samplit-<версия>.zip
 #   .\tools\make_dist.ps1 -NoZip
@@ -24,18 +24,15 @@ foreach ($need in @((Join-Path $artefacts 'VST3\Samplit.vst3'), (Join-Path $arte
 
 if (Test-Path $out) { Remove-Item $out -Recurse -Force }
 $setup = Join-Path $out 'setup'
-New-Item -ItemType Directory -Force (Join-Path $out 'Plugin'), (Join-Path $out 'Data\packs'), (Join-Path $out 'Data\presets\mixes'), $setup | Out-Null
+New-Item -ItemType Directory -Force (Join-Path $out 'Plugin'), (Join-Path $out 'Data\packs'), $setup | Out-Null
 
 Copy-Item (Join-Path $artefacts 'VST3\Samplit.vst3') (Join-Path $out 'Plugin') -Recurse
 Copy-Item (Join-Path $artefacts 'Standalone\Samplit.exe') (Join-Path $out 'Plugin')
-# Пакет studio600-unverified нужен только служебным пресетам «[Проверка]», которые в архив не идут
+# Пакет studio600-unverified нужен только служебному режиму (SAMPLIT_SERVICE), в архив не идёт
 if (-not $Lite) { Get-ChildItem (Join-Path $packs '*.splpack') -Exclude 'studio600-unverified*' | Copy-Item -Destination (Join-Path $out 'Data\packs') }
 # Исходные манифесты (раскладка ударов без звука): нужны режиму «Моя библиотека…»
 New-Item -ItemType Directory -Force (Join-Path $out 'Data\manifests') | Out-Null
 Get-ChildItem (Join-Path $root 'sample_library\packs-src\*.json') -Exclude 'studio600-unverified*' | Copy-Item -Destination (Join-Path $out 'Data\manifests')
-# Служебные «full» (спорные удары) остаются только у нас
-Get-ChildItem (Join-Path $root 'tools\presets\*.json') -Exclude 'studio600-full-*' | Copy-Item -Destination (Join-Path $out 'Data\presets')
-Copy-Item (Join-Path $root 'tools\presets\mixes\*.json') (Join-Path $out 'Data\presets\mixes')
 Copy-Item (Join-Path $root 'tools\dist\install.ps1'), (Join-Path $root 'tools\dist\uninstall.ps1') $setup
 Copy-Item (Join-Path $root 'tools\dist\img') $setup -Recurse
 Copy-Item (Join-Path $root 'tools\dist\guide.html') (Join-Path $out 'Инструкция.html')

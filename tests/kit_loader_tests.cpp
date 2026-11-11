@@ -2,6 +2,7 @@
 #include "KitLoader.h"
 #include "PackCatalog.h"
 #include "PluginProcessor.h"
+#include "spec_helper.h"
 
 #include <catch2/catch_test_macros.hpp>
 #include <juce_audio_formats/juce_audio_formats.h>
@@ -111,49 +112,21 @@ namespace
         return o;
     }
 
-    Preset presetOf (std::vector<juce::String> packs)
+    // Состав кита: по одному месту на пару «пак, барабан»; клавиши без сдвига
+    struct PackPiece
     {
-        Preset p;
-        p.id = "test";
-        p.name = "Test";
-        p.packs = std::move (packs);
-        return p;
+        juce::String packId, pieceId;
+        int key;
+    };
+
+    KitSpec specOf (const std::vector<PackPiece>& items)
+    {
+        KitSpec s;
+        static const char* const ids[] = { "kick", "snare", "crash_a", "crash_b" };
+        for (size_t i = 0; i < items.size(); ++i)
+            s.places.push_back (testspec::placeFor (ids[i % 4], (int) i, items[i].packId, items[i].pieceId, { items[i].key }));
+        return s;
     }
-}
-
-TEST_CASE ("Preset parses the default preset file", "[loader]")
-{
-    Preset p;
-    juce::String error;
-    const auto file = juce::File (SAMPLIT_TEST_FIXTURES).getParentDirectory().getParentDirectory()
-                          .getChildFile ("tools/presets/studio600-default.json");
-    REQUIRE (Preset::fromFile (file, p, error));
-    CHECK (p.id == "studio600-default");
-    CHECK (p.packs.size() == 5);
-    CHECK (p.mode == HitSelect::Live);
-    CHECK (p.velocityToGain == 0.0f);
-    CHECK (p.mixId == "mix-balanced-main");   // микс микрофонов лежит в tools/presets/mixes
-    CHECK (! p.includeUnverified);
-}
-
-TEST_CASE ("Preset reads pick rules and the default preset carries them", "[loader]")
-{
-    Preset p;
-    juce::String error;
-    const auto file = juce::File (SAMPLIT_TEST_FIXTURES).getParentDirectory().getParentDirectory()
-                          .getChildFile ("tools/presets/studio600-default.json");
-    REQUIRE (Preset::fromFile (file, p, error));
-    REQUIRE (p.pick.size() > 6);
-    CHECK (p.pick[0].pieces == std::vector<juce::String> { "kick" });
-    CHECK (p.pick[0].mode == Pick::Cycle);
-
-    const auto hat = std::find_if (p.pick.begin(), p.pick.end(), [] (const auto& r) { return r.pieces[0] == "hat" && r.keyLo == 48; });
-    REQUIRE (hat != p.pick.end());
-    CHECK (hat->keyHi == 78);
-    CHECK (hat->mode == Pick::Random);
-
-    CHECK_FALSE (Preset::fromJson ("{\"id\":\"x\",\"select\":{\"pick\":[{\"name\":\"a\",\"pieces\":[\"k\"],\"mode\":\"zzz\"}]}}", p, error));
-    CHECK_FALSE (Preset::fromJson ("{\"id\":\"x\",\"select\":{\"pick\":[{\"name\":\"a\",\"mode\":\"cycle\"}]}}", p, error));
 }
 
 TEST_CASE ("loadKit reads layer pick from the manifest: random, cycle, exact", "[loader]")
@@ -163,7 +136,7 @@ TEST_CASE ("loadKit reads layer pick from the manifest: random, cycle, exact", "
     const auto exact = writePack (dir, "pe", "snare", 38, false, "exact");
     const auto plain = writePack (dir, "pr", "tom", 40, false, "zzz");
 
-    const auto res = loadKit (presetOf ({ "pc", "pe", "pr" }),
+    const auto res = loadKit (specOf ({ { "pc", "kick", 36 }, { "pe", "snare", 38 }, { "pr", "tom", 40 } }),
                               optionsFor (dir, { { "pc", cycle.key }, { "pe", exact.key }, { "pr", plain.key } }));
     REQUIRE (res.ok());
     REQUIRE (res.kit->pieces.size() == 3);
@@ -176,18 +149,18 @@ TEST_CASE ("loadKit reads layer pick from the manifest: random, cycle, exact", "
     }
 }
 
-TEST_CASE ("loadKit applies pick rules: the layer follows the rule and becomes a switch", "[loader]")
+TEST_CASE ("loadKit applies the user pick of a group: the layer follows it and becomes a switch", "[loader]")
 {
     const auto dir = loaderDir();
     const auto t = writePack (dir, "pk", "kick", 36);
 
-    auto preset = presetOf ({ "pk" });
-    preset.pick.push_back ({ "Kick", { "kick" }, 0, 127, Pick::Cycle, false });
-    preset.pick.push_back ({ "Nothing here", { "absent" }, 0, 127, Pick::Random, false });
+    auto spec = specOf ({ { "pk", "kick", 36 } });
+    spec.places[0].picks["all"] = Pick::Cycle;      // группа на слой "all"
 
-    const auto res = loadKit (preset, optionsFor (dir, { { "pk", t.key } }));
+    const auto res = loadKit (spec, optionsFor (dir, { { "pk", t.key } }));
     REQUIRE (res.ok());
-    REQUIRE (res.kit->choices.size() == 1);   // правило без барабанов в ките переключателя не даёт
+    REQUIRE (res.kit->choices.size() == 1);
+    CHECK (res.kit->choices[0].id == "kick:all");
     CHECK (res.kit->choices[0].pick == Pick::Cycle);
     CHECK (res.kit->choices[0].pieces == std::vector<int> { 0 });
     CHECK (res.kit->pieces[0].layers[0].pick == Pick::Cycle);
@@ -204,104 +177,16 @@ TEST_CASE ("loadKit applies pick rules: the layer follows the rule and becomes a
     engine.setKit (nullptr);
 }
 
-TEST_CASE ("Preset survives a round trip through toJson (saving a user preset)", "[loader]")
-{
-    Preset p;
-    p.id = "user-mine";
-    p.name = "Мой пресет";
-    p.comment = "комментарий";
-    p.packs = { "a", "b" };
-    p.includeUnverified = true;
-    p.mics["oh"] = { -4.5f, 0.25f, 7, true };
-    p.pick.push_back ({ "Хэт", { "hat" }, 48, 78, Pick::Cycle, true });
-    p.pick.push_back ({ "Бочка", { "kick" }, 0, 127, Pick::Exact, false });
-
-    Preset q;
-    juce::String error;
-    REQUIRE (Preset::fromJson (p.toJson(), q, error));
-    CHECK (q.id == p.id);
-    CHECK (q.name == p.name);
-    CHECK (q.comment == p.comment);
-    CHECK (q.packs == p.packs);
-    CHECK (q.includeUnverified);
-    REQUIRE (q.mics.count ("oh") == 1);
-    CHECK (q.mics["oh"].levelDb == -4.5f);
-    CHECK (q.mics["oh"].pan == 0.25f);
-    CHECK (q.mics["oh"].out == 7);
-    CHECK (q.mics["oh"].mute);
-    REQUIRE (q.pick.size() == 2);
-    CHECK (q.pick[0].keyLo == 48);
-    CHECK (q.pick[0].keyHi == 78);
-    CHECK (q.pick[0].mode == Pick::Cycle);
-    CHECK (q.pick[0].includeExact);
-    CHECK (q.pick[1].mode == Pick::Exact);
-    CHECK (q.pick[1].keyLo == 0);
-    CHECK (q.pick[1].keyHi == 127);
-}
-
-TEST_CASE ("Preset accepts obsolete layerSpread without writing it back", "[loader]")
-{
-    Preset p;
-    juce::String error;
-    REQUIRE (Preset::fromJson (R"({"id":"legacy","select":{"mode":"live","layerSpread":2}})", p, error));
-    CHECK_FALSE (p.toJson().contains ("layerSpread"));
-}
-
-TEST_CASE ("shipped mixes and kit presets are consistent", "[loader]")
-{
-    const auto root = juce::File (SAMPLIT_TEST_FIXTURES).getParentDirectory().getParentDirectory().getChildFile ("tools/presets");
-    Mix main, multi;
-    juce::String error;
-    REQUIRE (Mix::fromFile (root.getChildFile ("mixes/mix-balanced-main.json"), main, error));
-    REQUIRE (Mix::fromFile (root.getChildFile ("mixes/mix-multiout.json"), multi, error));
-    REQUIRE (main.mics.size() == 15);
-    REQUIRE (multi.mics.size() == 15);
-    for (const auto& [id, m] : main.mics)
-    {
-        CHECK (m.out == 0);
-        REQUIRE (multi.mics.count (id) == 1);
-        CHECK (multi.mics[id].levelDb == m.levelDb);
-        CHECK (multi.mics[id].pan == m.pan);
-        CHECK (multi.mics[id].out >= 1);
-    }
-    CHECK (multi.mics["oh_1"].out == 5);
-    CHECK (multi.mics["oh_1"].pan == -0.8f);
-
-    for (const auto& name : { "studio600-default.json", "studio600-ahead-low.json", "studio600-ambasador.json" })
-    {
-        Preset p;
-        REQUIRE (Preset::fromFile (root.getChildFile (name), p, error));
-        CHECK (p.mixId == "mix-balanced-main");
-        CHECK (p.mics.empty());
-        CHECK (p.comment.isNotEmpty());
-    }
-}
-
-TEST_CASE ("Preset rejects broken json", "[loader]")
-{
-    Preset p;
-    juce::String error;
-    CHECK_FALSE (Preset::fromJson ("[]", p, error));
-    CHECK_FALSE (Preset::fromJson ("{\"packs\":[]}", p, error));
-    CHECK_FALSE (Preset::fromJson ("{\"id\":\"x\",\"select\":{\"mode\":\"zzz\"}}", p, error));
-    CHECK (Preset::fromJson ("{\"id\":\"x\"}", p, error));
-}
-
 TEST_CASE ("loadKit builds a playable kit from a pack", "[loader]")
 {
     const auto dir = loaderDir();
     const auto t = writePack (dir, "pk", "kick", 36);
 
-    auto preset = presetOf ({ "pk" });
-    preset.mics["oh"].out = 7;
-    preset.mics["oh"].levelDb = -6.0f;
-    preset.mics["oh"].pan = 0.5f;
-
     float lastProgress = 0.0f;
     auto opts = optionsFor (dir, { { "pk", t.key } });
     opts.progress = [&] (float f) { lastProgress = std::max (lastProgress, f); };
 
-    const auto res = loadKit (preset, opts);
+    const auto res = loadKit (specOf ({ { "pk", "kick", 36 } }), opts);
     REQUIRE (res.ok());
     CHECK (res.error.isEmpty());
     CHECK (lastProgress == 1.0f);
@@ -309,10 +194,7 @@ TEST_CASE ("loadKit builds a playable kit from a pack", "[loader]")
     const auto& kit = *res.kit;
     REQUIRE (kit.mics.size() == 2);
     CHECK (kit.mics[0].out == 1);
-    CHECK (kit.mics[1].out == 7);
-    REQUIRE (res.mix.size() == 2);
-    CHECK (res.mix[1].levelDb == -6.0f);
-    CHECK (res.mix[1].pan == 0.5f);
+    CHECK (kit.mics[1].out == 2);
 
     REQUIRE (kit.pieces.size() == 1);
     REQUIRE (kit.pieces[0].hits.size() == 2);
@@ -342,13 +224,13 @@ TEST_CASE ("loadKit skips unverified hits unless asked", "[loader]")
     const auto t = writePack (dir, "pk", "kick", 36, true);
     const auto opts = optionsFor (dir, { { "pk", t.key } });
 
-    auto preset = presetOf ({ "pk" });
-    auto res = loadKit (preset, opts);
+    auto spec = specOf ({ { "pk", "kick", 36 } });
+    auto res = loadKit (spec, opts);
     REQUIRE (res.ok());
     CHECK (res.kit->pieces[0].hits.size() == 2);
 
-    preset.includeUnverified = true;
-    res = loadKit (preset, opts);
+    spec.includeUnverified = true;
+    res = loadKit (spec, opts);
     REQUIRE (res.ok());
     REQUIRE (res.kit->pieces[0].hits.size() == 3);
     CHECK (res.kit->pieces[0].hits[2].unverified);
@@ -360,8 +242,8 @@ TEST_CASE ("loadKit leaves unlicensed packs silent", "[loader]")
     const auto a = writePack (dir, "pk-a", "kick", 36);
     const auto b = writePack (dir, "pk-b", "snare", 38);
 
-    auto preset = presetOf ({ "pk-a", "pk-b", "pk-missing" });
-    auto res = loadKit (preset, optionsFor (dir, { { "pk-a", a.key } }));
+    const auto spec = specOf ({ { "pk-a", "kick", 36 }, { "pk-b", "snare", 38 }, { "pk-missing", "tom", 40 } });
+    auto res = loadKit (spec, optionsFor (dir, { { "pk-a", a.key } }));
     REQUIRE (res.ok());
     CHECK (res.kit->pieces.size() == 1);
     REQUIRE (res.missingPacks.size() == 2);
@@ -369,36 +251,30 @@ TEST_CASE ("loadKit leaves unlicensed packs silent", "[loader]")
     CHECK (res.missingPacks[1] == "pk-missing");
 
     // Оба пакета с ключами: микрофоны общие, барабаны складываются
-    res = loadKit (preset, optionsFor (dir, { { "pk-a", a.key }, { "pk-b", b.key } }));
+    res = loadKit (spec, optionsFor (dir, { { "pk-a", a.key }, { "pk-b", b.key } }));
     REQUIRE (res.ok());
     CHECK (res.kit->pieces.size() == 2);
     CHECK (res.kit->mics.size() == 2);
     CHECK (res.kit->notes[36].piece == 0);
     CHECK (res.kit->notes[38].piece == 1);
-
-    // Фильтр барабанов пресета
-    preset.pieces = { "snare" };
-    res = loadKit (preset, optionsFor (dir, { { "pk-a", a.key }, { "pk-b", b.key } }));
-    REQUIRE (res.ok());
-    REQUIRE (res.kit->pieces.size() == 1);
-    CHECK (res.kit->pieces[0].id == "snare");
 }
 
 TEST_CASE ("loadKit reports errors and cancel", "[loader]")
 {
     const auto dir = loaderDir();
     const auto t = writePack (dir, "pk", "kick", 36);
+    const auto one = specOf ({ { "pk", "kick", 36 } });
 
     SECTION ("нет ни одного доступного пакета")
     {
-        const auto res = loadKit (presetOf ({ "pk" }), optionsFor (dir, {}));
+        const auto res = loadKit (one, optionsFor (dir, {}));
         CHECK_FALSE (res.ok());
         CHECK (res.error.isNotEmpty());
     }
 
     SECTION ("неверный ключ")
     {
-        const auto res = loadKit (presetOf ({ "pk" }), optionsFor (dir, { { "pk", pack::generateKey() } }));
+        const auto res = loadKit (one, optionsFor (dir, { { "pk", pack::generateKey() } }));
         CHECK_FALSE (res.ok());
         CHECK (res.error.isNotEmpty());
     }
@@ -406,7 +282,8 @@ TEST_CASE ("loadKit reports errors and cancel", "[loader]")
     SECTION ("два барабана на одной клавише")
     {
         const auto b = writePack (dir, "pk-b", "snare", 36);
-        const auto res = loadKit (presetOf ({ "pk", "pk-b" }), optionsFor (dir, { { "pk", t.key }, { "pk-b", b.key } }));
+        const auto res = loadKit (specOf ({ { "pk", "kick", 36 }, { "pk-b", "snare", 36 } }),
+                                  optionsFor (dir, { { "pk", t.key }, { "pk-b", b.key } }));
         CHECK_FALSE (res.ok());
         CHECK (res.error.isNotEmpty());
     }
@@ -416,7 +293,7 @@ TEST_CASE ("loadKit reports errors and cancel", "[loader]")
         std::atomic<bool> cancel { true };
         auto opts = optionsFor (dir, { { "pk", t.key } });
         opts.cancel = &cancel;
-        const auto res = loadKit (presetOf ({ "pk" }), opts);
+        const auto res = loadKit (one, opts);
         CHECK_FALSE (res.ok());
         CHECK (res.cancelled);
     }
@@ -434,19 +311,17 @@ namespace
     }
 }
 
-TEST_CASE ("processor loads a kit in the background and applies the mic mix", "[loader]")
+TEST_CASE ("processor loads a kit in the background", "[loader]")
 {
     const auto dir = loaderDir();
     const auto t = writePack (dir, "pk", "kick", 36);
-    auto preset = presetOf ({ "pk" });
-    preset.mics["oh"].mute = true;
 
     SamplitProcessor processor;
     processor.prepareToPlay (44100.0, 512);
 
     bool called = false;
     KitLoadResult got;
-    processor.loadKitAsync (preset, optionsFor (dir, { { "pk", t.key } }), [&] (const KitLoadResult& r)
+    processor.loadKitAsync (specOf ({ { "pk", "kick", 36 } }), optionsFor (dir, { { "pk", t.key } }), [&] (const KitLoadResult& r)
     {
         called = true;
         got = r;
@@ -465,12 +340,13 @@ TEST_CASE ("a failed or cancelled load keeps the current kit", "[loader]")
 {
     const auto dir = loaderDir();
     const auto t = writePack (dir, "pk", "kick", 36);
+    const auto spec = specOf ({ { "pk", "kick", 36 } });
 
     SamplitProcessor processor;
     processor.prepareToPlay (44100.0, 512);
 
     bool called = false;
-    processor.loadKitAsync (presetOf ({ "pk" }), optionsFor (dir, { { "pk", t.key } }), [&] (const KitLoadResult&) { called = true; });
+    processor.loadKitAsync (spec, optionsFor (dir, { { "pk", t.key } }), [&] (const KitLoadResult&) { called = true; });
     REQUIRE (pumpUntil ([&] { return called; }));
     const auto first = processor.getKit();
     REQUIRE (first != nullptr);
@@ -478,18 +354,19 @@ TEST_CASE ("a failed or cancelled load keeps the current kit", "[loader]")
     // Нет лицензии: загрузка не удалась, прежний кит на месте
     called = false;
     bool ok = true;
-    processor.loadKitAsync (presetOf ({ "pk" }), optionsFor (dir, {}), [&] (const KitLoadResult& r) { called = true; ok = r.ok(); });
+    processor.loadKitAsync (spec, optionsFor (dir, {}), [&] (const KitLoadResult& r) { called = true; ok = r.ok(); });
     REQUIRE (pumpUntil ([&] { return called; }));
     CHECK_FALSE (ok);
     CHECK (processor.getKit() == first);
 
-    // Отмена: колбэк не приходит, флаг загрузки сброшен
+    // Отмена: колбэк приходит с cancelled, кит не меняется, флаг загрузки сброшен
     called = false;
-    processor.loadKitAsync (presetOf ({ "pk" }), optionsFor (dir, { { "pk", t.key } }), [&] (const KitLoadResult&) { called = true; });
+    bool cancelled = false;
+    processor.loadKitAsync (spec, optionsFor (dir, { { "pk", t.key } }), [&] (const KitLoadResult& r) { called = true; cancelled = r.cancelled; });
     processor.cancelKitLoad();
     CHECK_FALSE (processor.isKitLoading());
-    pumpUntil ([&] { return called; }, 300);
-    CHECK_FALSE (called);
+    REQUIRE (pumpUntil ([&] { return called; }));
+    CHECK (cancelled);
     CHECK (processor.getKit() == first);
 }
 
@@ -542,16 +419,16 @@ TEST_CASE ("loadKit plays a local WAV library in full length, 24-bit exact, with
     opts.threads = 2;      // keyFor не задан: лицензия не нужна
     opts.headSeconds = 0;  // файл целиком в памяти (стриминг проверяется отдельным тестом)
 
-    const auto res = loadKit (presetOf ({ "local" }), opts);
+    const auto res = loadKit (testspec::oneSpec ("local", "kick", 36), opts);
     REQUIRE (res.ok());
     const auto& clip = *res.kit->pieces[0].hits[0].files[0].clip;
     REQUIRE (clip.frames() == 50000);
     CHECK (clip.f32[10] == (float) audio.samples[10] / 8388608.0f);
     CHECK (clip.f32[49999] == (float) audio.samples[49999] / 8388608.0f);
 
-    // Папки с манифестом нет: пакет пресета считается недоступным, а не падением
+    // Папки с манифестом нет: пакет считается недоступным, а не падением
     opts.manifestDir = dir.getChildFile ("none");
-    CHECK_FALSE (loadKit (presetOf ({ "local" }), opts).ok());
+    CHECK_FALSE (loadKit (testspec::oneSpec ("local", "kick", 36), opts).ok());
 }
 
 // ---------------------------------------------------------------- KitSpec (установка Studio600)

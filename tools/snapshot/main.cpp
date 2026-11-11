@@ -1,9 +1,9 @@
-// samplit-snapshot <папка>: собирает во временной папке тестовый пакет на 15 микрофонов, пресет и токен
+// samplit-snapshot <папка>: собирает во временной папке тестовые паки заводской установки (15 микрофонов) и токен
 // (подписан ТЕСТОВЫМ ключом, и проверяет его тоже тестовый ключ, не зашитый в плагин), открывает окно плагина без показа
 // на экране и сохраняет его снимки в разных состояниях. Звук не нужен, сеть не нужна.
 //
-// samplit-snapshot <папка> --installed [id пресета]: то же на настоящих данных этого компьютера (%APPDATA%\Samplit, боевой ключ):
-// загружает пресет studio600-default, печатает время загрузки и объём в памяти, сохраняет снимок.
+// samplit-snapshot <папка> --installed: то же на настоящих данных этого компьютера (%APPDATA%\Samplit, боевой ключ):
+// применяет заводскую установку, печатает время загрузки и объём в памяти, сохраняет снимок.
 
 #include "PluginEditor.h"
 #include "samplit/core/LicenseSigning.h"
@@ -35,12 +35,20 @@ namespace
         { "tom_a2", "Tom 2", 13 },     { "tom_a3", "Tom 3", 14 },     { "tom_a4", "Tom 4", 15 }
     };
 
-    struct PieceDef { const char* id; const char* name; std::vector<int> keys; };
+    // Пак заводской установки: барабаны, которые Setup::factory() ставит из него по умолчанию
+    std::vector<juce::String> factoryPackIds()
+    {
+        std::vector<juce::String> ids;
+        for (const auto& pl : kStudio600Places)
+            if (std::find (ids.begin(), ids.end(), juce::String (pl.defaultPack)) == ids.end())
+                ids.push_back (pl.defaultPack);
+        return ids;
+    }
 
-    bool writePack (const juce::File& file, const pack::PackKey& key)
+    bool writePack (const juce::File& file, const juce::String& packId, const pack::PackKey& key)
     {
         juce::String error;
-        auto w = pack::PackWriter::create (file, "studio600-core", key, error);
+        auto w = pack::PackWriter::create (file, packId, key, error);
         if (w == nullptr)
             return false;
 
@@ -54,27 +62,26 @@ namespace
             return false;
 
         pack::Manifest m;
-        m.id = "studio600-core";
-        m.title = "Studio600: core"_s;
+        m.id = packId;
+        m.title = packId;
         for (const auto& mic : kMics)
             m.mics.push_back ({ mic.id, mic.name, "close", mic.out });
 
-        const std::vector<PieceDef> pieces = {
-            { "kick", "Бочка", { 36 } }, { "snare_live", "Малый", { 38 } },
-            { "tom_10", "Альт 10", { 48 } }, { "tom_14", "Альт 12", { 45 } },
-            { "tom_16m", "Том 14", { 43 } }, { "tom_16l", "Флор том 16", { 41 } },
-            { "hat", "Хай-хэт", { 42, 44, 46 } }, { "ride", "Райд", { 51, 53 } },
-            { "crash_a", "Крэш A", { 49 } }, { "crash_b", "Крэш B", { 57 } },
-            { "china", "China", { 58 } }, { "splash", "Splash", { 59 } }
-        };
-        for (const auto& pd : pieces)
+        for (const auto& pd : kStudio600Places)
         {
+            if (packId != pd.defaultPack)
+                continue;
             pack::Piece p;
-            p.id = pd.id;
-            p.name = juce::String::fromUTF8 (pd.name);
-            p.keys = pd.keys;
+            p.id = pd.defaultPiece;
+            p.name = juce::String::fromUTF8 (pd.label);
+            p.type = pd.type;
+            // Барабаны одного пака (томы) записаны на одних клавишах: на место их сдвигает установка
+            const bool tom = juce::String (pd.type) == "tom";
+            const int lo = tom ? 96 : pd.keyLo, hi = tom ? 97 : pd.keyHi;
+            for (int k = lo; k <= hi; ++k)
+                p.keys.push_back (k);
             p.layers = { { "all", "center", 1, 127 } };
-            for (int k : pd.keys)
+            for (int k : p.keys)
             {
                 pack::Hit h;
                 h.id = p.id + juce::String (k);
@@ -113,7 +120,8 @@ namespace
         std::array<uint8_t, 24> nonce {};
         pack::fillRandom (nonce.data(), nonce.size());
         auto* packs = new juce::DynamicObject();
-        packs->setProperty ("studio600-core", license::wrapPackKey ("studio600-core", key, fingerprint, nonce));
+        for (const auto& id : factoryPackIds())
+            packs->setProperty (id, license::wrapPackKey (id, key, fingerprint, nonce));
 
         const auto now = juce::Time::currentTimeMillis() / 1000;
         auto* p = new juce::DynamicObject();
@@ -126,9 +134,9 @@ namespace
         file.replaceWithText (license::signToken (juce::var (p), secret));
     }
 
-    // tab: схема установки или микшер; over: список пресетов или лицензия, открытые поверх окна
+    // tab: схема установки или микшер; over: лицензия, открытая поверх окна
     enum class Tab { Kit, Mixer };
-    enum class Over { None, Presets, License };
+    enum class Over { None, License };
 
     bool shoot (SamplitProcessor& processor, const juce::File& out, int w, int h, Tab tab = Tab::Kit, Over over = Over::None)
     {
@@ -136,9 +144,7 @@ namespace
         auto& samplitEditor = static_cast<SamplitEditor&> (*editor);
         samplitEditor.showMainTab (tab == Tab::Mixer);
         editor->setSize (w, h);
-        if (over == Over::Presets)
-            samplitEditor.openPresets();
-        else if (over == Over::License)
+        if (over == Over::License)
             samplitEditor.openLicense();
         pumpUntil ([] { return false; }, 300);  // таймеры панелей успевают обновиться
         const auto image = editor->createComponentSnapshot (editor->getLocalBounds(), true, 1.0f);
@@ -184,23 +190,18 @@ int main (int argc, char** argv)
         std::cout << "license valid: " << (m->getInfo().isValid() ? "yes" : "no") << std::endl;
         processor.setLicenseManager (std::move (m));
 
-        const juce::String wanted = argc > 3 ? juce::String (argv[3]) : juce::String ("studio600-default");
         bool loaded = false, ok = false;
         const auto started = juce::Time::getMillisecondCounterHiRes();
-        for (const auto& e : processor.scanPresets())
+        processor.setSetup (Setup::factory());
+        processor.applySetup ([&] (const KitLoadResult& r)
         {
-            std::cout << "preset " << e.preset.id << (e.isComplete() ? " complete" : e.isPlayable() ? " partial" : " silent") << std::endl;
-            if (e.preset.id == wanted)
-                processor.selectPreset (e.preset, [&] (const KitLoadResult& r)
-                {
-                    loaded = true;
-                    ok = r.ok();
-                    std::cout << (ok ? "loaded" : "FAILED: ") << r.error << ", " << (r.memoryBytes >> 20) << " MB, "
-                              << r.warnings.size() << " warnings, " << r.missingPacks.size() << " missing packs" << std::endl;
-                    for (const auto& w : r.warnings)
-                        std::cout << "  " << w << std::endl;
-                });
-        }
+            loaded = true;
+            ok = r.ok();
+            std::cout << (ok ? "loaded" : "FAILED: ") << r.error << ", " << (r.memoryBytes >> 20) << " MB, "
+                      << r.warnings.size() << " warnings, " << r.missingPacks.size() << " missing packs" << std::endl;
+            for (const auto& w : r.warnings)
+                std::cout << "  " << w << std::endl;
+        });
         if (! pumpUntil ([&] { return loaded; }, 600000))
         {
             std::cout << "load timeout" << std::endl;
@@ -224,26 +225,21 @@ int main (int argc, char** argv)
     const auto fingerprint = juce::String ("snapshot:machine");
 
     const auto key = pack::generateKey();
-    const auto presetSource = juce::File::getCurrentWorkingDirectory().getChildFile ("tools/presets/studio600-default.json");
     for (const auto& dir : { withLicense, noLicense })
     {
         dir.getChildFile ("packs").createDirectory();
-        dir.getChildFile ("presets").createDirectory();
-        if (! writePack (dir.getChildFile ("packs/studio600-core.splpack"), key))
-        {
-            std::cout << "cannot write pack" << std::endl;
-            return 1;
-        }
-        presetSource.copyFileTo (dir.getChildFile ("presets/studio600-default.json"));
-        presetSource.getParentDirectory().getChildFile ("mixes").copyDirectoryTo (dir.getChildFile ("presets/mixes"));
-        dir.getChildFile ("presets/studio600-full.json").replaceWithText (
-            R"json({ "format": 1, "id": "studio600-full", "name": "Studio600: Full (все пакеты)", "packs": ["studio600-core", "studio600-snare-live", "studio600-hat", "studio600-ride", "studio600-cymbals", "studio600-unverified"], "includeUnverified": true })json"_s);
+        for (const auto& id : factoryPackIds())
+            if (! writePack (dir.getChildFile ("packs/" + id + ".splpack"), id, key))
+            {
+                std::cout << "cannot write pack " << id << std::endl;
+                return 1;
+            }
     }
     writeToken (withLicense.getChildFile ("license.token"), key, fingerprint);
 
     int failures = 0;
 
-    // 1. Нет лицензии: пресеты видны, пакеты закрыты, поле активации
+    // 1. Нет лицензии: пакеты закрыты, поле активации
     {
         SamplitProcessor processor;
         processor.prepareToPlay (44100.0, 512);
@@ -251,23 +247,20 @@ int main (int argc, char** argv)
         failures += shoot (processor, outDir.getChildFile ("01-no-license.png"), 1180, 780) ? 0 : 1;
     }
 
-    // 2-4. С лицензией: до выбора пресета, с загруженным китом, в узком окне
+    // 2-4. С лицензией: до применения установки, с загруженным китом, в узком окне
     {
         SamplitProcessor processor;
         processor.prepareToPlay (44100.0, 512);
         processor.setLicenseManager (manager (withLicense, fingerprint));
         failures += shoot (processor, outDir.getChildFile ("02-licensed-empty.png"), 1180, 780) ? 0 : 1;
 
-        const auto presets = processor.scanPresets();
         bool loaded = false;
-        for (const auto& e : presets)
-            if (e.preset.id == "studio600-default")
-                processor.selectPreset (e.preset, [&] (const KitLoadResult& r)
-                {
-                    loaded = true;
-                    if (! r.ok())
-                        std::cout << "load failed: " << r.error << std::endl;
-                });
+        processor.applySetup ([&] (const KitLoadResult& r)
+        {
+            loaded = true;
+            if (! r.ok())
+                std::cout << "load failed: " << r.error << std::endl;
+        });
         pumpUntil ([&] { return loaded; });
 
         auto m = processor.getMicState (3);
@@ -278,7 +271,6 @@ int main (int argc, char** argv)
         failures += shoot (processor, outDir.getChildFile ("05-kit-wide.png"), 1600, 900) ? 0 : 1;
         failures += shoot (processor, outDir.getChildFile ("07-mixer.png"), 1180, 780, Tab::Mixer) ? 0 : 1;
         failures += shoot (processor, outDir.getChildFile ("08-mixer-narrow.png"), 900, 620, Tab::Mixer) ? 0 : 1;
-        failures += shoot (processor, outDir.getChildFile ("09-presets.png"), 1180, 780, Tab::Kit, Over::Presets) ? 0 : 1;
         failures += shoot (processor, outDir.getChildFile ("10-license.png"), 1180, 780, Tab::Kit, Over::License) ? 0 : 1;
     }
 

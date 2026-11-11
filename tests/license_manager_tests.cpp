@@ -167,88 +167,6 @@ TEST_CASE ("activation without a server address reports an error", "[licmgr]")
     CHECK_FALSE (m->getInfo().isValid());
 }
 
-TEST_CASE ("the processor opens packs only with a licence", "[licmgr]")
-{
-    Env env;
-    const auto packKey = pack::generateKey();
-
-    // Пакет с одним ударом
-    auto packDir = env.dir.getChildFile ("packs");
-    packDir.createDirectory();
-    {
-        juce::String error;
-        auto w = pack::PackWriter::create (packDir.getChildFile ("kick.splpack"), "kick", packKey, error);
-        REQUIRE (w != nullptr);
-        pack::DecodedAudio a;
-        a.sampleRate = 44100.0;
-        a.frames = 500;
-        a.samples.assign (500, 5000);
-        REQUIRE (w->addAudio (a, error) == 0);
-
-        pack::Manifest m;
-        m.id = "kick";
-        m.mics = { { "kick_in", "Kick In", "close", 1 } };
-        pack::Piece p;
-        p.id = "kick";
-        p.keys = { 36 };
-        p.layers = { { "all", "center", 1, 127 } };
-        pack::Hit h;
-        h.id = "k0";
-        h.layer = "all";
-        h.key = 36;
-        h.velLo = 1;
-        h.velHi = 127;
-        pack::HitFile f;
-        f.chunk = 0;
-        f.frames = 500;
-        f.rate = 44100.0;
-        f.peak = 5000;
-        h.files["kick_in"] = f;
-        p.hits.push_back (h);
-        m.pieces.push_back (p);
-        REQUIRE (w->finish (m, error));
-    }
-
-    Preset preset;
-    preset.id = "t";
-    preset.packs = { "kick" };
-
-    SamplitProcessor processor;
-    processor.prepareToPlay (44100.0, 512);
-
-    auto runPreset = [&]
-    {
-        bool called = false;
-        bool ok = false;
-        processor.loadPreset (preset, [&] (const KitLoadResult& r) { called = true; ok = r.ok(); });
-        REQUIRE (pumpUntil ([&] { return called; }));
-        return ok;
-    };
-
-    SECTION ("без токена кит не собирается")
-    {
-        processor.setLicenseManager (started (env));
-        CHECK_FALSE (runPreset());
-        CHECK (processor.getKit() == nullptr);
-    }
-
-    SECTION ("с токеном собирается")
-    {
-        env.writeToken ({ { "kick", packKey } });
-        processor.setLicenseManager (started (env));
-        CHECK (runPreset());
-        REQUIRE (processor.getKit() != nullptr);
-        CHECK (processor.getKit()->pieces.size() == 1);
-    }
-
-    SECTION ("токен на другой ключ: пакет не открывается")
-    {
-        env.writeToken ({ { "kick", pack::generateKey() } });
-        processor.setLicenseManager (started (env));
-        CHECK_FALSE (runPreset());
-    }
-}
-
 namespace
 {
     // Пакет с одним барабаном на клавише key и двумя микрофонами
@@ -287,20 +205,8 @@ namespace
         REQUIRE (w->finish (m, error));
     }
 
-    void writePreset (const juce::File& dir, const juce::String& json)
-    {
-        auto presets = dir.getChildFile ("presets");
-        presets.createDirectory();
-        const auto id = juce::JSON::parse (json).getProperty ("id", {}).toString();
-        presets.getChildFile (id + ".json").replaceWithText (json);
-    }
-
-    const char* kPresetJson = R"({ "format": 1, "id": "p1", "name": "Preset 1", "packs": ["kick", "snare", "cym"],
-        "select": { "mode": "live" },
-        "mics": { "oh": { "level": -4.0, "pan": 0.5, "out": 6 } } })";
-
     // Установка с одним местом: бочка из пакета "kick" (writeKickPack), остальные места выключены
-    Setup kickSetup()
+    Setup kickSetup (const char* packId = "kick", const char* pieceId = "kick")
     {
         auto s = Setup::factory();
         for (auto& p : s.places)
@@ -308,39 +214,52 @@ namespace
             p.enabled = p.placeId == "kick";
             if (p.enabled)
             {
-                p.packId = "kick";
-                p.pieceId = "kick";
+                p.packId = packId;
+                p.pieceId = pieceId;
             }
         }
         return s;
     }
 }
 
-TEST_CASE ("presets show which packs are installed and licensed", "[licmgr]")
+
+TEST_CASE ("the processor opens packs only with a licence", "[licmgr]")
 {
     Env env;
-    const auto kickKey = pack::generateKey();
-    writeKickPack (env.dir.getChildFile ("packs"), "kick", kickKey, 36);
-    writeKickPack (env.dir.getChildFile ("packs"), "snare", pack::generateKey(), 38);
-    writePreset (env.dir, kPresetJson);
-    writePreset (env.dir, R"({ "id": "p2", "name": "Only cymbals", "packs": ["cym"] })");
-    env.dir.getChildFile ("presets").getChildFile ("broken.json").replaceWithText ("{ nope");
-    env.writeToken ({ { "kick", kickKey } });
+    const auto packKey = pack::generateKey();
+    writeKickPack (env.dir.getChildFile ("packs"), "kick", packKey, 36);
 
     SamplitProcessor processor;
-    processor.setLicenseManager (started (env));
-    const auto presets = processor.scanPresets();
-    REQUIRE (presets.size() == 2);
+    processor.prepareToPlay (44100.0, 512);
 
-    const auto& p1 = presets[0];
-    CHECK (p1.preset.id == "p1");
-    REQUIRE (p1.packs.size() == 3);
-    CHECK (p1.packs[0].second == PackState::Ready);
-    CHECK (p1.packs[1].second == PackState::NoLicense);
-    CHECK (p1.packs[2].second == PackState::NotInstalled);
-    CHECK (p1.isPlayable());
-    CHECK_FALSE (p1.isComplete());
-    CHECK_FALSE (presets[1].isPlayable());
+    auto runSetup = [&]
+    {
+        processor.setSetup (kickSetup());
+        REQUIRE (pumpUntil ([&] { return ! processor.isKitLoading(); }));
+        return processor.getKit() != nullptr;
+    };
+
+    SECTION ("без токена кит не собирается")
+    {
+        processor.setLicenseManager (started (env));
+        CHECK_FALSE (runSetup());
+    }
+
+    SECTION ("с токеном собирается")
+    {
+        env.writeToken ({ { "kick", packKey } });
+        processor.setLicenseManager (started (env));
+        CHECK (runSetup());
+        REQUIRE (processor.getKit() != nullptr);
+        CHECK (processor.getKit()->pieces.size() == 1);
+    }
+
+    SECTION ("токен на другой ключ: пакет не открывается")
+    {
+        env.writeToken ({ { "kick", pack::generateKey() } });
+        processor.setLicenseManager (started (env));
+        CHECK_FALSE (runSetup());
+    }
 }
 
 TEST_CASE ("mixer: solo and mute are saved with the project", "[licmgr]")
@@ -348,7 +267,6 @@ TEST_CASE ("mixer: solo and mute are saved with the project", "[licmgr]")
     Env env;
     const auto kickKey = pack::generateKey();
     writeKickPack (env.dir.getChildFile ("packs"), "kick", kickKey, 36);
-    writePreset (env.dir, kPresetJson);
     env.writeToken ({ { "kick", kickKey } });
 
     juce::MemoryBlock saved;
@@ -356,9 +274,6 @@ TEST_CASE ("mixer: solo and mute are saved with the project", "[licmgr]")
         SamplitProcessor a;
         a.prepareToPlay (44100.0, 512);
         a.setLicenseManager (started (env));
-        const auto presets = a.scanPresets();
-        REQUIRE (presets.size() == 1);
-
         a.setSetup (kickSetup());
         REQUIRE (pumpUntil ([&] { return a.getKit() != nullptr && ! a.isKitLoading(); }));
 
@@ -401,120 +316,11 @@ TEST_CASE ("mixer: solo and mute are saved with the project", "[licmgr]")
     CHECK (b.getSetup().find ("kick")->packId == "kick");
 }
 
-TEST_CASE ("mixes: a preset takes its mix, a mix applies without reload, edits are flagged and saved", "[licmgr]")
-{
-    Env env;
-    const auto kickKey = pack::generateKey();
-    writeKickPack (env.dir.getChildFile ("packs"), "kick", kickKey, 36);
-    writePreset (env.dir, R"({ "format": 1, "id": "pm", "name": "PM", "packs": ["kick"], "mix": "m-main" })");
-    const auto mixes = env.dir.getChildFile ("presets").getChildFile ("mixes");
-    mixes.createDirectory();
-    mixes.getChildFile ("m-main.json").replaceWithText (
-        R"({ "id": "m-main", "name": "Main", "mics": { "kick_in": { "level": -2.0, "pan": 0.0, "out": 0 }, "oh": { "level": -5.0, "pan": 0.3, "out": 0 } } })");
-    mixes.getChildFile ("m-multi.json").replaceWithText (
-        R"({ "id": "m-multi", "name": "Multi", "mics": { "kick_in": { "level": -2.0, "out": 1 }, "oh": { "level": -5.0, "pan": 0.3, "out": 2, "mute": true } } })");
-    mixes.getChildFile ("broken.json").replaceWithText ("{ nope");
-    env.writeToken ({ { "kick", kickKey } });
-
-    SamplitProcessor p;
-    p.prepareToPlay (44100.0, 512);
-    p.setLicenseManager (started (env));
-    REQUIRE (p.scanMixes().size() == 2);   // битый файл пропущен
-
-    bool called = false;
-    p.selectPreset (p.scanPresets()[0].preset, [&] (const KitLoadResult&) { called = true; });
-    REQUIRE (pumpUntil ([&] { return called; }));
-    CHECK (p.getMixName() == "m-main");
-    CHECK_FALSE (p.isMixModified());
-    CHECK (p.getMicState (0).out == 0);
-    CHECK (p.getMicState (0).levelDb == -2.0f);
-    CHECK (p.getMicState (1).pan == 0.3f);
-
-    // Другой микс применяется мгновенно, кит тот же
-    const auto kit = p.getKit();
-    for (const auto& m : p.scanMixes())
-        if (m.id == "m-multi")
-            p.applyMix (m);
-    CHECK (p.getKit() == kit);
-    CHECK (p.getMixName() == "m-multi");
-    CHECK (p.getMicState (0).out == 1);
-    CHECK (p.getMicState (1).out == 2);
-    CHECK (p.getMicState (1).mute);
-
-    // Ручная правка помечает микс изменённым
-    auto m = p.getMicState (0);
-    m.levelDb = -9.0f;
-    p.setMicState (0, m);
-    CHECK (p.isMixModified());
-
-    // Сохранение: новый файл, повторное имя не перезаписывает
-    juce::String error;
-    const auto first = p.saveCurrentMixAs ("Мой микс", error);
-    REQUIRE (first != juce::File());
-    const auto second = p.saveCurrentMixAs ("Мой микс", error);
-    REQUIRE (second != juce::File());
-    CHECK (first != second);
-    CHECK (p.scanMixes().size() == 4);
-    CHECK (p.getMixName() == second.getFileNameWithoutExtension());
-    CHECK_FALSE (p.isMixModified());
-    CHECK (p.saveCurrentMixAs ("   ", error) == juce::File());
-
-    Mix saved;
-    REQUIRE (Mix::fromFile (first, saved, error));
-    CHECK (saved.mics["kick_in"].levelDb == -9.0f);
-    CHECK (saved.mics["kick_in"].out == 1);
-    CHECK (saved.mics["oh"].mute);
-
-    // Смена пресета при правках: микшер переносится, а не сбрасывается на микс
-    m = p.getMicState (0);
-    m.levelDb = -7.0f;
-    p.setMicState (0, m);
-    REQUIRE (p.isMixModified());
-    called = false;
-    p.selectPreset (p.scanPresets()[0].preset, [&] (const KitLoadResult&) { called = true; });
-    REQUIRE (pumpUntil ([&] { return called; }));
-    CHECK (p.getMicState (0).levelDb == -7.0f);
-    CHECK (p.isMixModified());
-}
-
-TEST_CASE ("renamed or deleted user mix files are guarded", "[licmgr]")
-{
-    Env env;
-    const auto kickKey = pack::generateKey();
-    writeKickPack (env.dir.getChildFile ("packs"), "kick", kickKey, 36);
-    writePreset (env.dir, kPresetJson);
-    env.writeToken ({ { "kick", kickKey } });
-
-    SamplitProcessor b;
-    b.prepareToPlay (44100.0, 512);
-    b.setLicenseManager (started (env));
-    bool called = false;
-    b.selectPreset (b.scanPresets()[0].preset, [&] (const KitLoadResult&) { called = true; });
-    REQUIRE (pumpUntil ([&] { return called; }));
-
-    // Свои файлы: переименование меняет только название, чужие трогать нельзя
-    juce::String error;
-    const auto mine = b.saveCurrentMixAs ("First", error);
-    REQUIRE (mine != juce::File());
-    REQUIRE (b.renameUserFile (mine, "Second", error));
-    Mix m;
-    REQUIRE (Mix::fromFile (mine, m, error));
-    CHECK (m.name == "Second");
-    CHECK (m.id == mine.getFileNameWithoutExtension());
-    CHECK_FALSE (b.renameUserFile (mine, "  ", error));
-
-    const auto shipped = env.dir.getChildFile ("presets").getChildFile ("p1.json");
-    CHECK_FALSE (b.renameUserFile (shipped, "X", error));
-    CHECK_FALSE (b.deleteUserFile (shipped, error));
-    CHECK (shipped.existsAsFile());
-}
-
 TEST_CASE ("host parameters follow the mixer and the mixer follows the host", "[licmgr]")
 {
     Env env;
     const auto kickKey = pack::generateKey();
     writeKickPack (env.dir.getChildFile ("packs"), "kick", kickKey, 36);
-    writePreset (env.dir, kPresetJson);
     env.writeToken ({ { "kick", kickKey } });
 
     SamplitProcessor p;
@@ -522,9 +328,8 @@ TEST_CASE ("host parameters follow the mixer and the mixer follows the host", "[
     p.setLicenseManager (started (env));
     CHECK (p.getParameters().size() == 2 * SamplitProcessor::kAutomatedMics);
 
-    bool called = false;
-    p.selectPreset (p.scanPresets()[0].preset, [&] (const KitLoadResult&) { called = true; });
-    REQUIRE (pumpUntil ([&] { return called; }));
+    p.setSetup (kickSetup());
+    REQUIRE (pumpUntil ([&] { return p.getKit() != nullptr && ! p.isKitLoading(); }));
 
     auto* level1 = dynamic_cast<juce::AudioParameterFloat*> (p.getParameters()[2]);   // mic 2, уровень
     auto* pan1 = dynamic_cast<juce::AudioParameterFloat*> (p.getParameters()[3]);
@@ -532,12 +337,15 @@ TEST_CASE ("host parameters follow the mixer and the mixer follows the host", "[
     REQUIRE (pan1 != nullptr);
     CHECK (level1->paramID == "mic02_level");
 
-    // Предзагруженный микс пресета виден в параметрах (oh: −4 дБ, панорама 0,5)
+    // Микшер → параметр (oh: −4 дБ, панорама 0,5, выход 6)
+    auto m = p.getMicState (1);
+    m.levelDb = -4.0f;
+    m.pan = 0.5f;
+    m.out = 6;
+    p.setMicState (1, m);
     CHECK (std::abs (level1->get() - (-4.0f)) < 0.06f);
     CHECK (std::abs (pan1->get() - 0.5f) < 0.006f);
 
-    // Микшер → параметр
-    auto m = p.getMicState (1);
     m.levelDb = -9.0f;
     p.setMicState (1, m);
     CHECK (std::abs (level1->get() - (-9.0f)) < 0.06f);
@@ -556,15 +364,12 @@ TEST_CASE ("switching kits while the audio thread keeps playing stays finite and
     const auto k1 = pack::generateKey(), k2 = pack::generateKey();
     writeKickPack (env.dir.getChildFile ("packs"), "kick", k1, 36);
     writeKickPack (env.dir.getChildFile ("packs"), "kick2", k2, 36);
-    writePreset (env.dir, R"({ "format": 1, "id": "a", "name": "A", "packs": ["kick"] })");
-    writePreset (env.dir, R"({ "format": 1, "id": "b", "name": "B", "packs": ["kick2"] })");
     env.writeToken ({ { "kick", k1 }, { "kick2", k2 } });
 
     SamplitProcessor p;
     p.prepareToPlay (44100.0, 128);
     p.setLicenseManager (started (env));
-    const auto presets = p.scanPresets();
-    REQUIRE (presets.size() == 2);
+    const Setup setups[2] = { kickSetup ("kick", "kick"), kickSetup ("kick2", "kick2") };
 
     std::atomic<bool> run { true }, bad { false };
     std::atomic<int> blocks { 0 };
@@ -588,9 +393,9 @@ TEST_CASE ("switching kits while the audio thread keeps playing stays finite and
 
     for (int i = 0; i < 12; ++i)
     {
-        bool called = false;
-        p.selectPreset (presets[(size_t) (i % 2)].preset, [&] (const KitLoadResult&) { called = true; });
-        REQUIRE (pumpUntil ([&] { return called; }));
+        p.setSetup (setups[i % 2]);
+        REQUIRE (pumpUntil ([&] { return ! p.isKitLoading(); }));
+        REQUIRE (p.getKit() != nullptr);
         auto m = p.getMicState (0);
         m.levelDb = -(float) i;
         p.setMicState (0, m);
@@ -607,65 +412,38 @@ TEST_CASE ("switching kits while the audio thread keeps playing stays finite and
     CHECK (p.getRetiredCount() <= 2);
 }
 
-TEST_CASE ("manual mixer edits survive a kit change without a chosen mix, and a saved preset replays them", "[licmgr]")
+TEST_CASE ("manual mixer edits survive a kit change", "[licmgr]")
 {
     Env env;
-    const auto kickKey = pack::generateKey();
-    writeKickPack (env.dir.getChildFile ("packs"), "kick", kickKey, 36);
-    writePreset (env.dir, kPresetJson);   // старый формат: блок mics, без mix
-    writePreset (env.dir, R"({ "format": 1, "id": "p3", "name": "P3", "packs": ["kick"], "mix": "m-x" })");
-    const auto mixes = env.dir.getChildFile ("presets").getChildFile ("mixes");
-    mixes.createDirectory();
-    mixes.getChildFile ("m-x.json").replaceWithText (R"({ "id": "m-x", "name": "X", "mics": { "kick_in": { "level": -70.0, "out": 0 } } })");
-    env.writeToken ({ { "kick", kickKey } });
+    const auto k1 = pack::generateKey(), k2 = pack::generateKey();
+    writeKickPack (env.dir.getChildFile ("packs"), "kick", k1, 36);
+    writeKickPack (env.dir.getChildFile ("packs"), "kick2", k2, 36);
+    env.writeToken ({ { "kick", k1 }, { "kick2", k2 } });
 
     SamplitProcessor p;
     p.prepareToPlay (44100.0, 512);
     p.setLicenseManager (started (env));
-    const auto find = [&] (const char* id)
+    const auto load = [&] (const Setup& setup)
     {
-        for (const auto& e : p.scanPresets())
-            if (e.preset.id == id)
-                return e.preset;
-        return Preset();
-    };
-    const auto load = [&] (const Preset& preset)
-    {
-        bool called = false;
-        p.selectPreset (preset, [&] (const KitLoadResult&) { called = true; });
-        REQUIRE (pumpUntil ([&] { return called; }));
+        p.setSetup (setup);
+        REQUIRE (pumpUntil ([&] { return ! p.isKitLoading(); }));
+        REQUIRE (p.getKit() != nullptr);
     };
 
-    load (find ("p1"));
-    CHECK (p.getMixName().isEmpty());
+    load (kickSetup ("kick", "kick"));
     auto m = p.getMicState (0);
     m.levelDb = -8.0f;
     p.setMicState (0, m);
 
-    // Микс не выбирали, но правки переносятся на другой кит; значение вне диапазона миксa не портит микшер
-    load (find ("p3"));
+    // Микрофоны пака kick2 те же по id: правки переносятся на другой кит
+    load (kickSetup ("kick2", "kick2"));
     CHECK (p.getMicState (0).levelDb == -8.0f);
 
-    // Сохранённый пресет проигрывает те же значения, даже если выбран другой микс
-    juce::String error;
-    const auto saved = p.saveCurrentPresetAs ("Replay", error);
-    REQUIRE (saved != juce::File());
+    // Значение вне диапазона обрезается до границы параметра
     m = p.getMicState (0);
-    m.levelDb = -30.0f;
+    m.levelDb = -70.0f;
     p.setMicState (0, m);
-    Preset replay;
-    REQUIRE (Preset::fromFile (saved, replay, error));
-    load (replay);
-    CHECK (p.getMicState (0).levelDb == -8.0f);
-
-    // Микс с уровнем −70 дБ обрезается до границы параметра и не помечается «изменённым»
-    p.applyMix (p.scanMixes()[0]);
     CHECK (p.getMicState (0).levelDb == -60.0f);
-    pumpUntil ([] { return false; }, 200);
-    CHECK_FALSE (p.isMixModified());
-
-    // Чужие файлы трогать нельзя, id микса — имя файла
-    CHECK_FALSE (p.deleteUserFile (mixes.getChildFile ("m-x.json"), error));
 }
 
 TEST_CASE ("a perpetual licence has no end date and ignores the clock", "[licmgr]")
@@ -801,7 +579,6 @@ TEST_CASE ("disabled licence: no check, no keys, and a WAV library plays", "[lic
 {
     Env env;
     env.writeToken ({ { "kick", pack::generateKey() } });   // даже годный токен игнорируется
-    writePreset (env.dir, R"({ "format": 1, "id": "lk", "name": "Lib kick", "packs": ["lib-kick"] })");
     const auto lib = env.dir.getChildFile ("lib");
     writeWavLibrary (env, lib);
 
@@ -822,25 +599,17 @@ TEST_CASE ("disabled licence: no check, no keys, and a WAV library plays", "[lic
     CHECK_FALSE (lic.getInfo().busy);
 
     lic.setLibraryRoot (lib);
-    const auto presets = f.processor.scanPresets();
-    REQUIRE (presets.size() == 1);
-    CHECK (presets[0].isPlayable());
-    CHECK (presets[0].isComplete());
+    f.processor.setSetup (kickSetup ("lib-kick", "kick"));
+    REQUIRE (pumpUntil ([&] { return f.processor.getKit() != nullptr && ! f.processor.isKitLoading(); }));
 
-    bool called = false, ok = false;
-    f.processor.loadPreset (presets[0].preset, [&] (const KitLoadResult& r) { called = true; ok = r.ok(); });
-    REQUIRE (pumpUntil ([&] { return called; }));
-    REQUIRE (ok);
-
-    const auto out = f.play (36);
+    const auto out = f.play (24);   // клавиша места «kick»: барабан со своей 36 перенесён на неё
     CHECK (kittest::KitFixture::peak (out, 0) > 0.0f);
     lic.setLibraryRoot ({});
 }
 
-TEST_CASE ("disabled licence: a preset without a library folder is not playable", "[licmgr][nolicense]")
+TEST_CASE ("disabled licence: a setup without a library folder is not playable", "[licmgr][nolicense]")
 {
     Env env;
-    writePreset (env.dir, R"({ "format": 1, "id": "lk", "name": "Lib kick", "packs": ["lib-kick"] })");
     writeWavLibrary (env, env.dir.getChildFile ("lib"));       // манифест есть, но папка библиотеки не выбрана
     writeKickPack (env.dir.getChildFile ("packs"), "lib-kick", pack::generateKey(), 36);   // пакет без лицензии не помогает
 
@@ -848,18 +617,9 @@ TEST_CASE ("disabled licence: a preset without a library folder is not playable"
     processor.setLicenseManager (std::make_unique<LicenseManager> (disabledConfig (env)));
     REQUIRE (processor.getLicense().getLibraryRoot() == juce::File());
 
-    const auto presets = processor.scanPresets();
-    REQUIRE (presets.size() == 1);
-    CHECK_FALSE (presets[0].isPlayable());
-    REQUIRE (presets[0].packs.size() == 1);
-    CHECK (presets[0].packs[0].second == PackState::NoLibrary);
-
-    bool called = false;
-    KitLoadResult got;
-    processor.loadPreset (presets[0].preset, [&] (const KitLoadResult& r) { called = true; got = r; });
-    REQUIRE (pumpUntil ([&] { return called; }));
-    CHECK_FALSE (got.ok());
-    CHECK (got.error.contains ("папку библиотеки"_s));
+    processor.setSetup (kickSetup ("lib-kick", "kick"));
+    REQUIRE (pumpUntil ([&] { return ! processor.isKitLoading(); }));
+    CHECK (processor.getLastKitLoad().error.contains ("папку библиотеки"_s));
     CHECK (processor.getKit() == nullptr);
 }
 
@@ -1144,6 +904,51 @@ TEST_CASE ("group pick goes to the engine and the setup", "[licmgr][setup]")
     CHECK (e.processor.getPickChoice (0) == Pick::Cycle);
     const auto colon = id.indexOfChar (':');
     CHECK (e.processor.getSetup().find (id.substring (0, colon).toStdString())->picks.at (id.substring (colon + 1).toStdString()) == Pick::Cycle);
+}
+
+TEST_CASE ("group pick made during a kit load survives the publish", "[licmgr][setup]")
+{
+    SetupEnv e;
+    e.processor.setSetup (twoTomSetup());
+    REQUIRE (e.loaded());
+    const auto kit = e.processor.getKit();
+    int index = -1;
+    for (int i = 0; i < (int) kit->choices.size(); ++i)
+        if (kit->choices[(size_t) i].id.rfind ("tom_16l:", 0) == 0)
+            index = i;
+    REQUIRE (index >= 0);
+    const auto id = juce::String (kit->choices[(size_t) index].id);
+    const auto wanted = kit->choices[(size_t) index].pick == Pick::Cycle ? Pick::Random : Pick::Cycle;
+
+    auto s = twoTomSetup();
+    for (auto& p : s.places)
+        if (p.placeId == "tom_16m")
+            p.packId = "pc", p.pieceId = "c";
+    e.processor.setSetup (s);                   // фоновая загрузка нового кита
+    REQUIRE (e.processor.isKitLoading());
+    e.processor.setGroupPick (id, wanted);      // выбор во время загрузки
+    REQUIRE (pumpUntil ([&] { return ! e.processor.isKitLoading(); }));
+    const auto now = e.processor.getKit();
+    REQUIRE (now != kit);
+    for (int i = 0; i < (int) now->choices.size(); ++i)
+        if (juce::String (now->choices[(size_t) i].id) == id)
+            CHECK (e.processor.getPickChoice (i) == wanted);
+}
+
+TEST_CASE ("superseded setup load still calls done with cancelled", "[licmgr][setup]")
+{
+    SetupEnv e;
+    e.processor.setSetup (twoTomSetup());
+    REQUIRE (e.loaded());
+
+    bool firstCalled = false, secondCalled = false;
+    KitLoadResult first, second;
+    e.processor.applySetup ([&] (const KitLoadResult& r) { firstCalled = true; first = r; });
+    e.processor.applySetup ([&] (const KitLoadResult& r) { secondCalled = true; second = r; });
+    REQUIRE (pumpUntil ([&] { return firstCalled && secondCalled; }));
+    CHECK (first.cancelled);
+    CHECK_FALSE (first.ok());
+    CHECK (second.ok());
 }
 
 TEST_CASE ("default setup: save, reset and factory restore", "[licmgr][setup]")

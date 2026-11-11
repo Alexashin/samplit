@@ -6,7 +6,7 @@ target_sources(samplit-snapshot PRIVATE
     main.cpp
     ${SAMPLIT_ENGINE_SOURCES}
     ${SAMPLIT_PLUGIN_DIR}/PluginEditor.cpp
-    ${SAMPLIT_PLUGIN_DIR}/PresetPanel.cpp
+    ${SAMPLIT_PLUGIN_DIR}/HeaderBar.cpp
     ${SAMPLIT_PLUGIN_DIR}/LicensePanel.cpp
     ${SAMPLIT_PLUGIN_DIR}/MixerPanel.cpp
     ${SAMPLIT_PLUGIN_DIR}/KitView.cpp

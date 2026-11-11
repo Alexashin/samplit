@@ -1,5 +1,6 @@
 #pragma once
 
+#include "PackCatalog.h"
 #include "PluginProcessor.h"
 
 #include <juce_gui_basics/juce_gui_basics.h>
@@ -9,8 +10,8 @@
 
 namespace samplit
 {
-    // Схема барабанной установки: клик по барабану выбирает его и играет, справа его настройки
-    // (как выбирается удар: случайно, по кругу, по velocity). Тот же барабан можно выбрать из списка
+    // Схема барабанной установки: двенадцать мест Studio600. Клик по месту играет его барабан и открывает меню места:
+    // включить или выключить, выбрать звук (пак) и как выбирается удар в группах слоёв. Выключенное место рисуется приглушённым
     class KitView final : public juce::Component,
                           public juce::SettableTooltipClient,
                           private juce::ChangeListener,
@@ -27,14 +28,15 @@ namespace samplit
         void mouseExit (const juce::MouseEvent&) override;
 
     private:
-        class ChoiceRow;
-
-        // Барабан на схеме: экранный прямоугольник, тип и подпись
+        // Место на схеме: экранный прямоугольник, подпись и барабан кита, играющий на этом месте (по Piece::slot)
         struct Spot
         {
-            int piece = -1;
+            std::string placeId;
+            int slot = -1;
+            int piece = -1;                 // индекс в Kit::pieces, -1: на месте ничего не играет
+            bool enabled = true;
             juce::Rectangle<float> bounds;
-            bool cymbal = false, chip = false;
+            bool cymbal = false;
             int order = 2;                  // порядок рисования: бочка, томы, тарелки
             juce::String label;
         };
@@ -44,27 +46,22 @@ namespace samplit
 
         void rebuild();
         void layoutSpots();
-        void selectPiece (int piece);
-        void rebuildChoiceRows();
-        void playPiece (int piece, int velocity);
-        int pieceAt (juce::Point<float>) const;
+        void refreshState();
+        int spotAt (juce::Point<float>) const;
         int firstKeyOf (int piece) const;
-        juce::String keysText (int piece) const;
+        void showPlaceMenu (int spot);
 
         SamplitProcessor& processor;
         std::shared_ptr<const Kit> kit;
         std::vector<Spot> spots;
         std::vector<float> flash;               // по барабанам кита: недавний удар, 1 → 0
         std::vector<std::vector<int>> pieceKeys;
-        int selected = -1, hovered = -1;
+        int hovered = -1;
 
-        juce::Rectangle<int> stageArea, detailArea, legendArea;
+        juce::Rectangle<int> stageArea, hintArea;
         juce::Rectangle<float> stool;
 
-        juce::Label pieceTitle, pieceName, pieceKeysLabel, choicesTitle, noChoices, emptyText;
-        juce::ComboBox pieceBox;
-        std::vector<std::unique_ptr<ChoiceRow>> rows;
-        bool updating = false;
+        juce::Label emptyText;
 
         JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (KitView)
     };

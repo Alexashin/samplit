@@ -1,17 +1,16 @@
-﻿# Сборка пакетов библиотеки Studio600 и установка их на этот компьютер вместе с пресетами и токеном лицензии.
+﻿# Сборка пакетов библиотеки Studio600 и установка их на этот компьютер вместе с токеном лицензии.
 #
 #   .\tools\install_packs.ps1                       все пакеты из sample_library\packs-src (кроме unverified), бессрочный токен
-#   .\tools\install_packs.ps1 -All                  вместе с studio600-unverified (полные пресеты)
+#   .\tools\install_packs.ps1 -All                  вместе с studio600-unverified (непроверенные удары)
 #   .\tools\install_packs.ps1 -Days 120             токен на срок вместо бессрочного
-#   .\tools\install_packs.ps1 -Packs studio600-core,studio600-hat
-#   .\tools\install_packs.ps1 -SkipBuild            только пресеты и токен (пакеты уже собраны)
+#   .\tools\install_packs.ps1 -Packs studio600-hat,studio600-ride
+#   .\tools\install_packs.ps1 -SkipBuild            только токен (пакеты уже собраны)
 #
 # Что делает:
 #   1. samplit-packer build: пакет .splpack в %APPDATA%\Samplit\packs. Ключ пакета создаётся при первой сборке
 #      и лежит в каталоге секретов сервера лицензий (~\.samplit-license\packs), дальше переиспользуется.
 #   2. admin.py add-pack-key: ключ регистрируется на сервере лицензий (сервер выдаёт его в токенах).
-#   3. Пресеты из tools\presets и миксы из tools\presets\mixes в %APPDATA%\Samplit\presets.
-#   4. make_token.py: токен на этот компьютер на все установленные пакеты, в %APPDATA%\Samplit\license.token.
+#   3. make_token.py: токен на этот компьютер на все установленные пакеты, в %APPDATA%\Samplit\license.token.
 #
 # Нужно: собранный Release (.\tools\build.ps1 -Config Release), каталог секретов (admin.py init), venv сервера
 # лицензий (tools\license_server\.venv). Сэмплы библиотеки в sample_library\00-Studio600ru-Drum-LIB.
@@ -40,11 +39,11 @@ foreach ($need in @($packer, $python, $library, $sources, (Join-Path $secrets 's
     if (-not (Test-Path $need)) { throw "не найдено: $need" }
 }
 
-New-Item -ItemType Directory -Force (Join-Path $data 'packs'), (Join-Path $data 'presets'), (Join-Path $secrets 'packs') | Out-Null
+New-Item -ItemType Directory -Force (Join-Path $data 'packs'), (Join-Path $secrets 'packs') | Out-Null
 
 $manifests = Get-ChildItem $sources -Filter '*.json' | Sort-Object Name
-# studio600-unverified по умолчанию не собираем: основные пресеты его не берут (includeUnverified: false), он нужен
-# полным пресетам (-All). Повреждённые файлы библиотеки (TOMS-Pearl-Masters/A2/0-397.wav, 0-398.wav) вырезаны
+# studio600-unverified по умолчанию не собираем: основная установка его не берёт, он нужен
+# режиму с непроверенными ударами (-All). Повреждённые файлы библиотеки (TOMS-Pearl-Masters/A2/0-397.wav, 0-398.wav) вырезаны
 # в tools\kit-studio600.json (excludeFiles)
 if ($Packs.Count -gt 0) { $manifests = $manifests | Where-Object { $Packs -contains $_.BaseName } }
 elseif (-not $All) { $manifests = $manifests | Where-Object { $_.BaseName -ne 'studio600-unverified' } }
@@ -69,10 +68,6 @@ foreach ($m in $manifests) {
     & $python (Join-Path $root 'tools\license_server\admin.py') add-pack-key --pack-id $id --key-file $keyFile | Out-Null
     if ($LASTEXITCODE -ne 0) { throw "регистрация ключа $id не прошла" }
 }
-
-Copy-Item (Join-Path $root 'tools\presets\*.json') (Join-Path $data 'presets') -Force
-New-Item -ItemType Directory -Force (Join-Path $data 'presets\mixes') | Out-Null
-Copy-Item (Join-Path $root 'tools\presets\mixes\*.json') (Join-Path $data 'presets\mixes') -Force
 
 # Токен на все пакеты, которые лежат в папке и чей ключ есть в секретах
 $installed = Get-ChildItem (Join-Path $data 'packs') -Filter '*.splpack' |

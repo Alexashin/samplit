@@ -67,7 +67,6 @@ namespace samplit
         Info getInfo() const;
         juce::File getTokenFile() const { return config.dataDir.getChildFile ("license.token"); }
         juce::File getPackDir() const;
-        juce::File getPresetDir() const { return config.dataDir.getChildFile ("presets"); }
         void setPackDir (const juce::File&);
 
         // Локальная библиотека (проверка на своих WAV без пакетов и лицензии): папка с сэмплами и папка исходных

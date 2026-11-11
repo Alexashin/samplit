@@ -16,7 +16,7 @@ namespace samplit
 {
     using pack::operator""_s;
 
-    // ---------------------------------------------------------------- пресет
+    // ---------------------------------------------------------------- режимы выбора удара
 
     bool pickFromString (const juce::String& s, Pick& out)
     {
@@ -31,285 +31,6 @@ namespace samplit
     {
         return p == Pick::Cycle ? "cycle" : (p == Pick::Exact ? "exact" : "random");
     }
-
-    // Правила пресета по порядку: позднее правило перекрывает раннее. Каждое правило становится переключателем
-    void applyPickRules (const Preset& preset, Kit& kit)
-    {
-        std::vector<std::vector<bool>> fromManifest;
-        for (const auto& piece : kit.pieces)
-        {
-            auto& exact = fromManifest.emplace_back();
-            for (const auto& l : piece.layers)
-                exact.push_back (l.pick == Pick::Exact);
-        }
-
-        for (const auto& rule : preset.pick)
-        {
-            const int choice = (int) kit.choices.size();
-            bool used = false;
-            std::vector<int> usedPieces;
-            for (size_t p = 0; p < kit.pieces.size(); ++p)
-            {
-                auto& piece = kit.pieces[p];
-                if (std::find (rule.pieces.begin(), rule.pieces.end(), juce::String (piece.id)) == rule.pieces.end())
-                    continue;
-                for (size_t i = 0; i < piece.layers.size(); ++i)
-                {
-                    auto& l = piece.layers[i];
-                    const bool allKeys = rule.keyLo == 0 && rule.keyHi == 127;
-                    if ((! allKeys && (l.key < rule.keyLo || l.key > rule.keyHi)) || (fromManifest[p][i] && ! rule.includeExact))
-                        continue;
-                    l.pick = rule.mode;
-                    l.choice = choice;
-                    used = true;
-                    if (std::find (usedPieces.begin(), usedPieces.end(), (int) p) == usedPieces.end())
-                        usedPieces.push_back ((int) p);
-                }
-            }
-            if (! used)
-                continue;   // барабанов правила нет в ките: переключатель не нужен
-
-            juce::StringArray ids;
-            for (const auto& id : rule.pieces)
-                ids.add (id);
-            const auto id = ids.joinIntoString (",") + ":" + juce::String (rule.keyLo) + "-" + juce::String (rule.keyHi);
-            kit.choices.push_back ({ id.toStdString(), rule.name.toStdString(), rule.mode, std::move (usedPieces) });
-        }
-    }
-
-    namespace
-    {
-        using MicMap = std::map<juce::String, Preset::MicSetting>;
-
-        void readMics (const juce::DynamicObject& obj, MicMap& out)
-        {
-            auto* mics = obj.getProperty ("mics").getDynamicObject();
-            if (mics == nullptr)
-                return;
-            for (const auto& prop : mics->getProperties())
-            {
-                auto* m = prop.value.getDynamicObject();
-                if (m == nullptr)
-                    continue;
-                Preset::MicSetting s;
-                s.levelDb = juce::jlimit (-60.0f, 12.0f, (float) (double) m->getProperty ("level"));
-                s.pan = juce::jlimit (-1.0f, 1.0f, (float) (double) m->getProperty ("pan"));
-                if (m->hasProperty ("out"))
-                    s.out = juce::jlimit (0, kNumOutputs, (int) m->getProperty ("out"));
-                s.mute = (bool) m->getProperty ("mute");
-                out[prop.name.toString()] = s;
-            }
-        }
-
-        juce::var micsToVar (const MicMap& mics)
-        {
-            auto* micsObj = new juce::DynamicObject();
-            for (const auto& [micId, m] : mics)
-            {
-                auto* o = new juce::DynamicObject();
-                o->setProperty ("level", (double) m.levelDb);
-                o->setProperty ("pan", (double) m.pan);
-                if (m.out >= 0)
-                    o->setProperty ("out", m.out);
-                o->setProperty ("mute", m.mute);
-                micsObj->setProperty (micId, juce::var (o));
-            }
-            return juce::var (micsObj);
-        }
-    }
-
-    bool Preset::fromJson (const juce::String& json, Preset& out, juce::String& error)
-    {
-        const auto root = juce::JSON::parse (json);
-        auto* obj = root.getDynamicObject();
-        if (obj == nullptr)
-        {
-            error = "Пресет: ожидался JSON-объект"_s;
-            return false;
-        }
-
-        Preset p;
-        p.id = obj->getProperty ("id").toString();
-        p.name = obj->getProperty ("name").toString();
-        p.comment = obj->getProperty ("comment").toString();
-        p.mixId = obj->getProperty ("mix").toString();
-        if (p.id.isEmpty())
-        {
-            error = "Пресет: нет id"_s;
-            return false;
-        }
-
-        if (auto* arr = obj->getProperty ("packs").getArray())
-            for (const auto& v : *arr)
-                p.packs.push_back (v.toString());
-        if (auto* arr = obj->getProperty ("pieces").getArray())
-            for (const auto& v : *arr)
-                p.pieces.push_back (v.toString());
-        p.includeUnverified = (bool) obj->getProperty ("includeUnverified");
-
-        if (auto* sel = obj->getProperty ("select").getDynamicObject())
-        {
-            const auto mode = sel->getProperty ("mode").toString();
-            if (mode == "kontakt")
-                p.mode = HitSelect::Kontakt;
-            else if (mode != "live" && mode.isNotEmpty())
-            {
-                error = "Пресет: неизвестный режим выбора удара "_s + mode;
-                return false;
-            }
-            p.velocityToGain = (float) (double) sel->getProperty ("velocityToGain");
-
-            if (auto* rules = sel->getProperty ("pick").getArray())
-                for (const auto& v : *rules)
-                {
-                    auto* r = v.getDynamicObject();
-                    if (r == nullptr)
-                        continue;
-                    Preset::PickRule rule;
-                    rule.name = r->getProperty ("name").toString();
-                    if (auto* ps = r->getProperty ("pieces").getArray())
-                        for (const auto& id : *ps)
-                            rule.pieces.push_back (id.toString());
-                    if (auto* keys = r->getProperty ("keys").getArray(); keys != nullptr && keys->size() == 2)
-                    {
-                        rule.keyLo = juce::jlimit (0, 127, (int) (*keys)[0]);
-                        rule.keyHi = juce::jlimit (rule.keyLo, 127, (int) (*keys)[1]);
-                    }
-                    const auto m = r->getProperty ("mode").toString();
-                    if (! pickFromString (m, rule.mode))
-                    {
-                        error = "Пресет: неизвестный режим pick "_s + m;
-                        return false;
-                    }
-                    rule.includeExact = (bool) r->getProperty ("includeExact");
-                    if (rule.name.isEmpty() || rule.pieces.empty())
-                    {
-                        error = "Пресет: у правила pick нет name или pieces"_s;
-                        return false;
-                    }
-                    p.pick.push_back (std::move (rule));
-                }
-            if ((int) p.pick.size() > Kit::kMaxChoices)
-            {
-                error = "Пресет: правил pick больше "_s + juce::String (Kit::kMaxChoices);
-                return false;
-            }
-        }
-
-        readMics (*obj, p.mics);
-
-        out = std::move (p);
-        return true;
-    }
-
-    juce::String Preset::toJson() const
-    {
-        const auto strings = [] (const std::vector<juce::String>& v)
-        {
-            juce::Array<juce::var> a;
-            for (const auto& x : v)
-                a.add (x);
-            return juce::var (a);
-        };
-
-        auto* root = new juce::DynamicObject();
-        juce::var result (root);
-        root->setProperty ("format", 1);
-        root->setProperty ("id", id);
-        root->setProperty ("name", name);
-        if (comment.isNotEmpty())
-            root->setProperty ("comment", comment);
-        if (mixId.isNotEmpty())
-            root->setProperty ("mix", mixId);
-        root->setProperty ("packs", strings (packs));
-        if (! pieces.empty())
-            root->setProperty ("pieces", strings (pieces));
-        root->setProperty ("includeUnverified", includeUnverified);
-
-        auto* sel = new juce::DynamicObject();
-        sel->setProperty ("mode", mode == HitSelect::Kontakt ? "kontakt" : "live");
-        sel->setProperty ("noRepeat", true);
-        sel->setProperty ("velocityToGain", (double) velocityToGain);
-        juce::Array<juce::var> rules;
-        for (const auto& r : pick)
-        {
-            auto* o = new juce::DynamicObject();
-            o->setProperty ("name", r.name);
-            o->setProperty ("pieces", strings (r.pieces));
-            if (r.keyLo != 0 || r.keyHi != 127)
-                o->setProperty ("keys", juce::Array<juce::var> { r.keyLo, r.keyHi });
-            o->setProperty ("mode", pickToString (r.mode));
-            if (r.includeExact)
-                o->setProperty ("includeExact", true);
-            rules.add (juce::var (o));
-        }
-        sel->setProperty ("pick", rules);
-        root->setProperty ("select", juce::var (sel));
-        root->setProperty ("mics", micsToVar (mics));
-        return juce::JSON::toString (result);
-    }
-
-    bool Mix::fromJson (const juce::String& json, Mix& out, juce::String& error)
-    {
-        const auto root = juce::JSON::parse (json);
-        auto* obj = root.getDynamicObject();
-        if (obj == nullptr)
-        {
-            error = "Микс: ожидался JSON-объект"_s;
-            return false;
-        }
-        Mix m;
-        m.id = obj->getProperty ("id").toString();
-        m.name = obj->getProperty ("name").toString();
-        m.comment = obj->getProperty ("comment").toString();
-        if (m.id.isEmpty())
-        {
-            error = "Микс: нет id"_s;
-            return false;
-        }
-        readMics (*obj, m.mics);
-        if (m.mics.empty())
-        {
-            error = "Микс: нет микрофонов"_s;
-            return false;
-        }
-        out = std::move (m);
-        return true;
-    }
-
-    bool Mix::fromFile (const juce::File& file, Mix& out, juce::String& error)
-    {
-        if (! file.existsAsFile())
-        {
-            error = "Нет файла микса: "_s + file.getFullPathName();
-            return false;
-        }
-        return fromJson (file.loadFileAsString(), out, error);
-    }
-
-    juce::String Mix::toJson() const
-    {
-        auto* root = new juce::DynamicObject();
-        juce::var result (root);
-        root->setProperty ("format", 1);
-        root->setProperty ("id", id);
-        root->setProperty ("name", name);
-        if (comment.isNotEmpty())
-            root->setProperty ("comment", comment);
-        root->setProperty ("mics", micsToVar (mics));
-        return juce::JSON::toString (result);
-    }
-
-    bool Preset::fromFile (const juce::File& file, Preset& out, juce::String& error)
-    {
-        if (! file.existsAsFile())
-        {
-            error = "Нет файла пресета: "_s + file.getFullPathName();
-            return false;
-        }
-        return fromJson (file.loadFileAsString(), out, error);
-    }
-
 
     // ---------------------------------------------------------------- загрузка
 
@@ -434,7 +155,7 @@ namespace samplit
             return juce::String (names[(size_t) juce::jlimit (0, 127, key) % 12]) + juce::String (juce::jlimit (0, 127, key) / 12 - 2);
         }
 
-        // Общая часть загрузки для пресета и для установки: пакеты, микрофоны, декодирование с повторным
+        // Загрузка по установке: пакеты, микрофоны, декодирование с повторным
         // использованием клипов, файлы в удары и индекс клавиш. Модель барабанов собирает вызывающий
         struct Loader
         {
@@ -518,15 +239,15 @@ namespace samplit
 
                     for (const auto& req : lp.manifest.requiresPacks)
                         if (std::find (ids.begin(), ids.end(), req) == ids.end())
-                            res.warnings.push_back ("Пакету "_s + id + " нужен пакет "_s + req + ", его нет в пресете"_s);
+                            res.warnings.push_back ("Пакету "_s + id + " нужен пакет "_s + req + ", его нет в установке"_s);
 
                     packs.push_back (std::move (lp));
                 }
 
                 if (packs.empty())
                 {
-                    res.error = localLibrary ? "Для пресета нет манифестов в "_s + options.manifestDir.getFullPathName()
-                                              : "Ни один пакет пресета не доступен (нет файла пакета или лицензии)"_s;
+                    res.error = localLibrary ? "Для установки нет манифестов в "_s + options.manifestDir.getFullPathName()
+                                              : "Ни один пакет установки не доступен (нет файла пакета или лицензии)"_s;
                     return false;
                 }
 
@@ -552,8 +273,8 @@ namespace samplit
                 return -1;
             }
 
-            // Микрофоны всех пакетов, слитые по id. Настройки микса берутся из mics, иначе из манифеста
-            bool collectMics (const MicMap& settings)
+            // Микрофоны всех пакетов, слитые по id; выходы из манифестов
+            bool collectMics()
             {
                 for (const auto& pk : packs)
                     for (const auto& m : pk.manifest.mics)
@@ -566,18 +287,10 @@ namespace samplit
                             return false;
                         }
 
-                        const auto set = settings.find (m.id);
-                        const bool hasSet = set != settings.end();
-                        const int out = hasSet && set->second.out >= 0 ? set->second.out : m.out;
                         micIndex[m.id] = (int) kit->mics.size();
                         const auto name = pk.id.startsWith ("studio600-") ? studio600MicName (m.id.toStdString()) : nullptr;
                         kit->mics.push_back ({ m.id.toStdString(), name != nullptr ? name : m.name.toStdString(), m.role.toStdString(),
-                                               juce::jlimit (0, kNumOutputs, out) });
-
-                        MicMix mix;
-                        if (hasSet)
-                            mix = { set->second.levelDb, set->second.pan, set->second.mute };
-                        res.mix.push_back (mix);
+                                               juce::jlimit (0, kNumOutputs, m.out) });
                     }
                 return true;
             }
@@ -698,8 +411,7 @@ namespace samplit
 
                 if (! kit->buildIndex())
                 {
-                    // Кит из установки (у барабанов есть место): называем места, а не пресет
-                    juce::String where;
+                                juce::String where;
                     std::map<int, int> owner;       // клавиша -> индекс барабана
                     for (int pi = 0; pi < (int) kit->pieces.size() && where.isEmpty(); ++pi)
                         for (const auto& h : kit->pieces[(size_t) pi].hits)
@@ -723,7 +435,7 @@ namespace samplit
                         }
                     res.error = where.isNotEmpty()
                         ? "Кит некорректен: одна клавиша у двух мест установки"_s + where + ". Измените установку"_s
-                        : "Кит некорректен: одна клавиша у двух барабанов. Проверьте список барабанов в пресете"_s;
+                        : "Кит некорректен: одна клавиша у двух барабанов. Проверьте состав установки"_s;
                     return;
                 }
 
@@ -738,118 +450,6 @@ namespace samplit
                 return true;
             return std::find (g.picks.begin(), g.picks.end(), pickToString (pk)) != g.picks.end();
         }
-    }
-
-    KitLoadResult loadKit (const Preset& preset, const KitLoadOptions& options)
-    {
-        KitLoadResult res;
-        Loader L (options, res);
-
-        // 1. Пакеты пресета: файл, ключ, манифест
-        if (! L.openPacks (preset.packs))
-            return res;
-
-        // 2. Модель: микрофоны, барабаны, слои, удары (пока без звука)
-        auto& kit = L.kit;
-        auto& packs = L.packs;
-        kit->id = preset.id.toStdString();
-        kit->title = preset.name.toStdString();
-        kit->mode = preset.mode;
-        kit->velocityGain = preset.velocityToGain > 0.0f ? VelocityGain::Linear : VelocityGain::None;
-
-        if (! L.collectMics (preset.mics))
-            return res;
-
-        std::map<juce::String, int> pieceIndex;
-        std::vector<std::map<juce::String, int>> layerIndex;    // по барабану: id слоя → индекс
-        std::vector<std::map<juce::String, int>> hitIndex;      // по барабану: id удара → индекс
-        int skippedHits = 0;
-
-        for (int pi = 0; pi < (int) packs.size(); ++pi)
-            for (const auto& mp : packs[(size_t) pi].manifest.pieces)
-            {
-                if (! preset.pieces.empty() && std::find (preset.pieces.begin(), preset.pieces.end(), mp.id) == preset.pieces.end())
-                    continue;
-
-                int p;
-                if (const auto it = pieceIndex.find (mp.id); it != pieceIndex.end())
-                    p = it->second;
-                else
-                {
-                    p = (int) kit->pieces.size();
-                    pieceIndex[mp.id] = p;
-                    Piece np;
-                    np.id = mp.id.toStdString();
-                    const auto name = packs[(size_t) pi].id.startsWith ("studio600-") ? studio600PieceName (np.id) : nullptr;
-                    np.name = name != nullptr ? name : mp.name.toStdString();
-                    if (mp.choke.isNotEmpty())
-                    {
-                        const int id = (int) L.chokeIds.size();
-                        np.choke = L.chokeIds.emplace (mp.choke, id).first->second;
-                    }
-                    kit->pieces.push_back (std::move (np));
-                    layerIndex.emplace_back();
-                    hitIndex.emplace_back();
-                }
-                auto& piece = kit->pieces[(size_t) p];
-                for (int k : mp.keys)
-                    if (std::find (piece.keys.begin(), piece.keys.end(), k) == piece.keys.end())
-                        piece.keys.push_back (k);
-
-                for (const auto& ml : mp.layers)
-                {
-                    if (layerIndex[(size_t) p].count (ml.id) > 0)
-                        continue;
-                    Layer l;
-                    l.id = ml.id.toStdString();
-                    l.artic = ml.artic.toStdString();
-                    l.velLo = ml.velLo;
-                    l.velHi = ml.velHi;
-                    l.label = ml.extra.getWithDefault ("label", {}).toString().toStdString();
-                    l.key = (int) ml.extra.getWithDefault ("key", -1);
-                    if (! pickFromString (ml.extra.getWithDefault ("pick", {}).toString(), l.pick))
-                        l.pick = Pick::Random;
-                    l.peerGroup = ml.extra.getWithDefault ("peerGroup", {}).toString().toStdString();
-                    l.unverified = (bool) ml.extra.getWithDefault ("unverified", false);
-                    layerIndex[(size_t) p][ml.id] = (int) piece.layers.size();
-                    piece.layers.push_back (std::move (l));
-                }
-
-                for (const auto& mh : mp.hits)
-                {
-                    const bool unverified = (bool) mh.extra.getWithDefault ("unverified", false);
-                    const auto layer = layerIndex[(size_t) p].find (mh.layer);
-                    if ((unverified && ! preset.includeUnverified) || hitIndex[(size_t) p].count (mh.id) > 0
-                        || layer == layerIndex[(size_t) p].end())
-                    {
-                        ++skippedHits;
-                        continue;
-                    }
-
-                    Hit h;
-                    h.id = mh.id.toStdString();
-                    h.layer = layer->second;
-                    h.key = mh.key;
-                    h.velLo = mh.velLo;
-                    h.velHi = mh.velHi;
-                    h.peerGroup = mh.peerGroup.toStdString();
-                    h.unverified = unverified;
-                    h.files.resize (kit->mics.size());
-
-                    const int hi = (int) piece.hits.size();
-                    hitIndex[(size_t) p][mh.id] = hi;
-                    L.addFiles (pi, p, hi, mh);
-                    piece.hits.push_back (std::move (h));
-                }
-            }
-
-        applyPickRules (preset, *kit);
-
-        if (skippedHits > 0)
-            res.warnings.push_back (juce::String (skippedHits) + " ударов пропущено (непроверенные, повторы или без слоя)"_s);
-
-        L.finish();
-        return res;
     }
 
     KitLoadResult loadKit (const KitSpec& spec, const KitLoadOptions& options)
@@ -869,7 +469,7 @@ namespace samplit
         kit->title = "Studio600";
         kit->mode = spec.mode;
         kit->velocityGain = VelocityGain::None;
-        if (! L.collectMics ({}))
+        if (! L.collectMics())
             return res;
 
         bool choicesFull = false;

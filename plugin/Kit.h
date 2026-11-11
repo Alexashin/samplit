@@ -77,7 +77,7 @@ namespace samplit
         Exact       // velocity выбирает конкретный удар, как в Kontakt
     };
 
-    // Слой: окно velocity и артикуляция. Необязательные поля приходят из манифеста пакета, pick и choice из пресета
+    // Слой: окно velocity и артикуляция. Необязательные поля приходят из манифеста пакета, pick и choice из установки
     struct Layer
     {
         std::string id, artic;
@@ -106,7 +106,7 @@ namespace samplit
     struct Piece
     {
         std::string id, name;
-        int slot = -1;                  // место установки (Setup), -1: кит из пресета
+        int slot = -1;                  // место установки (Setup), -1: слот не задан (тестовые киты)
         std::vector<int> keys;
         int choke = -1;
         std::vector<Layer> layers;
@@ -123,12 +123,12 @@ namespace samplit
         Live      // слой по velocity (ближайший, если попали в щель), удар случайный внутри слоя, без повтора подряд
     };
 
-    // Переключатель выбора удара на экране кита для группы слоёв (например, хэт C2–F#4). Правила задаёт пресет
+    // Переключатель выбора удара на экране кита для группы слоёв (например, хэт C2–F#4). Режимы задаёт установка
     struct PickChoice
     {
         std::string id;                 // ключ для сохранения в проекте: барабаны и клавиши
         std::string name;
-        Pick pick = Pick::Random;       // по умолчанию, из пресета
+        Pick pick = Pick::Random;       // по умолчанию, из манифеста или установки
         std::vector<int> pieces;        // индексы барабанов в Kit::pieces, на которые действует переключатель
     };
 

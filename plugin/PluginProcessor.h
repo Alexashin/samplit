@@ -5,7 +5,6 @@
 #include "KitLoader.h"
 #include "LicenseManager.h"
 #include "PackCatalog.h"
-#include "PresetLibrary.h"
 #include "Setup.h"
 
 #include <juce_audio_processors/juce_audio_processors.h>
@@ -90,14 +89,11 @@ namespace samplit
         void setKit (std::shared_ptr<const Kit>);
         std::shared_ptr<const Kit> getKit() const;
 
-        // Фоновая загрузка кита из пресета и пакетов. Новая загрузка отменяет прежнюю. По готовности (message thread)
-        // кит ставится через setKit(), микрофонам выставляются уровни и панорамы, потом зовётся done.
-        // При ошибке или отмене прежний кит остаётся играть. Звук не блокируется
-        void loadKitAsync (const Preset&, KitLoadOptions, std::function<void (const KitLoadResult&)> done = {});
+        // Фоновая загрузка кита по составу (KitSpec) с заданными источниками. Новая загрузка отменяет прежнюю. По готовности
+        // (message thread) кит ставится через setKit(), микрофонам выставляются уровни и панорамы, потом зовётся done.
+        // При ошибке или отмене прежний кит остаётся играть. Звук не блокируется. Основной путь: applySetup()
+        void loadKitAsync (const KitSpec&, KitLoadOptions, std::function<void (const KitLoadResult&)> done = {});
         void cancelKitLoad();
-
-        // То же, но пакеты берутся из папки лицензии, а ключи из действующего токена
-        void loadPreset (const Preset&, std::function<void (const KitLoadResult&)> done = {});
 
         LicenseManager& getLicense() noexcept { return *license; }
         // Для тестов: подмена менеджера лицензий (другая папка данных, ключ, часы)
@@ -107,41 +103,6 @@ namespace samplit
 
         // Итог последней загрузки (без самого кита): ошибка, недоступные пакеты, предупреждения
         const KitLoadResult& getLastKitLoad() const noexcept { return lastLoad; }
-
-        // Пресеты из папки данных и состояние их пакетов
-        std::vector<PresetEntry> scanPresets() const;
-
-        // Выбор пресета пользователем: запоминается в проекте, микшер берёт значения пресета
-        void selectPreset (const Preset&, std::function<void (const KitLoadResult&)> done = {});
-
-        // «Сохранить как…»: текущий пресет с нынешними микшером и режимами выбора удара, новым файлом в папке пресетов.
-        // Существующие файлы не перезаписываются. Возвращает файл, при ошибке пустой File и текст в error
-        juce::File saveCurrentPresetAs (const juce::String& name, juce::String& error);
-
-        // ---- Миксы микрофонов (файлы в папке mixes рядом с пресетами) ----
-        std::vector<Mix> scanMixes() const;
-        // Файл микса по id (пустой File, если нет)
-        juce::File getMixFile (const juce::String& id) const;
-        juce::File getMixDir() const;
-
-        // Применить микс к загруженному киту: уровни, панорамы, выходы, mute. Без перезагрузки, solo не трогает
-        void applyMix (const Mix&);
-
-        // Id применённого микса (пусто: микс не выбран) и признак, что после него микшер правили руками
-        juce::String getMixName() const;
-        bool isMixModified() const;
-
-        // «Сохранить микс…»: текущий микшер новым файлом, существующие не перезаписываются
-        juce::File saveCurrentMixAs (const juce::String& name, juce::String& error);
-
-        // Свои пресеты и миксы (файлы user-*.json): переименовать (меняется только название) и удалить в корзину.
-        // Чужие и стандартные файлы не трогаются: false и текст в error
-        bool renameUserFile (const juce::File&, const juce::String& newName, juce::String& error);
-        bool deleteUserFile (const juce::File&, juce::String& error);
-
-        // После загрузки проекта: найти сохранённый пресет и загрузить его с сохранённым микшером.
-        // false: пресет в проекте не задан или не найден в папке
-        bool restorePreset();
 
         // ---- Микшер микрофонов кита (message thread). Индекс как в Kit::mics ----
         struct MicState
@@ -163,10 +124,6 @@ namespace samplit
         // ---- Выбор удара (message thread): переключатели Kit::choices, сохраняются в проекте по id ----
         Pick getPickChoice (int choice) const;
         void setPickChoice (int choice, Pick);
-
-        // Имя пресета в состоянии проекта (сам пресет подгружает загрузчик пакетов)
-        juce::String getPresetName() const;
-        void setPresetName (const juce::String&);
 
         // ---- UI ↔ audio thread ----
 
@@ -203,8 +160,6 @@ namespace samplit
         // Состояние проекта читается и из потока хоста при сохранении проекта
         mutable juce::CriticalSection stateLock;
         std::shared_ptr<const Kit> kit;
-        juce::String presetName, mixName;
-        bool mixModified = false, applyingMix = false;
 
         // Очередь нот из UI в audio thread: пишет только message thread, читает только audio thread
         static constexpr int kQueue = 64;
@@ -227,10 +182,9 @@ namespace samplit
 
         void applyPicks();
 
-        enum class LoadKind { Preset, Setup };
         // Общая фоновая загрузка: work выполняется в потоке пула, результат публикуется в message thread.
         // Новая загрузка отменяет прежнюю
-        void startLoad (LoadKind, std::function<KitLoadResult (const KitLoadOptions&)> work, KitLoadOptions,
+        void startLoad (std::function<KitLoadResult (const KitLoadOptions&)> work, KitLoadOptions,
                         std::shared_ptr<std::vector<CatalogPack>> catalogOut, std::function<void (const KitLoadResult&)> done);
         KitLoadOptions makeLoadOptions() const;
         std::vector<CatalogPack> scanCatalogCached (const KitLoadOptions&, bool includeUnverified);
@@ -243,7 +197,6 @@ namespace samplit
         std::vector<MicState> mixer;                        // только message thread
         std::map<juce::String, MicState> savedMix;          // по id микрофона, под stateLock: пишется в проект
         std::vector<Pick> picks;                            // только message thread, по индексу Kit::choices
-        std::map<juce::String, Pick> savedPicks;            // по id переключателя, под stateLock: пишется в проект
         KitLoadResult lastLoad;                             // только message thread
         Setup setup;                                        // под stateLock: пишется в проект
         std::vector<CatalogPack> catalog;                   // только message thread: каталог последней загрузки установки
@@ -260,10 +213,6 @@ namespace samplit
         bool catalogCacheValid = false;
         std::atomic<uint32_t> catalogEpoch { 1 };
         std::array<juce::AudioParameterFloat*, kAutomatedMics> levelParams {}, panParams {};
-        bool restoreMixPending = false;                     // только message thread
-        // Проект открыли раньше, чем проверилась лицензия: пакеты не нашлись. Как только лицензия изменится и станет
-        // действительной, пресет восстанавливается заново. Только message thread; при отложенной лицензии всегда false
-        bool restoreRetryPending = false;
         std::atomic<bool> kitLoading { false };
         std::atomic<float> kitProgress { 0.0f };
         std::shared_ptr<std::atomic<bool>> kitCancel;       // только message thread

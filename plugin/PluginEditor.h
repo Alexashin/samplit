@@ -1,12 +1,12 @@
 #pragma once
 
+#include "HeaderBar.h"
 #include "KeyboardView.h"
 #include "KitView.h"
 #include "LicensePanel.h"
 #include "LookAndFeel.h"
 #include "MixerPanel.h"
 #include "PluginProcessor.h"
-#include "PresetPanel.h"
 
 #include <juce_gui_basics/juce_gui_basics.h>
 
@@ -15,8 +15,8 @@
 
 namespace samplit
 {
-    // Окно плагина: шапка (пресет со стрелками, лицензия), схема установки или микшер микрофонов, клавиатура внизу.
-    // Список пресетов и лицензия открываются поверх окна по кнопкам шапки
+    // Окно плагина: шапка (библиотека, состояние, стандартная установка, лицензия), схема установки или микшер
+    // микрофонов, клавиатура внизу. Лицензия открывается поверх окна по кнопке шапки
     class SamplitEditor final : public juce::AudioProcessorEditor,
                                 private juce::FocusChangeListener,
                                 private juce::Timer
@@ -34,7 +34,6 @@ namespace samplit
         void showMainTab (bool mixerShown);
 
         // Выпадающие панели поверх окна (кнопки шапки, снимки окна)
-        void openPresets() { showOverlay (Overlay::Presets); }
         void openLicense() { if (license != nullptr) showOverlay (Overlay::License); }
 
     private:
@@ -45,15 +44,12 @@ namespace samplit
             std::function<void()> onClick;
         };
 
-        enum class Overlay { None, Presets, License };
+        enum class Overlay { None, License };
 
         void globalFocusChanged (juce::Component*) override;
         void timerCallback() override;
         void showOverlay (Overlay);
         void updateHeader();
-        void showMixMenu();
-        void saveMixAs();
-        void editMix (const Mix& mix, bool remove);
 
         juce::Component::SafePointer<juce::Component> lastFocused;
 
@@ -63,14 +59,12 @@ namespace samplit
         std::unique_ptr<juce::Drawable> logo;
         juce::Rectangle<int> logoArea, headerArea;
 
-        PresetPanel presets;
+        HeaderBar headerBar;
         std::unique_ptr<LicensePanel> license;     // nullptr, пока лицензия отложена
         MixerPanel mixer;
         KitView kitView;
         juce::TextButton kitTab, mixerTab;
-        juce::TextButton prevButton, nextButton, presetButton, licenseButton, mixButton;
-        std::vector<Mix> mixes;
-        juce::String mixShownId;
+        juce::TextButton licenseButton;
         Scrim scrim;
         Overlay overlay = Overlay::None;
         float shownProgress = -1.0f;

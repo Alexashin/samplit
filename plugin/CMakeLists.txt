@@ -42,8 +42,6 @@ set(SAMPLIT_ENGINE_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/Setup.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/PackCatalog.h
     ${CMAKE_CURRENT_SOURCE_DIR}/PackCatalog.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/PresetLibrary.h
-    ${CMAKE_CURRENT_SOURCE_DIR}/PresetLibrary.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/PluginProcessor.h
     ${CMAKE_CURRENT_SOURCE_DIR}/PluginProcessor.cpp)
 set(SAMPLIT_ENGINE_SOURCES ${SAMPLIT_ENGINE_SOURCES} PARENT_SCOPE)
@@ -54,8 +52,8 @@ target_sources(Samplit PRIVATE
     ${SAMPLIT_ENGINE_SOURCES}
     KeyboardView.h
     KeyboardView.cpp
-    PresetPanel.h
-    PresetPanel.cpp
+    HeaderBar.h
+    HeaderBar.cpp
     LicensePanel.h
     LicensePanel.cpp
     MixerPanel.h

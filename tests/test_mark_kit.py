@@ -274,7 +274,6 @@ class MarkKitTest(unittest.TestCase):
         packs = {p['id'] for p in kit['packs']}
         self.assertTrue({p['pack'] for p in kit['pieces']} <= packs)
         self.assertTrue(all(p.get('type') for p in kit['pieces']))
-        self.assertFalse({'studio600-core', 'studio600-cymbals'} & packs)
 
 
 if __name__ == '__main__':

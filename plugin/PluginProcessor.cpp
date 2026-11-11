@@ -240,7 +240,6 @@ namespace samplit
         if (license != nullptr)
             license->removeChangeListener (this);
         license = std::move (manager);
-        restoreRetryPending = false;
         setupRetryPending = false;
         ++catalogEpoch;
         if (license != nullptr)
@@ -262,12 +261,7 @@ namespace samplit
         {
             setupRetryPending = false;
             applySetup();
-            return;
         }
-        if (! restoreRetryPending)
-            return;
-        restoreRetryPending = false;
-        restorePreset();
     }
 
     KitLoadOptions SamplitProcessor::makeLoadOptions() const
@@ -284,11 +278,6 @@ namespace samplit
         return options;
     }
 
-    void SamplitProcessor::loadPreset (const Preset& preset, std::function<void (const KitLoadResult&)> done)
-    {
-        loadKitAsync (preset, makeLoadOptions(), std::move (done));
-    }
-
     void SamplitProcessor::cancelKitLoad()
     {
         if (kitCancel != nullptr)
@@ -297,14 +286,14 @@ namespace samplit
         kitLoading.store (false);
     }
 
-    void SamplitProcessor::loadKitAsync (const Preset& preset, KitLoadOptions options,
+    void SamplitProcessor::loadKitAsync (const KitSpec& spec, KitLoadOptions options,
                                          std::function<void (const KitLoadResult&)> done)
     {
-        startLoad (LoadKind::Preset, [preset] (const KitLoadOptions& o) { return loadKit (preset, o); },
+        startLoad ([spec] (const KitLoadOptions& o) { return loadKit (spec, o); },
                    std::move (options), nullptr, std::move (done));
     }
 
-    void SamplitProcessor::startLoad (LoadKind kind, std::function<KitLoadResult (const KitLoadOptions&)> work,
+    void SamplitProcessor::startLoad (std::function<KitLoadResult (const KitLoadOptions&)> work,
                                       KitLoadOptions options, std::shared_ptr<std::vector<CatalogPack>> catalogOut,
                                       std::function<void (const KitLoadResult&)> done)
     {
@@ -313,7 +302,6 @@ namespace samplit
         auto cancel = std::make_shared<std::atomic<bool>> (false);
         kitCancel = cancel;
         const auto generation = kitGeneration;
-        const bool keepMix = kind == LoadKind::Setup ? true : std::exchange (restoreMixPending, false);
         kitLoading.store (true);
         kitProgress.store (0.0f);
 
@@ -321,24 +309,35 @@ namespace samplit
         options.progress = [this] (float f) { kitProgress.store (f); };
         std::weak_ptr<int> alive = lifeToken;
 
-        kitLoaderPool.addJob ([this, alive, kind, work = std::move (work), options = std::move (options), catalogOut, cancel,
-                               generation, keepMix, done = std::move (done)]
+        kitLoaderPool.addJob ([this, alive, work = std::move (work), options = std::move (options), catalogOut, cancel,
+                               generation, done = std::move (done)]
         {
             auto result = std::make_shared<KitLoadResult> (work (options));
 
-            juce::MessageManager::callAsync ([this, alive, kind, result, catalogOut, cancel, generation, keepMix, done]
+            juce::MessageManager::callAsync ([this, alive, result, catalogOut, cancel, generation, done]
             {
-                if (alive.expired() || generation != kitGeneration)
-                    return;     // устарело: пришла новая загрузка или процессор уничтожен
+                if (alive.expired())
+                    return;     // процессор уничтожен
+                if (generation != kitGeneration)
+                {
+                    // устарело или отменено: сообщаем вызвавшему, что результата не будет
+                    if (done)
+                    {
+                        KitLoadResult stale;
+                        stale.cancelled = true;
+                        done (stale);
+                    }
+                    return;
+                }
 
                 kitLoading.store (false);
                 kitProgress.store (1.0f);
-                if (kind == LoadKind::Setup && catalogOut != nullptr)
+                if (catalogOut != nullptr)
                     catalog = *catalogOut;
                 if (result->ok())
                 {
-                    // Микшер: значения пресета, а при восстановлении проекта и для установки сохранённые (по id микрофона).
-                    // Для установки прежние записи не стираются: микрофоны ушедшего пака вернутся с прежними значениями
+                    // Микшер: сохранённые значения по id микрофона, иначе выходы из манифеста пака. Прежние записи
+                    // не стираются: микрофоны ушедшего пака вернутся с прежними значениями
                     std::vector<MicState> fresh;
                     {
                         const juce::ScopedLock sl (stateLock);
@@ -346,46 +345,36 @@ namespace samplit
                         {
                             const auto& mic = result->kit->mics[i];
                             const auto saved = savedMix.find (juce::String (mic.id));
-                            if (keepMix && saved != savedMix.end())
-                                fresh.push_back (saved->second);
-                            else
-                            {
-                                const auto& m = result->mix[i];
-                                fresh.push_back ({ m.levelDb, m.pan, m.mute, false, mic.out });
-                            }
+                            fresh.push_back (saved != savedMix.end() ? saved->second : MicState { 0.0f, 0.0f, false, false, mic.out });
                         }
-                        if (kind == LoadKind::Preset)
-                            savedMix.clear();
                         for (size_t i = 0; i < fresh.size(); ++i)
                             savedMix[juce::String (result->kit->mics[i].id)] = fresh[i];
                     }
                     mixer = std::move (fresh);
-                    applyMixer();
-                    pushAllParams();
                     setKit (result->kit);
+                    applyMixer();           // после публикации: микшер и индексы микрофонов относятся к новому киту
+                    pushAllParams();
 
-                    if (kind == LoadKind::Preset)
+                    const auto current = getSetup();
+                    pushPlaceLevels (current);
+                    // Выбор режима мог измениться во время загрузки: берём актуальную установку, не снимок загрузчика
+                    for (size_t i = 0; i < result->kit->choices.size() && i < picks.size(); ++i)
                     {
-                        // Выбор удара: как в пресете, а при восстановлении проекта сохранённый (по id переключателя)
-                        const juce::ScopedLock sl (stateLock);
-                        const auto& choices = result->kit->choices;
-                        for (size_t i = 0; i < choices.size(); ++i)
-                            if (const auto saved = savedPicks.find (juce::String (choices[i].id)); keepMix && saved != savedPicks.end())
-                                picks[i] = saved->second;
-                        savedPicks.clear();
-                        for (size_t i = 0; i < choices.size(); ++i)
-                            savedPicks[juce::String (choices[i].id)] = picks[i];
-                    }
-                    else
-                    {
-                        pushPlaceLevels (getSetup());       // режимы выбора уже в ките: их разобрал загрузчик по установке
+                        const juce::String id (result->kit->choices[i].id);
+                        const auto colon = id.indexOfChar (':');
+                        if (colon <= 0)
+                            continue;
+                        const auto placeId = id.substring (0, colon);
+                        const auto groupId = id.substring (colon + 1).toStdString();
+                        if (const auto* place = current.find (placeId.toStdString()))
+                            if (const auto it = place->picks.find (groupId); it != place->picks.end())
+                                picks[i] = it->second;
                     }
                     applyPicks();
                 }
 
-                if (kind == LoadKind::Setup)
-                    setupRetryPending = license->isEnforced() && ! result->cancelled && ! result->missingPacks.empty()
-                                        && ! license->getInfo().isValid();
+                setupRetryPending = license->isEnforced() && ! result->cancelled && ! result->missingPacks.empty()
+                                    && ! license->getInfo().isValid();
 
                 lastLoad = *result;
                 lastLoad.kit = nullptr;
@@ -456,7 +445,7 @@ namespace samplit
             res.warnings.insert (res.warnings.begin(), warnings.begin(), warnings.end());
             return res;
         };
-        startLoad (LoadKind::Setup, std::move (work), std::move (options), catalogOut, std::move (done));
+        startLoad (std::move (work), std::move (options), catalogOut, std::move (done));
     }
 
     void SamplitProcessor::applySetupSoon()
@@ -589,335 +578,6 @@ namespace samplit
         applySetup();
     }
 
-    std::vector<PresetEntry> SamplitProcessor::scanPresets() const
-    {
-        const auto root = license->getLibraryRoot();
-        return samplit::scanPresets (license->getPresetDir(), license->getPackDir(),
-                                     [this] (const juce::String& id, pack::PackKey& key) { return license->keyFor (id, key); },
-                                     root.isDirectory() ? root : juce::File(), license->getManifestDir(),
-                                     ! license->isEnforced());
-    }
-
-    void SamplitProcessor::selectPreset (const Preset& preset, std::function<void (const KitLoadResult&)> done)
-    {
-        restoreMixPending = false;
-        restoreRetryPending = false;        // пользователь выбрал пресет сам: прежнее восстановление не нужно
-        setPresetName (preset.id);
-
-        // Микс переживает смену кита: правки пользователя переносятся по id микрофонов, выбранный микс читается с диска заново,
-        // а если микс не выбирали, берётся микс пресета (поле mix). Пресет с явным блоком mics и без mix (старый формат или
-        // сохранённый «Сохранить как…» после правок) играет с этими значениями
-        auto withMix = preset;
-        const bool explicitMics = preset.mixId.isEmpty() && ! preset.mics.empty();
-        bool modified;
-        juce::String chosen;
-        {
-            const juce::ScopedLock sl (stateLock);
-            modified = mixModified;
-            chosen = mixName.isNotEmpty() ? mixName : preset.mixId;
-            if (modified && ! explicitMics)
-                for (const auto& [id, m] : savedMix)
-                    withMix.mics[id] = { m.levelDb, m.pan, m.out, m.mute };
-        }
-        if (explicitMics)
-        {
-            const juce::ScopedLock sl (stateLock);
-            mixName = {};
-            mixModified = false;
-        }
-        else if (! modified)
-        {
-            bool found = false;
-            if (chosen.isNotEmpty())
-                for (const auto& m : scanMixes())
-                    if (m.id == chosen)
-                    {
-                        withMix.mics = m.mics;
-                        found = true;
-                    }
-            const juce::ScopedLock sl (stateLock);
-            mixName = found ? chosen : juce::String();
-        }
-        loadPreset (withMix, std::move (done));
-    }
-
-    juce::File SamplitProcessor::saveCurrentPresetAs (const juce::String& name, juce::String& error)
-    {
-        const auto title = name.trim();
-        const auto current = getKit();
-        if (title.isEmpty())
-        {
-            error = utf8 ("Введите название пресета");
-            return {};
-        }
-        if (current == nullptr)
-        {
-            error = utf8 ("Сначала загрузите пресет: сохранять нечего");
-            return {};
-        }
-
-        const auto currentId = getPresetName();
-        Preset preset;
-        bool found = false;
-        for (const auto& e : scanPresets())
-            if (e.preset.id == currentId)
-            {
-                preset = e.preset;
-                found = true;
-            }
-        if (! found)
-        {
-            error = utf8 ("Исходный пресет не найден в папке пресетов");
-            return {};
-        }
-
-        // Микс: выбранный и не правленный сохраняем ссылкой, иначе явными значениями микрофонов
-        {
-            const juce::ScopedLock sl (stateLock);
-            preset.mixId = (mixName.isNotEmpty() && ! mixModified) ? mixName : juce::String();
-        }
-        // Микшер: значения нынешних линеек по id микрофонов
-        for (int i = 0; i < (int) current->mics.size() && i < (int) mixer.size(); ++i)
-        {
-            const auto& m = mixer[(size_t) i];
-            preset.mics[juce::String::fromUTF8 (current->mics[(size_t) i].id.c_str())] = { m.levelDb, m.pan, m.out, m.mute };
-        }
-        // Режимы выбора удара: правило и переключатель связаны названием
-        for (auto& rule : preset.pick)
-            for (int c = 0; c < (int) current->choices.size(); ++c)
-                if (juce::String::fromUTF8 (current->choices[(size_t) c].name.c_str()) == rule.name)
-                    rule.mode = getPickChoice (c);
-
-        juce::String slug;
-        for (auto ch : title.toLowerCase())
-            slug << (juce::CharacterFunctions::isLetterOrDigit (ch) ? juce::String::charToString (ch) : juce::String ("-"));
-        while (slug.contains ("--"))
-            slug = slug.replace ("--", "-");
-        slug = slug.trimCharactersAtStart ("-").trimCharactersAtEnd ("-");
-        if (slug.isEmpty())
-            slug = "preset";
-
-        const auto dir = license->getPresetDir();
-        dir.createDirectory();
-        auto file = dir.getChildFile ("user-" + slug + ".json");
-        for (int n = 2; file.exists(); ++n)
-            file = dir.getChildFile ("user-" + slug + "-" + juce::String (n) + ".json");
-
-        preset.id = file.getFileNameWithoutExtension();
-        preset.name = title;
-        if (! file.replaceWithText (preset.toJson(), false, false, "\r\n"))
-        {
-            error = utf8 ("Не удалось записать файл ") + file.getFullPathName();
-            return {};
-        }
-        setPresetName (preset.id);
-        return file;
-    }
-
-    std::vector<Mix> SamplitProcessor::scanMixes() const
-    {
-        return samplit::scanMixes (getMixDir());
-    }
-
-
-    namespace
-    {
-        // Только свои файлы (user-*.json) прямо в папке пресетов или миксов
-        bool isOwnUserFile (const juce::File& f, const juce::File& presetDir, const juce::File& mixDir)
-        {
-            if (! f.existsAsFile() || ! f.hasFileExtension ("json") || ! f.getFileName().startsWith ("user-"))
-                return false;
-            const auto parent = f.getParentDirectory();
-            return parent == presetDir || parent == mixDir;
-        }
-    }
-
-    juce::File SamplitProcessor::getMixFile (const juce::String& id) const
-    {
-        const auto f = getMixDir().getChildFile (id + ".json");
-        return f.existsAsFile() ? f : juce::File();
-    }
-
-    bool SamplitProcessor::renameUserFile (const juce::File& file, const juce::String& newName, juce::String& error)
-    {
-        const auto title = newName.trim();
-        if (! isOwnUserFile (file, license->getPresetDir(), getMixDir()))
-        {
-            error = utf8 ("Переименовать можно только свои пресеты и миксы");
-            return false;
-        }
-        if (title.isEmpty())
-        {
-            error = utf8 ("Введите название");
-            return false;
-        }
-
-        const auto text = file.loadFileAsString();
-        auto root = juce::JSON::parse (text);
-        auto* obj = root.getDynamicObject();
-        if (obj == nullptr)
-        {
-            error = utf8 ("Файл повреждён");
-            return false;
-        }
-        obj->setProperty ("name", title);
-        if (! file.replaceWithText (juce::JSON::toString (root), false, false, "\r\n"))
-        {
-            error = utf8 ("Не удалось записать файл ") + file.getFullPathName();
-            return false;
-        }
-        sendChangeMessage();
-        return true;
-    }
-
-    bool SamplitProcessor::deleteUserFile (const juce::File& file, juce::String& error)
-    {
-        if (! isOwnUserFile (file, license->getPresetDir(), getMixDir()))
-        {
-            error = utf8 ("Удалить можно только свои пресеты и миксы");
-            return false;
-        }
-        const auto id = file.getFileNameWithoutExtension();
-        if (! file.moveToTrash())
-        {
-            error = utf8 ("Не удалось убрать файл в корзину: ") + file.getFullPathName();
-            return false;
-        }
-        {
-            const juce::ScopedLock sl (stateLock);
-            if (mixName == id)
-            {
-                mixName = {};
-                mixModified = false;
-            }
-        }
-        sendChangeMessage();
-        return true;
-    }
-
-    juce::File SamplitProcessor::getMixDir() const
-    {
-        return license->getPresetDir().getChildFile ("mixes");
-    }
-
-    juce::String SamplitProcessor::getMixName() const
-    {
-        const juce::ScopedLock sl (stateLock);
-        return mixName;
-    }
-
-    bool SamplitProcessor::isMixModified() const
-    {
-        const juce::ScopedLock sl (stateLock);
-        return mixModified;
-    }
-
-    void SamplitProcessor::applyMix (const Mix& mix)
-    {
-        const auto current = getKit();
-        if (current == nullptr)
-            return;
-
-        {
-            const juce::ScopedValueSetter<bool> guard (applyingMix, true);
-            for (int i = 0; i < (int) current->mics.size() && i < (int) mixer.size(); ++i)
-            {
-                const auto found = mix.mics.find (juce::String (current->mics[(size_t) i].id));
-                if (found == mix.mics.end())
-                    continue;
-                auto s = getMicState (i);
-                s.levelDb = found->second.levelDb;
-                s.pan = found->second.pan;
-                s.mute = found->second.mute;
-                if (found->second.out >= 0)
-                    s.out = found->second.out;
-                setMicState (i, s);
-            }
-        }
-        {
-            const juce::ScopedLock sl (stateLock);
-            mixName = mix.id;
-            mixModified = false;
-        }
-        sendChangeMessage();
-    }
-
-    juce::File SamplitProcessor::saveCurrentMixAs (const juce::String& name, juce::String& error)
-    {
-        const auto title = name.trim();
-        const auto current = getKit();
-        if (title.isEmpty())
-        {
-            error = utf8 ("Введите название микса");
-            return {};
-        }
-        if (current == nullptr)
-        {
-            error = utf8 ("Сначала загрузите пресет: сохранять нечего");
-            return {};
-        }
-
-        Mix mix;
-        mix.name = title;
-        for (int i = 0; i < (int) current->mics.size() && i < (int) mixer.size(); ++i)
-        {
-            const auto& m = mixer[(size_t) i];
-            mix.mics[juce::String::fromUTF8 (current->mics[(size_t) i].id.c_str())] = { m.levelDb, m.pan, m.out, m.mute };
-        }
-
-        juce::String slug;
-        for (auto ch : title.toLowerCase())
-            slug << (juce::CharacterFunctions::isLetterOrDigit (ch) ? juce::String::charToString (ch) : juce::String ("-"));
-        while (slug.contains ("--"))
-            slug = slug.replace ("--", "-");
-        slug = slug.trimCharactersAtStart ("-").trimCharactersAtEnd ("-");
-        if (slug.isEmpty())
-            slug = "mix";
-
-        const auto dir = getMixDir();
-        dir.createDirectory();
-        auto file = dir.getChildFile ("user-" + slug + ".json");
-        for (int n = 2; file.exists(); ++n)
-            file = dir.getChildFile ("user-" + slug + "-" + juce::String (n) + ".json");
-
-        mix.id = file.getFileNameWithoutExtension();
-        if (! file.replaceWithText (mix.toJson(), false, false, "\r\n"))
-        {
-            error = utf8 ("Не удалось записать файл ") + file.getFullPathName();
-            return {};
-        }
-        {
-            const juce::ScopedLock sl (stateLock);
-            mixName = mix.id;
-            mixModified = false;
-        }
-        sendChangeMessage();
-        return file;
-    }
-
-    bool SamplitProcessor::restorePreset()
-    {
-        const auto id = getPresetName();
-        if (id.isEmpty())
-            return false;
-        for (const auto& e : scanPresets())
-            if (e.preset.id == id)
-            {
-                restoreMixPending = true;
-                std::weak_ptr<int> alive = lifeToken;
-                loadPreset (e.preset, [this, alive] (const KitLoadResult& r)
-                {
-                    // Кит не собрался из-за пакетов, а лицензия ещё не проверена: ждём её (при отложенной лицензии не ждём)
-                    if (alive.expired())
-                        return;
-                    restoreRetryPending = license->isEnforced() && ! r.cancelled && ! r.missingPacks.empty()
-                                          && ! license->getInfo().isValid();
-                });
-                return true;
-            }
-        return false;
-    }
-
     SamplitProcessor::MicState SamplitProcessor::getMicState (int mic) const
     {
         return juce::isPositiveAndBelow (mic, (int) mixer.size()) ? mixer[(size_t) mic] : MicState {};
@@ -937,8 +597,6 @@ namespace samplit
         {
             const juce::ScopedLock sl (stateLock);
             savedMix[juce::String (current->mics[(size_t) mic].id)] = s;
-            if (! applyingMix)
-                mixModified = true;     // «изменён» в подписи показывается, только если микс выбран
         }
         applyMixer();
         pushParam (mic);
@@ -1006,10 +664,6 @@ namespace samplit
         if (current == nullptr || ! juce::isPositiveAndBelow (choice, (int) picks.size()) || choice >= (int) current->choices.size())
             return;
         picks[(size_t) choice] = pick;
-        {
-            const juce::ScopedLock sl (stateLock);
-            savedPicks[juce::String (current->choices[(size_t) choice].id)] = pick;
-        }
         applyPicks();
     }
 
@@ -1044,21 +698,6 @@ namespace samplit
     {
         const juce::ScopedLock sl (stateLock);
         return kit;
-    }
-
-    juce::String SamplitProcessor::getPresetName() const
-    {
-        const juce::ScopedLock sl (stateLock);
-        return presetName;
-    }
-
-    void SamplitProcessor::setPresetName (const juce::String& name)
-    {
-        {
-            const juce::ScopedLock sl (stateLock);
-            presetName = name;
-        }
-        sendChangeMessage();
     }
 
     // ---------------------------------------------------------------- состояние проекта

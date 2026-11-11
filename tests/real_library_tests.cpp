@@ -1,6 +1,7 @@
 #include "DiskStreamer.h"
 #include "KitEngine.h"
 #include "KitLoader.h"
+#include "PackCatalog.h"
 #include "PluginProcessor.h"
 
 #include <catch2/catch_test_macros.hpp>
@@ -23,26 +24,48 @@
 
 using namespace samplit;
 
+namespace
+{
+    // Заводская установка Studio600 на локальной библиотеке: каталог из манифестов, состав кита из Setup::factory()
+    KitSpec factorySpec (const KitLoadOptions& opts)
+    {
+        const auto catalog = scanPackCatalog (opts, false);
+        std::vector<juce::String> warnings;
+        return makeKitSpec (Setup::factory(), catalog, false, warnings);
+    }
+
+    // До count клавиш кита, равномерно по диапазону
+    std::vector<int> sampleNotes (const Kit& kit, size_t count)
+    {
+        std::vector<int> all;
+        for (int n = 0; n < 128; ++n)
+            if (kit.notes[(size_t) n].piece >= 0)
+                all.push_back (n);
+        std::vector<int> out;
+        for (size_t i = 0; i < count && ! all.empty(); ++i)
+            out.push_back (all[i * all.size() / count]);
+        return out;
+    }
+}
+
 // Проверка на настоящей библиотеке. Запускается только если задана SAMPLIT_REAL_LIB (папка 00-Studio600ru-Drum-LIB),
-// остальное берётся из репозитория: манифесты sample_library/packs-src и пресет tools/presets/studio600-default.json.
+// остальное берётся из репозитория: манифесты sample_library/packs-src и заводская установка Setup::factory().
 // Печатает память и время загрузки и сравнивает потоковый звук с загрузкой целиком на нескольких настоящих ударах.
-TEST_CASE ("real library: preset loads with heads only and streams like the whole files", "[.reallib]")
+TEST_CASE ("real library: factory setup loads with heads only and streams like the whole files", "[.reallib]")
 {
     const char* libPath = std::getenv ("SAMPLIT_REAL_LIB");
     if (libPath == nullptr)
         SKIP ("SAMPLIT_REAL_LIB не задана");
 
     const auto repo = juce::File (SAMPLIT_TEST_FIXTURES).getParentDirectory().getParentDirectory();
-    Preset preset;
-    juce::String error;
-    REQUIRE (Preset::fromFile (repo.getChildFile ("tools/presets/studio600-default.json"), preset, error));
-
     KitLoadOptions opts;
     opts.libraryRoot = juce::File (libPath);
     opts.manifestDir = repo.getChildFile ("sample_library/packs-src");
+    const auto spec = factorySpec (opts);
+    REQUIRE (spec.places.size() == 12);
 
     const auto t0 = std::chrono::steady_clock::now();
-    const auto res = loadKit (preset, opts);
+    const auto res = loadKit (spec, opts);
     const auto secs = std::chrono::duration<double> (std::chrono::steady_clock::now() - t0).count();
     REQUIRE (res.ok());
 
@@ -58,7 +81,7 @@ TEST_CASE ("real library: preset loads with heads only and streams like the whol
     // Играем по очереди несколько клавиш и сравниваем с эталоном: тот же кит, загруженный целиком
     KitLoadOptions full = opts;
     full.headSeconds = 0;
-    const auto ref = loadKit (preset, full);
+    const auto ref = loadKit (spec, full);
     REQUIRE (ref.ok());
     std::cout << "[reallib] целиком в памяти: " << ref.memoryBytes / (1024.0 * 1024.0) << " МБ" << std::endl;
 
@@ -84,7 +107,7 @@ TEST_CASE ("real library: preset loads with heads only and streams like the whol
         prb[i] = i == 0 ? Rb.data() : nullptr;
     }
 
-    for (const int note : { 36, 38, 42, 51, 49, 96, 100 })
+    for (const int note : sampleNotes (*res.kit, 8))
     {
         a.prepare (44100.0);
         b.prepare (44100.0);
@@ -130,13 +153,10 @@ TEST_CASE ("real library: dense playing in real time without underruns", "[.real
     constexpr double rate = 44100.0;
 
     const auto repo = juce::File (SAMPLIT_TEST_FIXTURES).getParentDirectory().getParentDirectory();
-    Preset preset;
-    juce::String error;
-    REQUIRE (Preset::fromFile (repo.getChildFile ("tools/presets/studio600-default.json"), preset, error));
     KitLoadOptions opts;
     opts.libraryRoot = juce::File (libPath);
     opts.manifestDir = repo.getChildFile ("sample_library/packs-src");
-    const auto res = loadKit (preset, opts);
+    const auto res = loadKit (factorySpec (opts), opts);
     REQUIRE (res.ok());
 
     std::vector<int> notes;
@@ -257,15 +277,11 @@ namespace
         p.setRateAndBufferSizeDetails (rate, block);
         p.prepareToPlay (rate, block);
 
-        Preset preset;
-        juce::String error;
-        REQUIRE (Preset::fromFile (repo.getChildFile ("tools/presets/studio600-default.json"), preset, error));
-        bool loaded = false;
-        p.selectPreset (preset, [&] (const KitLoadResult& r) { loaded = r.ok(); });
+        p.setSetup (Setup::factory());
         const auto until = juce::Time::getMillisecondCounter() + 180000;
-        while ((! loaded || p.isKitLoading()) && juce::Time::getMillisecondCounter() < until)
+        while ((p.getKit() == nullptr || p.isKitLoading()) && juce::Time::getMillisecondCounter() < until)
             juce::MessageManager::getInstance()->runDispatchLoopUntil (20);
-        REQUIRE (loaded);
+        REQUIRE (p.getKit() != nullptr);
 
         const auto kit = p.getKit();
         REQUIRE (kit != nullptr);
