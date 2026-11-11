@@ -27,18 +27,18 @@ namespace samplit
 
         const Place kPlaces[] = {
             { "kick",      0.84f, 0.30f, 0.27f, 0.23f, false, "Бочка" },
-            { "tom_10",    0.62f, 0.45f, 0.095f, 0.095f, false, "Альт 10" },
-            { "tom_14",    0.83f, 0.49f, 0.11f, 0.11f, false, "Альт 12" },
+            { "tom_10",    0.62f, 0.37f, 0.095f, 0.095f, false, "Альт 10" },
+            { "tom_14",    0.83f, 0.41f, 0.11f, 0.11f, false, "Альт 12" },
             { "tom_16m",   1.08f, 0.50f, 0.12f, 0.12f, false, "Том 14" },
             { "tom_16l",   1.25f, 0.76f, 0.15f, 0.15f, false, "Флор том 16" },
             { "snare",     0.61f, 0.76f, 0.14f, 0.14f, false, "Малый" },
             { "hat",       0.23f, 0.68f, 0.13f, 0.045f, true, "Hi-hat" },
-            { "crash_b",   0.18f, 0.45f, 0.14f, 0.045f, true, "Crash 16\"" },
-            { "crash_a",   0.38f, 0.24f, 0.17f, 0.055f, true, "Crash 18\"" },
-            { "ride",      1.33f, 0.22f, 0.17f, 0.060f, true, "Ride" },
-            { "china",     0.12f, 0.18f, 0.075f, 0.030f, true, "China" },
-            { "splash",    0.79f, 0.10f, 0.070f, 0.026f, true, "Splash" },
-            { "cymbals_x", 1.55f, 0.11f, 0.060f, 0.025f, true, "C7–G#7" },
+            { "crash_b",   0.38f, 0.24f, 0.17f, 0.055f, true, "Crash 16\"" },
+            { "crash_a",   1.33f, 0.22f, 0.17f, 0.060f, true, "Crash 18\"" },
+            { "ride",      1.45f, 0.48f, 0.17f, 0.060f, true, "Ride" },
+            { "china",     1.55f, 0.10f, 0.075f, 0.030f, true, "China" },
+            { "splash",    0.62f, 0.10f, 0.070f, 0.026f, true, "Splash" },
+            { "cymbals_x", 0.99f, 0.06f, 0.060f, 0.025f, true, "C7–G#7" },
         };
 
         const Place* placeFor (const std::string& id)
@@ -238,7 +238,6 @@ namespace samplit
     void KitView::layoutSpots()
     {
         spots.clear();
-        decorativeRide = {};
         stool = {};
         if (kit == nullptr)
             return;
@@ -252,8 +251,6 @@ namespace samplit
         auto chips = extra.empty() ? juce::Rectangle<int>() : stage.removeFromBottom (30);
         const float scale = juce::jmin ((float) stage.getWidth() / kStageWidth, (float) stage.getHeight() / kStageHeight);
         const auto origin = stage.toFloat().getCentre() - juce::Point<float> (kStageWidth, kStageHeight) * (scale * 0.5f);
-        decorativeRide = juce::Rectangle<float> (0.25f * scale, 0.09f * scale)
-                             .withCentre (origin + juce::Point<float> (1.48f, 0.49f) * scale);
         stool = juce::Rectangle<float> (0.17f * scale, 0.13f * scale)
                     .withCentre (origin + juce::Point<float> (0.88f, 0.91f) * scale);
 
@@ -374,7 +371,6 @@ namespace samplit
     void KitView::mouseMove (const juce::MouseEvent& e)
     {
         const int piece = pieceAt (e.position);
-        setTooltip (decorativeRide.contains (e.position) ? utf8 ("Райд 18″: в библиотеке нет отдельного сэмпла") : juce::String());
         if (piece != hovered)
         {
             hovered = piece;
@@ -481,18 +477,6 @@ namespace samplit
             g.fillEllipse (stool);
             g.setColour (brand::line);
             g.drawEllipse (stool, 1.0f);
-        }
-
-        if (! decorativeRide.isEmpty())
-        {
-            g.setColour (kBrass.withAlpha (0.17f));
-            g.fillEllipse (decorativeRide);
-            g.setColour (kBrass.withAlpha (0.45f));
-            g.drawEllipse (decorativeRide, 1.0f);
-            g.setColour (brand::textMuted.withAlpha (0.65f));
-            g.setFont (juce::FontOptions (11.0f));
-            g.drawText (utf8 ("Ride 18″"), decorativeRide.withY (decorativeRide.getBottom() + 2.0f)
-                          .withHeight (16.0f).expanded (10.0f, 0.0f), juce::Justification::centred, false);
         }
 
         for (const auto& s : spots)

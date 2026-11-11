@@ -59,7 +59,7 @@ namespace samplit
         int selected = -1, hovered = -1;
 
         juce::Rectangle<int> stageArea, detailArea, legendArea;
-        juce::Rectangle<float> decorativeRide, stool;
+        juce::Rectangle<float> stool;
 
         juce::Label pieceTitle, pieceName, pieceKeysLabel, choicesTitle, noChoices, emptyText;
         juce::ComboBox pieceBox;
