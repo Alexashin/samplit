@@ -19,7 +19,8 @@
 ## Контракты: менять вместе с кодом
 
 - [pack-format.md](pack-format.md) — `.splpack`, шифрование, манифест, токен лицензии.
-- [preset-format.md](preset-format.md) — JSON пресета, режимы `select.pick`, выходы микрофонов.
+- [preset-format.md](preset-format.md) — JSON пресета, режимы `select.pick`, выходы микрофонов (заменяется установкой из мест, см. ниже).
+- [setup-spec.md](setup-spec.md) — ТЗ 11.11: установка из мест и паков, группы `name/role/pair` в манифесте, состояние проекта v3.
 - [library-structure.md](library-structure.md) — библиотека Studio600, `.nki`, раскладка, микрофоны и исключения.
 - [streaming-design.md](streaming-design.md) — расчёты памяти и **действующее решение 29.10: float32 без обрезки, стриминг WAV-папки** (разделы 2–5 — исходный проект v1).
 - [packs-plan.md](packs-plan.md) — подробное **исходное проектирование** пакетов и лицензий; не считать список работ актуальным.
