@@ -48,7 +48,6 @@ namespace samplit
         void layoutSpots();
         void refreshState();
         int spotAt (juce::Point<float>) const;
-        int firstKeyOf (int piece) const;
         void showPlaceMenu (int spot);
 
         SamplitProcessor& processor;

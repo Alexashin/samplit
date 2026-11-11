@@ -181,12 +181,6 @@ namespace samplit
         return -1;
     }
 
-    int KitView::firstKeyOf (int piece) const
-    {
-        return juce::isPositiveAndBelow (piece, (int) pieceKeys.size()) && ! pieceKeys[(size_t) piece].empty()
-                   ? pieceKeys[(size_t) piece].front() : -1;
-    }
-
     // Меню места: включено, звук (пак) и режимы групп слоёв текущего кита. Все изменения идут через процессор
     void KitView::showPlaceMenu (int spotIndex)
     {
@@ -334,14 +328,9 @@ namespace samplit
 
     void KitView::mouseDown (const juce::MouseEvent& e)
     {
-        const int index = spotAt (e.position);
-        if (index < 0)
-            return;
-        const auto& spot = spots[(size_t) index];
-        if (spot.enabled)
-            if (const int key = firstKeyOf (spot.piece); key >= 0)
-                processor.triggerNote (key, 100);
-        showPlaceMenu (index);
+        // Клик только открывает меню места; послушать барабан можно клавиатурой внизу
+        if (const int index = spotAt (e.position); index >= 0)
+            showPlaceMenu (index);
     }
 
     void KitView::mouseMove (const juce::MouseEvent& e)
