@@ -698,7 +698,32 @@ namespace samplit
 
                 if (! kit->buildIndex())
                 {
-                    res.error = "Кит некорректен: одна клавиша у двух барабанов. Проверьте список барабанов в пресете"_s;
+                    // Кит из установки (у барабанов есть место): называем места, а не пресет
+                    juce::String where;
+                    std::map<int, int> owner;       // клавиша -> индекс барабана
+                    for (int pi = 0; pi < (int) kit->pieces.size() && where.isEmpty(); ++pi)
+                        for (const auto& h : kit->pieces[(size_t) pi].hits)
+                        {
+                            const auto [it, added] = owner.emplace (h.key, pi);
+                            if (! added && it->second != pi)
+                            {
+                                auto placeName = [&] (int idx) -> juce::String
+                                {
+                                    const int slot = kit->pieces[(size_t) idx].slot;
+                                    for (const auto& d : kStudio600Places)
+                                        if (d.slot == slot)
+                                            return juce::String::fromUTF8 (d.id);
+                                    return {};
+                                };
+                                const auto a = placeName (it->second), b = placeName (pi);
+                                if (a.isNotEmpty() && b.isNotEmpty())
+                                    where = " (места "_s + a + " и "_s + b + ", клавиша "_s + juce::String (h.key) + ")"_s;
+                                break;
+                            }
+                        }
+                    res.error = where.isNotEmpty()
+                        ? "Кит некорректен: одна клавиша у двух мест установки"_s + where + ". Измените установку"_s
+                        : "Кит некорректен: одна клавиша у двух барабанов. Проверьте список барабанов в пресете"_s;
                     return;
                 }
 

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Kit.h"
+#include "Setup.h"
 
 #include <juce_core/juce_core.h>
 
@@ -75,6 +76,10 @@ namespace samplit
 
         // Message thread: выход микрофона поверх выхода из кита. -1: как в ките
         void setMicOutput (int mic, int out) noexcept;
+
+        // Message thread: громкость места установки (дБ, по Piece::slot). Читается при старте удара и не зависит от смены кита;
+        // уже звучащий удар не меняется. slot вне 0..kMaxPlaces-1 игнорируется
+        void setPlaceLevel (int slot, float levelDb) noexcept;
 
         // Детерминированный ГСЧ для тестов
         void setSeed (uint32_t seed) noexcept { rng = seed != 0 ? seed : 0x9e3779b9u; }
@@ -169,6 +174,7 @@ namespace samplit
         std::array<std::atomic<float>, Kit::kMaxMics> micPan;
         std::array<std::atomic<int>, Kit::kMaxMics> micOut;
         std::array<std::atomic<int>, Kit::kMaxChoices> choicePick;
+        std::array<std::atomic<float>, kMaxPlaces> placeGain;     // линейный гейн мест, по Piece::slot
         std::array<std::atomic<const Kit*>, kMaxStrikes> strikeKit {};   // != nullptr, пока удар звучит
         std::array<Strike, kMaxStrikes> strikes {};
         std::array<int, 128> lastHit;

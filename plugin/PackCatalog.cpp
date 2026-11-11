@@ -149,10 +149,8 @@ namespace samplit
                         place.pieceId = piece->id;
                 }
 
-                if (piece == nullptr)
-                    warnings.push_back ("Место "_s + juce::String::fromUTF8 (def->id) + ": в паке "_s + place.packId
-                                        + " нет нужного барабана"_s);
-                else
+                // Нет нужного барабана: предупреждение даёт loadKit, здесь не дублируем
+                if (piece != nullptr)
                 {
                     auto mapping = mapKeysToPlace (piece->keys, piece->type.toStdString(), *def);
                     place.keyMap = std::move (mapping.keys);

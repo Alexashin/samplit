@@ -764,20 +764,6 @@ TEST_CASE ("processor with a kit: a replaced kit is freed only after its strike 
     REQUIRE (f.processor.getRetiredCount() == 0);
 }
 
-TEST_CASE ("preset name survives save and load", "[kit]")
-{
-    juce::MemoryBlock saved;
-    {
-        SamplitProcessor a;
-        a.setPresetName ("Studio600 Rock");
-        a.getStateInformation (saved);
-    }
-
-    SamplitProcessor b;
-    b.setStateInformation (saved.getData(), (int) saved.getSize());
-    REQUIRE (b.getPresetName() == "Studio600 Rock");
-}
-
 TEST_CASE ("kit: a kit protected by the block hazard pointer is not released until the block ends", "[kit]")
 {
     KitBuilder b1;

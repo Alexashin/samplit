@@ -4,7 +4,9 @@
 #include "KitEngine.h"
 #include "KitLoader.h"
 #include "LicenseManager.h"
+#include "PackCatalog.h"
 #include "PresetLibrary.h"
+#include "Setup.h"
 
 #include <juce_audio_processors/juce_audio_processors.h>
 
@@ -47,9 +49,39 @@ namespace samplit
         const juce::String getProgramName (int) override { return {}; }
         void changeProgramName (int, const juce::String&) override {}
 
-        // Состояние в проекте DAW: пресет, микшер, режимы выбора удара, громкости барабанов (старые узлы GROUP/ZONE игнорируются)
+        // Состояние в проекте DAW (version 3): установка (Setup, JSON в свойстве setup) и микшер микрофонов (узлы MIC).
+        // Проекты version 2 мигрируют: factory-установка, малый по id пресета, MIC переносятся, PICK и микс отбрасываются
         void getStateInformation (juce::MemoryBlock&) override;
         void setStateInformation (const void*, int) override;
+
+        // ---- Установка Studio600 (docs/setup-spec.md): места, паки, громкости, режимы выбора ударов. Только message thread ----
+
+        Setup getSetup() const;
+        // Применить установку целиком: громкости сразу, состав кита фоновой загрузкой (старый кит играет до публикации нового)
+        void setSetup (const Setup&);
+        void setPlaceEnabled (const juce::String& placeId, bool enabled);
+        // pieceId пуст: единственный барабан нужного типа. Смена пака сбрасывает выбор ударов места
+        void setPlacePack (const juce::String& placeId, const juce::String& packId, const juce::String& pieceId = {});
+        // Только громкость: атомик движка и запись в установку, без перезагрузки кита
+        void setPlaceLevel (const juce::String& placeId, float levelDb);
+        // choiceId "<placeId>:<groupId>" (как Kit::choices[].id): движку сразу, в установку для следующих загрузок
+        void setGroupPick (const juce::String& choiceId, Pick);
+        // Каталог паков последней применённой установки (для списков в интерфейсе)
+        std::vector<CatalogPack> getCatalog() const;
+        // Сбросить кэш каталога и применить установку заново
+        void rescanCatalog();
+        // Применить текущую установку (например, после старта или смены источника библиотеки)
+        void applySetup (std::function<void (const KitLoadResult&)> done = {});
+
+        // Стандартная установка пользователя: <данные Samplit>/default-setup.json
+        bool saveAsDefaultSetup();          // false: файл не записан
+        void resetToDefaultSetup();         // файл, при отсутствии или ошибке заводская
+        void restoreFactorySetup();         // удаляет файл стандартной установки и применяет заводскую
+        juce::File getDataDir() const { return dataDir; }
+        // Для тестов: папка данных вместо папки лицензии (действует для новых экземпляров); пустой File: снять подмену
+        static void setDataDirOverride (const juce::File&);
+        // SAMPLIT_SERVICE=1 при создании процессора: в каталоге и составе кита есть непроверенные паки и слои
+        bool isServiceMode() const noexcept { return serviceMode; }
 
         // ---- Кит (мультимикрофонные барабаны) ----
 
@@ -195,12 +227,38 @@ namespace samplit
 
         void applyPicks();
 
+        enum class LoadKind { Preset, Setup };
+        // Общая фоновая загрузка: work выполняется в потоке пула, результат публикуется в message thread.
+        // Новая загрузка отменяет прежнюю
+        void startLoad (LoadKind, std::function<KitLoadResult (const KitLoadOptions&)> work, KitLoadOptions,
+                        std::shared_ptr<std::vector<CatalogPack>> catalogOut, std::function<void (const KitLoadResult&)> done);
+        KitLoadOptions makeLoadOptions() const;
+        std::vector<CatalogPack> scanCatalogCached (const KitLoadOptions&, bool includeUnverified);
+        void pushPlaceLevels (const Setup&);
+        void applySetupSoon();      // с любого потока: применить установку в message thread
+        juce::File defaultSetupFile() const { return dataDir.getChildFile ("default-setup.json"); }
+        Setup loadDefaultSetup() const;
+
         std::unique_ptr<LicenseManager> license;
         std::vector<MicState> mixer;                        // только message thread
         std::map<juce::String, MicState> savedMix;          // по id микрофона, под stateLock: пишется в проект
         std::vector<Pick> picks;                            // только message thread, по индексу Kit::choices
         std::map<juce::String, Pick> savedPicks;            // по id переключателя, под stateLock: пишется в проект
         KitLoadResult lastLoad;                             // только message thread
+        Setup setup;                                        // под stateLock: пишется в проект
+        std::vector<CatalogPack> catalog;                   // только message thread: каталог последней загрузки установки
+        juce::File dataDir;
+        bool serviceMode = false;
+        std::atomic<bool> initialApplyPending { true };      // установка ещё ни разу не применялась (пишет и поток хоста)
+        bool setupRetryPending = false;                     // только message thread: пакеты не нашлись до проверки лицензии
+
+        // Кэш каталога: пишет поток загрузки, сбрасывает message thread (epoch)
+        juce::CriticalSection catalogLock;
+        std::vector<CatalogPack> catalogCache;
+        juce::String catalogCacheKey;
+        uint32_t catalogCacheEpoch = 0;
+        bool catalogCacheValid = false;
+        std::atomic<uint32_t> catalogEpoch { 1 };
         std::array<juce::AudioParameterFloat*, kAutomatedMics> levelParams {}, panParams {};
         bool restoreMixPending = false;                     // только message thread
         // Проект открыли раньше, чем проверилась лицензия: пакеты не нашлись. Как только лицензия изменится и станет

@@ -6,6 +6,12 @@
 
 namespace samplit
 {
+    namespace
+    {
+        juce::File& dataDirOverrideRef() { static juce::File f; return f; }
+        juce::File dataDirOverride() { return dataDirOverrideRef(); }
+    }
+
     juce::AudioProcessor::BusesProperties SamplitProcessor::makeBuses()
     {
         // Шина 0 это Main (стерео). Шины 1..16 это отдельные моно-выходы групп и микрофонов. DAW включает их сама
@@ -21,6 +27,12 @@ namespace samplit
         license = std::make_unique<LicenseManager> (LicenseManager::defaultConfig());
         license->addChangeListener (this);
 
+        const auto over = dataDirOverride();
+        dataDir = over != juce::File() ? over : license->getTokenFile().getParentDirectory();
+        serviceMode = juce::SystemStats::getEnvironmentVariable ("SAMPLIT_SERVICE", {}) == "1";
+        setup = loadDefaultSetup();
+        pushPlaceLevels (setup);
+
         // Параметры автоматизации: имена общие, потому что микрофоны зависят от кита (Mic 1 = первый микрофон кита)
         for (int i = 0; i < kAutomatedMics; ++i)
         {
@@ -35,6 +47,18 @@ namespace samplit
             panParams[(size_t) i]->addListener (this);
         }
         startTimer (50);
+
+        // Новый экземпляр без состояния играет стандартную установку. Любое явное действие (состояние проекта, setSetup,
+        // свой кит, другая лицензия) снимает флаг раньше, чем message thread дойдёт до этого отложенного вызова
+        if (juce::MessageManager::getInstanceWithoutCreating() != nullptr)
+        {
+            std::weak_ptr<int> alive = lifeToken;
+            juce::MessageManager::callAsync ([this, alive]
+            {
+                if (! alive.expired() && initialApplyPending)
+                    applySetup();
+            });
+        }
     }
 
     SamplitProcessor::~SamplitProcessor()
@@ -186,6 +210,7 @@ namespace samplit
 
     void SamplitProcessor::setKit (std::shared_ptr<const Kit> newKit)
     {
+        initialApplyPending = false;
         std::shared_ptr<const Kit> old;
         {
             const juce::ScopedLock sl (stateLock);
@@ -208,24 +233,44 @@ namespace samplit
 
     void SamplitProcessor::setLicenseManager (std::unique_ptr<LicenseManager> manager)
     {
+        // Загрузка могла начаться со старым менеджером (ключи, папки): ждём её конца до замены
+        initialApplyPending = false;
+        cancelKitLoad();
+        kitLoaderPool.removeAllJobs (true, 10000);
         if (license != nullptr)
             license->removeChangeListener (this);
         license = std::move (manager);
         restoreRetryPending = false;
+        setupRetryPending = false;
+        ++catalogEpoch;
         if (license != nullptr)
+        {
             license->addChangeListener (this);
+            const auto over = dataDirOverride();
+            dataDir = over != juce::File() ? over : license->getTokenFile().getParentDirectory();
+        }
     }
 
-    // Лицензия проверилась или обновилась (message thread). Если проект открылся раньше и пакеты не нашлись, повторяем
+    // Лицензия проверилась или обновилась (message thread). Источник каталога мог измениться; если проект открылся раньше
+    // и пакеты не нашлись, повторяем
     void SamplitProcessor::changeListenerCallback (juce::ChangeBroadcaster*)
     {
-        if (! restoreRetryPending || license == nullptr || ! license->isEnforced() || ! license->getInfo().isValid())
+        ++catalogEpoch;
+        if (license == nullptr || ! license->isEnforced() || ! license->getInfo().isValid())
+            return;
+        if (setupRetryPending)
+        {
+            setupRetryPending = false;
+            applySetup();
+            return;
+        }
+        if (! restoreRetryPending)
             return;
         restoreRetryPending = false;
         restorePreset();
     }
 
-    void SamplitProcessor::loadPreset (const Preset& preset, std::function<void (const KitLoadResult&)> done)
+    KitLoadOptions SamplitProcessor::makeLoadOptions() const
     {
         KitLoadOptions options;
         options.packDir = license->getPackDir();
@@ -236,7 +281,12 @@ namespace samplit
         }
         options.requireLibrary = ! license->isEnforced();
         options.keyFor = [this] (const juce::String& id, pack::PackKey& key) { return license->keyFor (id, key); };
-        loadKitAsync (preset, std::move (options), std::move (done));
+        return options;
+    }
+
+    void SamplitProcessor::loadPreset (const Preset& preset, std::function<void (const KitLoadResult&)> done)
+    {
+        loadKitAsync (preset, makeLoadOptions(), std::move (done));
     }
 
     void SamplitProcessor::cancelKitLoad()
@@ -250,11 +300,20 @@ namespace samplit
     void SamplitProcessor::loadKitAsync (const Preset& preset, KitLoadOptions options,
                                          std::function<void (const KitLoadResult&)> done)
     {
+        startLoad (LoadKind::Preset, [preset] (const KitLoadOptions& o) { return loadKit (preset, o); },
+                   std::move (options), nullptr, std::move (done));
+    }
+
+    void SamplitProcessor::startLoad (LoadKind kind, std::function<KitLoadResult (const KitLoadOptions&)> work,
+                                      KitLoadOptions options, std::shared_ptr<std::vector<CatalogPack>> catalogOut,
+                                      std::function<void (const KitLoadResult&)> done)
+    {
+        initialApplyPending = false;
         cancelKitLoad();
         auto cancel = std::make_shared<std::atomic<bool>> (false);
         kitCancel = cancel;
         const auto generation = kitGeneration;
-        const bool keepMix = std::exchange (restoreMixPending, false);
+        const bool keepMix = kind == LoadKind::Setup ? true : std::exchange (restoreMixPending, false);
         kitLoading.store (true);
         kitProgress.store (0.0f);
 
@@ -262,20 +321,24 @@ namespace samplit
         options.progress = [this] (float f) { kitProgress.store (f); };
         std::weak_ptr<int> alive = lifeToken;
 
-        kitLoaderPool.addJob ([this, alive, preset, options = std::move (options), cancel, generation, keepMix, done = std::move (done)]
+        kitLoaderPool.addJob ([this, alive, kind, work = std::move (work), options = std::move (options), catalogOut, cancel,
+                               generation, keepMix, done = std::move (done)]
         {
-            auto result = std::make_shared<KitLoadResult> (loadKit (preset, options));
+            auto result = std::make_shared<KitLoadResult> (work (options));
 
-            juce::MessageManager::callAsync ([this, alive, result, cancel, generation, keepMix, done]
+            juce::MessageManager::callAsync ([this, alive, kind, result, catalogOut, cancel, generation, keepMix, done]
             {
                 if (alive.expired() || generation != kitGeneration)
                     return;     // устарело: пришла новая загрузка или процессор уничтожен
 
                 kitLoading.store (false);
                 kitProgress.store (1.0f);
+                if (kind == LoadKind::Setup && catalogOut != nullptr)
+                    catalog = *catalogOut;
                 if (result->ok())
                 {
-                    // Микшер: значения пресета, а при восстановлении проекта сохранённые в нём (по id микрофона)
+                    // Микшер: значения пресета, а при восстановлении проекта и для установки сохранённые (по id микрофона).
+                    // Для установки прежние записи не стираются: микрофоны ушедшего пака вернутся с прежними значениями
                     std::vector<MicState> fresh;
                     {
                         const juce::ScopedLock sl (stateLock);
@@ -291,7 +354,8 @@ namespace samplit
                                 fresh.push_back ({ m.levelDb, m.pan, m.mute, false, mic.out });
                             }
                         }
-                        savedMix.clear();
+                        if (kind == LoadKind::Preset)
+                            savedMix.clear();
                         for (size_t i = 0; i < fresh.size(); ++i)
                             savedMix[juce::String (result->kit->mics[i].id)] = fresh[i];
                     }
@@ -300,8 +364,9 @@ namespace samplit
                     pushAllParams();
                     setKit (result->kit);
 
-                    // Выбор удара: как в пресете, а при восстановлении проекта сохранённый (по id переключателя)
+                    if (kind == LoadKind::Preset)
                     {
+                        // Выбор удара: как в пресете, а при восстановлении проекта сохранённый (по id переключателя)
                         const juce::ScopedLock sl (stateLock);
                         const auto& choices = result->kit->choices;
                         for (size_t i = 0; i < choices.size(); ++i)
@@ -311,9 +376,16 @@ namespace samplit
                         for (size_t i = 0; i < choices.size(); ++i)
                             savedPicks[juce::String (choices[i].id)] = picks[i];
                     }
+                    else
+                    {
+                        pushPlaceLevels (getSetup());       // режимы выбора уже в ките: их разобрал загрузчик по установке
+                    }
                     applyPicks();
-
                 }
+
+                if (kind == LoadKind::Setup)
+                    setupRetryPending = license->isEnforced() && ! result->cancelled && ! result->missingPacks.empty()
+                                        && ! license->getInfo().isValid();
 
                 lastLoad = *result;
                 lastLoad.kit = nullptr;
@@ -322,6 +394,199 @@ namespace samplit
                     done (*result);
             });
         });
+    }
+
+    // ---------------------------------------------------------------- установка
+
+    Setup SamplitProcessor::getSetup() const
+    {
+        const juce::ScopedLock sl (stateLock);
+        return setup;
+    }
+
+    std::vector<CatalogPack> SamplitProcessor::getCatalog() const
+    {
+        return catalog;
+    }
+
+    void SamplitProcessor::pushPlaceLevels (const Setup& s)
+    {
+        for (const auto& p : s.places)
+            if (const auto* def = findPlace (p.placeId))
+                kitEngine.setPlaceLevel (def->slot, p.levelDb);
+    }
+
+    std::vector<CatalogPack> SamplitProcessor::scanCatalogCached (const KitLoadOptions& o, bool includeUnverified)
+    {
+        const auto key = o.libraryRoot.getFullPathName() + "|" + o.manifestDir.getFullPathName() + "|" + o.packDir.getFullPathName()
+                         + "|" + juce::String ((int) o.requireLibrary) + "|" + juce::String ((int) includeUnverified);
+        const auto epoch = catalogEpoch.load();
+        {
+            const juce::ScopedLock sl (catalogLock);
+            if (catalogCacheValid && catalogCacheEpoch == epoch && catalogCacheKey == key)
+                return catalogCache;
+        }
+        auto fresh = scanPackCatalog (o, includeUnverified);
+        if (! fresh.empty())        // пустой каталог не запоминаем: источник мог ещё не подключиться
+        {
+            const juce::ScopedLock sl (catalogLock);
+            catalogCache = fresh;
+            catalogCacheKey = key;
+            catalogCacheEpoch = epoch;
+            catalogCacheValid = true;
+        }
+        return fresh;
+    }
+
+    void SamplitProcessor::applySetup (std::function<void (const KitLoadResult&)> done)
+    {
+        const auto snapshot = getSetup();
+        auto options = makeLoadOptions();
+        options.reuse = getKit();           // клипы того же источника берутся из текущего кита без декодирования
+        const bool service = serviceMode;
+        pushPlaceLevels (snapshot);
+
+        auto catalogOut = std::make_shared<std::vector<CatalogPack>>();
+        auto work = [this, snapshot, service, catalogOut] (const KitLoadOptions& o)
+        {
+            *catalogOut = scanCatalogCached (o, service);
+            std::vector<juce::String> warnings;
+            const auto spec = makeKitSpec (snapshot, *catalogOut, service, warnings);
+            auto res = loadKit (spec, o);
+            res.warnings.insert (res.warnings.begin(), warnings.begin(), warnings.end());
+            return res;
+        };
+        startLoad (LoadKind::Setup, std::move (work), std::move (options), catalogOut, std::move (done));
+    }
+
+    void SamplitProcessor::applySetupSoon()
+    {
+        std::weak_ptr<int> alive = lifeToken;
+        auto apply = [this, alive]
+        {
+            if (! alive.expired())
+                applySetup();
+        };
+        auto* mm = juce::MessageManager::getInstanceWithoutCreating();
+        if (mm == nullptr || mm->isThisTheMessageThread())
+            apply();
+        else
+            juce::MessageManager::callAsync (apply);
+    }
+
+    void SamplitProcessor::setSetup (const Setup& s)
+    {
+        initialApplyPending = false;
+        auto fixed = Setup::factory();      // места в порядке slot; чего нет во входной установке, берётся заводское
+        for (auto& p : fixed.places)
+            if (const auto* in = s.find (p.placeId))
+            {
+                p = *in;
+                p.levelDb = juce::jlimit (kPlaceLevelMinDb, kPlaceLevelMaxDb, p.levelDb);
+            }
+        {
+            const juce::ScopedLock sl (stateLock);
+            setup = std::move (fixed);
+        }
+        applySetup();
+    }
+
+    void SamplitProcessor::setPlaceEnabled (const juce::String& placeId, bool enabled)
+    {
+        {
+            const juce::ScopedLock sl (stateLock);
+            auto it = std::find_if (setup.places.begin(), setup.places.end(), [&] (const PlaceSetup& p) { return placeId == p.placeId.c_str(); });
+            if (it == setup.places.end() || it->enabled == enabled)
+                return;
+            it->enabled = enabled;
+        }
+        initialApplyPending = false;
+        applySetup();
+    }
+
+    void SamplitProcessor::setPlacePack (const juce::String& placeId, const juce::String& packId, const juce::String& pieceId)
+    {
+        {
+            const juce::ScopedLock sl (stateLock);
+            auto it = std::find_if (setup.places.begin(), setup.places.end(), [&] (const PlaceSetup& p) { return placeId == p.placeId.c_str(); });
+            if (it == setup.places.end())
+                return;
+            if (packId != it->packId.c_str())
+                it->picks.clear();          // группы другого пака: старый выбор к ним не относится
+            it->packId = packId.toStdString();
+            it->pieceId = pieceId.toStdString();
+        }
+        initialApplyPending = false;
+        applySetup();
+    }
+
+    void SamplitProcessor::setPlaceLevel (const juce::String& placeId, float levelDb)
+    {
+        const auto level = juce::jlimit (kPlaceLevelMinDb, kPlaceLevelMaxDb, levelDb);
+        const auto* def = findPlace (placeId.toStdString());
+        if (def == nullptr)
+            return;
+        {
+            const juce::ScopedLock sl (stateLock);
+            for (auto& p : setup.places)
+                if (placeId == p.placeId.c_str())
+                    p.levelDb = level;
+        }
+        kitEngine.setPlaceLevel (def->slot, level);
+    }
+
+    void SamplitProcessor::setGroupPick (const juce::String& choiceId, Pick pick)
+    {
+        const auto colon = choiceId.indexOfChar (':');
+        if (colon <= 0)
+            return;
+        const auto placeId = choiceId.substring (0, colon);
+        const auto groupId = choiceId.substring (colon + 1).toStdString();
+        {
+            const juce::ScopedLock sl (stateLock);
+            for (auto& p : setup.places)
+                if (placeId == p.placeId.c_str())
+                    p.picks[groupId] = pick;
+        }
+        if (const auto current = getKit())
+            for (int i = 0; i < (int) current->choices.size(); ++i)
+                if (choiceId == current->choices[(size_t) i].id.c_str())
+                    setPickChoice (i, pick);
+    }
+
+    void SamplitProcessor::setDataDirOverride (const juce::File& f) { dataDirOverrideRef() = f; }
+
+    Setup SamplitProcessor::loadDefaultSetup() const
+    {
+        const auto file = defaultSetupFile();
+        Setup loaded;
+        juce::String error;
+        if (file.existsAsFile() && Setup::fromJson (file.loadFileAsString(), loaded, error))
+            return loaded;
+        return Setup::factory();
+    }
+
+    bool SamplitProcessor::saveAsDefaultSetup()
+    {
+        dataDir.createDirectory();
+        return defaultSetupFile().replaceWithText (getSetup().toJson(), false, false, "\r\n");
+    }
+
+    void SamplitProcessor::resetToDefaultSetup()
+    {
+        setSetup (loadDefaultSetup());
+    }
+
+    void SamplitProcessor::restoreFactorySetup()
+    {
+        defaultSetupFile().deleteFile();
+        setSetup (Setup::factory());
+    }
+
+    void SamplitProcessor::rescanCatalog()
+    {
+        ++catalogEpoch;
+        applySetup();
     }
 
     std::vector<PresetEntry> SamplitProcessor::scanPresets() const
@@ -801,13 +1066,12 @@ namespace samplit
     void SamplitProcessor::getStateInformation (juce::MemoryBlock& dest)
     {
         juce::ValueTree state ("SAMPLIT");
-        state.setProperty ("version", 2, nullptr);
+        state.setProperty ("version", 3, nullptr);
 
+        Setup copy;
         {
             const juce::ScopedLock sl (stateLock);
-            state.setProperty ("preset", presetName, nullptr);
-            state.setProperty ("mix", mixName, nullptr);
-            state.setProperty ("mixModified", mixModified, nullptr);
+            copy = setup;
             for (const auto& [id, m] : savedMix)
             {
                 juce::ValueTree v ("MIC");
@@ -819,14 +1083,8 @@ namespace samplit
                 v.setProperty ("out", m.out, nullptr);
                 state.appendChild (v, nullptr);
             }
-            for (const auto& [id, pick] : savedPicks)
-            {
-                juce::ValueTree v ("PICK");
-                v.setProperty ("id", id, nullptr);
-                v.setProperty ("mode", pickToString (pick), nullptr);
-                state.appendChild (v, nullptr);
-            }
         }
+        state.setProperty ("setup", copy.toJson(), nullptr);
 
         if (auto xml = state.createXml())
             copyXmlToBinary (*xml, dest);
@@ -839,61 +1097,63 @@ namespace samplit
             return;
 
         const auto state = juce::ValueTree::fromXml (*xml);
-        if ((int) state.getProperty ("version", 0) < 2)
+        const int version = (int) state.getProperty ("version", 0);
+        if (version < 2)
             return;
 
         std::map<juce::String, MicState> mix;
-        std::map<juce::String, Pick> pickModes;
         for (const auto& v : state)
         {
-            if (v.hasType ("PIECE"))
-                continue;
+            if (! v.hasType ("MIC"))
+                continue;       // PRESET/PICK/PIECE/GROUP/ZONE и атрибуты старых версий не переносятся
+            MicState m;
+            m.levelDb = juce::jlimit (-60.0f, 12.0f, (float) v.getProperty ("level", 0.0));
+            m.pan = juce::jlimit (-1.0f, 1.0f, (float) v.getProperty ("pan", 0.0));
+            m.mute = (bool) v.getProperty ("mute", false);
+            m.solo = (bool) v.getProperty ("solo", false);
+            m.out = juce::jlimit (0, kNumOutputs, (int) v.getProperty ("out", 0));
+            mix[v.getProperty ("id").toString()] = m;
+        }
 
-            if (v.hasType ("PICK"))
+        Setup restored = Setup::factory();
+        if (version >= 3)
+        {
+            Setup parsed;
+            juce::String error;
+            if (Setup::fromJson (state.getProperty ("setup").toString(), parsed, error))
+                restored = std::move (parsed);
+        }
+        else
+        {
+            // Версия 2: был пресет. Заводская установка; малый барабан по id пресета, остальное пресет не задавал
+            const auto presetId = state.getProperty ("preset").toString();
+            const char* snarePack = "studio600-snare-live";
+            const char* snarePiece = "snare_live";
+            if (presetId == "studio600-ahead-low")
             {
-                Pick pick;
-                if (pickFromString (v.getProperty ("mode").toString(), pick))
-                    pickModes[v.getProperty ("id").toString()] = pick;
-                continue;
+                snarePack = "studio600-snare-low";
+                snarePiece = "snare_low";
             }
-
-            if (v.hasType ("MIC"))
+            else if (presetId == "studio600-ambasador")
             {
-                MicState m;
-                m.levelDb = juce::jlimit (-60.0f, 12.0f, (float) v.getProperty ("level", 0.0));
-                m.pan = juce::jlimit (-1.0f, 1.0f, (float) v.getProperty ("pan", 0.0));
-                m.mute = (bool) v.getProperty ("mute", false);
-                m.solo = (bool) v.getProperty ("solo", false);
-                m.out = juce::jlimit (0, kNumOutputs, (int) v.getProperty ("out", 0));
-                mix[v.getProperty ("id").toString()] = m;
-                continue;
+                snarePack = "studio600-snare-hi";
+                snarePiece = "snare_hi";
             }
-            // Узлы GROUP и ZONE (старый сэмплерный путь) и атрибут folder молча игнорируются
+            for (auto& p : restored.places)
+                if (p.placeId == "snare")
+                {
+                    p.packId = snarePack;
+                    p.pieceId = snarePiece;
+                }
         }
 
         {
             const juce::ScopedLock sl (stateLock);
-            presetName = state.getProperty ("preset").toString();
-            mixName = state.getProperty ("mix").toString();
-            mixModified = (bool) state.getProperty ("mixModified");
+            setup = std::move (restored);
             savedMix = std::move (mix);
-            savedPicks = std::move (pickModes);
         }
-
-        // Хост может звать setState не из message thread, а загрузка кита и микшер живут только там
-        std::weak_ptr<int> alive = lifeToken;
-        auto apply = [this, alive]
-        {
-            if (alive.expired())
-                return;
-            restorePreset();
-        };
-
-        auto* mm = juce::MessageManager::getInstanceWithoutCreating();
-        if (mm == nullptr || mm->isThisTheMessageThread())
-            apply();
-        else
-            juce::MessageManager::callAsync (apply);
+        initialApplyPending = false;
+        applySetupSoon();
     }
 }
 

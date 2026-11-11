@@ -90,6 +90,8 @@ namespace samplit
             o.store (-1);
         for (auto& c : choicePick)
             c.store (-1);
+        for (auto& g : placeGain)
+            g.store (1.0f, std::memory_order_relaxed);
         lastHit.fill (-1);
     }
 
@@ -171,6 +173,12 @@ namespace samplit
     {
         if (mic >= 0 && mic < Kit::kMaxMics)
             micOut[(size_t) mic].store (out < 0 ? -1 : std::min (out, kNumOutputs));
+    }
+
+    void KitEngine::setPlaceLevel (int slot, float levelDb) noexcept
+    {
+        if (slot >= 0 && slot < kMaxPlaces)
+            placeGain[(size_t) slot].store (juce::Decibels::decibelsToGain (levelDb, -100.0f), std::memory_order_relaxed);
     }
 
     bool KitEngine::isUsing (const Kit* kit) const noexcept
@@ -508,7 +516,9 @@ namespace samplit
         }
 
         auto& s = strikes[(size_t) slot];
-        const float velGain = kit->velocityGain == VelocityGain::Linear ? (float) velocity / 127.0f : 1.0f;
+        float velGain = kit->velocityGain == VelocityGain::Linear ? (float) velocity / 127.0f : 1.0f;
+        if (piece.slot >= 0 && piece.slot < (int) placeGain.size())
+            velGain *= placeGain[(size_t) piece.slot].load (std::memory_order_relaxed);
         int started = 0, missing = 0;
         for (int m = 0; m < (int) hit.files.size(); ++m)
         {

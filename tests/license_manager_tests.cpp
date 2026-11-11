@@ -298,6 +298,22 @@ namespace
     const char* kPresetJson = R"({ "format": 1, "id": "p1", "name": "Preset 1", "packs": ["kick", "snare", "cym"],
         "select": { "mode": "live" },
         "mics": { "oh": { "level": -4.0, "pan": 0.5, "out": 6 } } })";
+
+    // Установка с одним местом: бочка из пакета "kick" (writeKickPack), остальные места выключены
+    Setup kickSetup()
+    {
+        auto s = Setup::factory();
+        for (auto& p : s.places)
+        {
+            p.enabled = p.placeId == "kick";
+            if (p.enabled)
+            {
+                p.packId = "kick";
+                p.pieceId = "kick";
+            }
+        }
+        return s;
+    }
 }
 
 TEST_CASE ("presets show which packs are installed and licensed", "[licmgr]")
@@ -327,7 +343,7 @@ TEST_CASE ("presets show which packs are installed and licensed", "[licmgr]")
     CHECK_FALSE (presets[1].isPlayable());
 }
 
-TEST_CASE ("mixer: preset values, solo and mute, saved with the project", "[licmgr]")
+TEST_CASE ("mixer: solo and mute are saved with the project", "[licmgr]")
 {
     Env env;
     const auto kickKey = pack::generateKey();
@@ -343,18 +359,13 @@ TEST_CASE ("mixer: preset values, solo and mute, saved with the project", "[licm
         const auto presets = a.scanPresets();
         REQUIRE (presets.size() == 1);
 
-        bool called = false;
-        a.selectPreset (presets[0].preset, [&] (const KitLoadResult&) { called = true; });
-        REQUIRE (pumpUntil ([&] { return called; }));
-        REQUIRE (a.getKit() != nullptr);
-        CHECK (a.getPresetName() == "p1");
-        CHECK (a.getLastKitLoad().missingPacks.size() == 2);
+        a.setSetup (kickSetup());
+        REQUIRE (pumpUntil ([&] { return a.getKit() != nullptr && ! a.isKitLoading(); }));
 
-        // Значения пресета: oh на Out 6, −4 дБ, панорама 0,5; kick_in как в пакете
+        // Значения микрофонов из манифеста пака
         CHECK (a.getMicState (0).out == 1);
-        CHECK (a.getMicState (1).out == 6);
-        CHECK (a.getMicState (1).levelDb == -4.0f);
-        CHECK (a.getMicState (1).pan == 0.5f);
+        CHECK (a.getMicState (1).out == 2);
+        CHECK (a.getMicState (1).levelDb == 0.0f);
 
         auto m = a.getMicState (0);
         m.solo = true;
@@ -377,24 +388,17 @@ TEST_CASE ("mixer: preset values, solo and mute, saved with the project", "[licm
         a.getStateInformation (saved);
     }
 
-    // Новый экземпляр: пресет и микшер восстанавливаются из проекта
+    // Новый экземпляр: установка и микшер восстанавливаются из проекта
     SamplitProcessor b;
     b.prepareToPlay (44100.0, 512);
     b.setLicenseManager (started (env));
     b.setStateInformation (saved.getData(), (int) saved.getSize());
     REQUIRE (pumpUntil ([&] { return b.getKit() != nullptr && ! b.isKitLoading(); }));
-    CHECK (b.getPresetName() == "p1");
     CHECK (b.getMicState (0).solo);
     CHECK (b.getMicState (0).out == 3);
     CHECK (b.getMicState (1).mute);
     CHECK (b.getMicState (1).levelDb == -10.0f);
-
-    // Выбор пресета заново сбрасывает микшер к значениям пресета
-    bool called = false;
-    b.selectPreset (b.scanPresets()[0].preset, [&] (const KitLoadResult&) { called = true; });
-    REQUIRE (pumpUntil ([&] { return called; }));
-    CHECK_FALSE (b.getMicState (0).solo);
-    CHECK (b.getMicState (1).levelDb == -4.0f);
+    CHECK (b.getSetup().find ("kick")->packId == "kick");
 }
 
 TEST_CASE ("mixes: a preset takes its mix, a mix applies without reload, edits are flagged and saved", "[licmgr]")
@@ -857,4 +861,331 @@ TEST_CASE ("disabled licence: a preset without a library folder is not playable"
     CHECK_FALSE (got.ok());
     CHECK (got.error.contains ("папку библиотеки"_s));
     CHECK (processor.getKit() == nullptr);
+}
+
+// ---------------------------------------------------------------- установка Studio600 в процессоре
+
+namespace
+{
+    // Пак с одним барабаном типа tom на клавишах 96..97 (удар на 96), клип постоянной величины заданной длины
+    void writeTomPack (const juce::File& packDir, const juce::String& id, const juce::String& pieceId, int frames,
+                       const pack::PackKey& key)
+    {
+        packDir.createDirectory();
+        juce::String error;
+        auto w = pack::PackWriter::create (packDir.getChildFile (id + ".splpack"), id, key, error);
+        REQUIRE (w != nullptr);
+        pack::DecodedAudio a;
+        a.sampleRate = 44100.0;
+        a.frames = frames;
+        a.samples.assign ((size_t) frames, 2'000'000);
+        REQUIRE (w->addAudio (a, error) == 0);
+
+        pack::Manifest m;
+        m.id = id;
+        m.mics = { { "kick_in", "Kick In", "close", 1 }, { "oh", "OH", "overhead", 2 } };
+        pack::Piece p;
+        p.id = pieceId;
+        p.type = "tom";
+        p.keys = { 96, 97 };
+        p.layers = { { "all", "center", 1, 127 } };
+        pack::Hit h;
+        h.id = pieceId + "0";
+        h.layer = "all";
+        h.key = 96;
+        pack::HitFile f;
+        f.chunk = 0;
+        f.frames = frames;
+        f.rate = 44100.0;
+        f.peak = 2'000'000;
+        h.files["kick_in"] = f;
+        h.files["oh"] = f;
+        p.hits.push_back (h);
+        m.pieces.push_back (p);
+        REQUIRE (w->finish (m, error));
+    }
+
+    // Включены только tom_16l (пак pa) и tom_16m (пак pb)
+    Setup twoTomSetup()
+    {
+        auto s = Setup::factory();
+        for (auto& p : s.places)
+        {
+            p.enabled = p.placeId == "tom_16l" || p.placeId == "tom_16m";
+            if (p.placeId == "tom_16l") { p.packId = "pa"; p.pieceId = "a"; }
+            if (p.placeId == "tom_16m") { p.packId = "pb"; p.pieceId = "b"; }
+        }
+        return s;
+    }
+
+    struct SetupEnv
+    {
+        explicit SetupEnv (int frames = 400)
+        {
+            const auto ka = pack::generateKey(), kb = pack::generateKey(), kc = pack::generateKey();
+            writeTomPack (env.dir.getChildFile ("packs"), "pa", "a", frames, ka);
+            writeTomPack (env.dir.getChildFile ("packs"), "pb", "b", frames, kb);
+            writeTomPack (env.dir.getChildFile ("packs"), "pc", "c", frames, kc);
+            env.writeToken ({ { "pa", ka }, { "pb", kb }, { "pc", kc } });
+            processor.setRateAndBufferSizeDetails (44100.0, 512);
+            processor.prepareToPlay (44100.0, 512);
+            processor.setLicenseManager (started (env));
+        }
+
+        bool loaded() { return pumpUntil ([&] { return processor.getKit() != nullptr && ! processor.isKitLoading(); }); }
+
+        juce::AudioBuffer<float> block (int note = -1)
+        {
+            juce::AudioBuffer<float> buffer (processor.getTotalNumOutputChannels(), 512);
+            juce::MidiBuffer midi;
+            if (note >= 0)
+                midi.addEvent (juce::MidiMessage::noteOn (1, note, 1.0f), 0);
+            processor.processBlock (buffer, midi);
+            return buffer;
+        }
+
+        Env env;
+        SamplitProcessor processor;
+    };
+
+    juce::MemoryBlock stateOf (const juce::ValueTree& tree)
+    {
+        juce::MemoryBlock mb;
+        const auto xml = tree.createXml();
+        SamplitProcessor::copyXmlToBinary (*xml, mb);
+        return mb;
+    }
+}
+
+TEST_CASE ("setup state v3 round trip keeps setup and mixer", "[licmgr][setup]")
+{
+    SetupEnv e;
+    auto s = twoTomSetup();
+    s.places[8].levelDb = -3.5f;                     // tom_16l
+    s.places[9].picks["g"] = Pick::Cycle;            // tom_16m
+    e.processor.setSetup (s);
+    REQUIRE (e.loaded());
+    auto m = e.processor.getMicState (1);
+    m.levelDb = -7.0f;
+    m.mute = true;
+    e.processor.setMicState (1, m);
+
+    juce::MemoryBlock saved;
+    e.processor.getStateInformation (saved);
+    const auto xml = SamplitProcessor::getXmlFromBinary (saved.getData(), (int) saved.getSize());
+    REQUIRE (xml != nullptr);
+    CHECK (xml->getIntAttribute ("version") == 3);
+    CHECK (xml->hasAttribute ("setup"));
+    CHECK_FALSE (xml->hasAttribute ("preset"));
+    CHECK (xml->getChildByName ("PICK") == nullptr);
+
+    SetupEnv f;
+    f.processor.setStateInformation (saved.getData(), (int) saved.getSize());
+    REQUIRE (f.loaded());
+    const auto got = f.processor.getSetup();
+    CHECK (got.find ("tom_16l")->levelDb == -3.5f);
+    CHECK (got.find ("tom_16l")->packId == "pa");
+    CHECK (got.find ("tom_16m")->picks.at ("g") == Pick::Cycle);
+    CHECK_FALSE (got.find ("kick")->enabled);
+    CHECK (f.processor.getMicState (1).levelDb == -7.0f);
+    CHECK (f.processor.getMicState (1).mute);
+}
+
+TEST_CASE ("setup state v2 migrates: snare by preset id, MIC kept, PICK dropped", "[licmgr][setup]")
+{
+    auto makeV2 = [] (const char* presetId)
+    {
+        juce::ValueTree t ("SAMPLIT");
+        t.setProperty ("version", 2, nullptr);
+        t.setProperty ("preset", presetId, nullptr);
+        t.setProperty ("mix", "some-mix", nullptr);
+        juce::ValueTree mic ("MIC");
+        mic.setProperty ("id", "sn_top", nullptr);
+        mic.setProperty ("level", -4.0f, nullptr);
+        mic.setProperty ("out", 3, nullptr);
+        t.appendChild (mic, nullptr);
+        juce::ValueTree pick ("PICK");
+        pick.setProperty ("id", "snare", nullptr);
+        pick.setProperty ("mode", pickToString (Pick::Cycle), nullptr);
+        t.appendChild (pick, nullptr);
+        return stateOf (t);
+    };
+
+    struct Case { const char* preset; const char* pack; const char* piece; };
+    for (const auto& c : { Case { "studio600-ahead-low", "studio600-snare-low", "snare_low" },
+                           Case { "studio600-ambasador", "studio600-snare-hi", "snare_hi" },
+                           Case { "something-else", "studio600-snare-live", "snare_live" } })
+    {
+        SetupEnv e;
+        const auto v2 = makeV2 (c.preset);
+        e.processor.setStateInformation (v2.getData(), (int) v2.getSize());
+        const auto s = e.processor.getSetup();
+        CHECK (s.find ("snare")->packId == c.pack);
+        CHECK (s.find ("snare")->pieceId == c.piece);
+        CHECK (s.find ("kick")->packId == "studio600-kick-rode");      // остальное заводское
+        CHECK (s.find ("snare")->picks.empty());
+
+        juce::MemoryBlock again;
+        e.processor.getStateInformation (again);
+        const auto xml = SamplitProcessor::getXmlFromBinary (again.getData(), (int) again.getSize());
+        REQUIRE (xml != nullptr);
+        CHECK (xml->getIntAttribute ("version") == 3);
+        CHECK (xml->getChildByName ("PICK") == nullptr);
+        CHECK_FALSE (xml->hasAttribute ("mix"));
+        const auto* mic = xml->getChildByName ("MIC");
+        REQUIRE (mic != nullptr);
+        CHECK (mic->getStringAttribute ("id") == "sn_top");
+        CHECK (mic->getDoubleAttribute ("level") == -4.0);
+        CHECK (mic->getIntAttribute ("out") == 3);
+    }
+}
+
+TEST_CASE ("place level changes without reloading the kit", "[licmgr][setup]")
+{
+    SetupEnv e;
+    e.processor.setSetup (twoTomSetup());
+    REQUIRE (e.loaded());
+    const auto kit = e.processor.getKit();
+    const auto serial = kit->serial.value;
+
+    const auto first = kittest::KitFixture::peak (e.block (96), 0);
+    REQUIRE (first > 0.1f);
+    e.block();      // клип кончился
+
+    e.processor.setPlaceLevel ("tom_16l", -6.0206f);
+    CHECK (e.processor.getSetup().find ("tom_16l")->levelDb == -6.0206f);
+    CHECK_FALSE (e.processor.isKitLoading());
+    CHECK (e.processor.getKit() == kit);
+    CHECK (e.processor.getKit()->serial.value == serial);
+
+    const auto second = kittest::KitFixture::peak (e.block (96), 0);
+    CHECK (std::abs (second - first * 0.5f) < 0.01f);
+
+    // Второе место (клавиша 98) уровнем первого не затронуто
+    e.block();
+    const auto other = kittest::KitFixture::peak (e.block (98), 0);
+    CHECK (std::abs (other - first) < 0.01f);
+}
+
+TEST_CASE ("changing the pack of one place does not interrupt a sounding strike of another", "[licmgr][setup]")
+{
+    SetupEnv e (300000);        // ~6.8 с: удар звучит дольше всей смены пака
+    e.processor.setSetup (twoTomSetup());
+    REQUIRE (e.loaded());
+    const auto firstSerial = e.processor.getKit()->serial.value;
+
+    auto minOf = [] (const juce::AudioBuffer<float>& b)
+    {
+        float m = 1e9f;
+        for (int ch = 0; ch < 2; ++ch)
+            for (int i = 0; i < b.getNumSamples(); ++i)
+                m = std::min (m, std::abs (b.getSample (ch, i)));
+        return m;
+    };
+
+    CHECK (minOf (e.block (96)) > 0.1f);        // tom_16l играет
+    e.processor.setPlacePack ("tom_16m", "pc", "c");
+    bool swapped = false;
+    int blocks = 0;
+    for (int i = 0; i < 600 && ! swapped; ++i, ++blocks)
+    {
+        CHECK (minOf (e.block()) > 0.1f);       // хвост звучит без разрывов во время загрузки и после публикации
+        juce::MessageManager::getInstance()->runDispatchLoopUntil (5);
+        swapped = e.processor.getKit()->serial.value != firstSerial;
+    }
+    REQUIRE (swapped);
+    for (int i = 0; i < 20; ++i)
+        CHECK (minOf (e.block()) > 0.1f);
+    CHECK (e.processor.getSetup().find ("tom_16m")->packId == "pc");
+}
+
+TEST_CASE ("second setup apply reuses clips and decodes nothing", "[licmgr][setup]")
+{
+    SetupEnv e;
+    e.processor.setSetup (twoTomSetup());
+    REQUIRE (e.loaded());
+
+    bool called = false;
+    KitLoadResult got;
+    e.processor.applySetup ([&] (const KitLoadResult& r) { called = true; got = r; });
+    REQUIRE (pumpUntil ([&] { return called; }));
+    REQUIRE (got.ok());
+    CHECK (got.decodedClips == 0);
+    CHECK (got.reusedClips > 0);
+    CHECK_FALSE (e.processor.getCatalog().empty());
+}
+
+TEST_CASE ("setup apply without any pack reports an error and keeps the old kit", "[licmgr][setup]")
+{
+    SetupEnv e;
+    e.processor.setSetup (twoTomSetup());
+    REQUIRE (e.loaded());
+    const auto kit = e.processor.getKit();
+
+    auto s = twoTomSetup();
+    for (auto& p : s.places)
+        if (p.enabled)
+            p.packId = "missing";
+    e.processor.setSetup (s);
+    REQUIRE (pumpUntil ([&] { return ! e.processor.isKitLoading(); }));
+    CHECK (e.processor.getLastKitLoad().error.isNotEmpty());
+    CHECK (e.processor.getKit() == kit);
+}
+
+TEST_CASE ("group pick goes to the engine and the setup", "[licmgr][setup]")
+{
+    SetupEnv e;
+    e.processor.setSetup (twoTomSetup());
+    REQUIRE (e.loaded());
+    const auto kit = e.processor.getKit();
+    REQUIRE_FALSE (kit->choices.empty());
+    const auto id = juce::String (kit->choices[0].id);
+    e.processor.setGroupPick (id, Pick::Cycle);
+    CHECK (e.processor.getPickChoice (0) == Pick::Cycle);
+    const auto colon = id.indexOfChar (':');
+    CHECK (e.processor.getSetup().find (id.substring (0, colon).toStdString())->picks.at (id.substring (colon + 1).toStdString()) == Pick::Cycle);
+}
+
+TEST_CASE ("default setup: save, reset and factory restore", "[licmgr][setup]")
+{
+    SetupEnv e;
+    const auto file = e.processor.getDataDir().getChildFile ("default-setup.json");
+    REQUIRE (e.processor.getDataDir() == e.env.dir);
+    file.deleteFile();
+
+    e.processor.setPlaceLevel ("kick", -5.0f);
+    REQUIRE (e.processor.saveAsDefaultSetup());
+    CHECK (file.existsAsFile());
+
+    e.processor.setPlaceLevel ("kick", 3.0f);
+    e.processor.resetToDefaultSetup();
+    CHECK (e.processor.getSetup().find ("kick")->levelDb == -5.0f);
+
+    e.processor.restoreFactorySetup();
+    CHECK_FALSE (file.existsAsFile());
+    CHECK (e.processor.getSetup().find ("kick")->levelDb == 0.0f);
+    CHECK (e.processor.getSetup().toJson() == Setup::factory().toJson());
+}
+
+TEST_CASE ("broken default setup falls back to factory; a new instance takes the saved default", "[licmgr][setup]")
+{
+    Env env;
+    SamplitProcessor::setDataDirOverride (env.dir);
+    struct Reset { ~Reset() { SamplitProcessor::setDataDirOverride ({}); } } reset;
+    const auto file = env.dir.getChildFile ("default-setup.json");
+
+    {
+        auto s = Setup::factory();
+        s.places[0].levelDb = -2.0f;
+        file.replaceWithText (s.toJson());
+        SamplitProcessor p;
+        CHECK (p.getSetup().find ("kick")->levelDb == -2.0f);
+    }
+    {
+        file.replaceWithText ("{ not json");
+        SamplitProcessor p;
+        CHECK (p.getSetup().toJson() == Setup::factory().toJson());
+        p.resetToDefaultSetup();
+        CHECK (p.getSetup().toJson() == Setup::factory().toJson());
+    }
 }
