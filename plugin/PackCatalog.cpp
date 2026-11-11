@@ -4,6 +4,8 @@
 
 namespace samplit
 {
+    using pack::operator""_s;
+
     namespace
     {
         bool layerUnverified (const pack::Piece& piece, const juce::String& layerId)
@@ -24,6 +26,7 @@ namespace samplit
                 CatalogPiece piece;
                 piece.id = p.id;
                 piece.type = p.type;
+                piece.keys = p.keys;
                 piece.name = p.name.isNotEmpty() ? p.name : p.id;
                 for (const auto& g : p.groups)
                 {
@@ -94,5 +97,71 @@ namespace samplit
                 out.push_back (std::move (c));
         }
         return out;
+    }
+
+    KitSpec makeKitSpec (const Setup& setup, const std::vector<CatalogPack>& catalog, bool includeUnverified,
+                         std::vector<juce::String>& warnings)
+    {
+        KitSpec spec;
+        spec.includeUnverified = includeUnverified;
+
+        for (const auto& ps : setup.places)
+        {
+            const auto* def = findPlace (ps.placeId);
+            if (! ps.enabled || def == nullptr)
+                continue;
+
+            KitSpec::Place place;
+            place.slot = def->slot;
+            place.placeId = ps.placeId;
+            place.packId = juce::String (ps.packId);
+            place.pieceId = juce::String (ps.pieceId);
+            place.picks = ps.picks;
+
+            const CatalogPack* pack = nullptr;
+            for (const auto& c : catalog)
+                if (c.packId == place.packId)
+                    pack = &c;
+
+            if (pack != nullptr)
+            {
+                const CatalogPiece* piece = nullptr;
+                if (place.pieceId.isNotEmpty())
+                {
+                    for (const auto& p : pack->pieces)
+                        if (p.id == place.pieceId)
+                            piece = &p;
+                }
+                else
+                {
+                    int count = 0;
+                    for (const auto& p : pack->pieces)
+                        if (p.type == juce::String (def->type))
+                        {
+                            if (piece == nullptr)
+                                piece = &p;
+                            ++count;
+                        }
+                    if (count > 1)
+                        warnings.push_back ("Место "_s + juce::String::fromUTF8 (def->id) + ": в паке "_s + place.packId
+                                            + " несколько барабанов типа "_s + juce::String (def->type) + ", взят "_s + piece->id);
+                    if (piece != nullptr)
+                        place.pieceId = piece->id;
+                }
+
+                if (piece == nullptr)
+                    warnings.push_back ("Место "_s + juce::String::fromUTF8 (def->id) + ": в паке "_s + place.packId
+                                        + " нет нужного барабана"_s);
+                else
+                {
+                    auto mapping = mapKeysToPlace (piece->keys, piece->type.toStdString(), *def);
+                    place.keyMap = std::move (mapping.keys);
+                    for (const auto& w : mapping.warnings)
+                        warnings.push_back (w);
+                }
+            }
+            spec.places.push_back (std::move (place));
+        }
+        return spec;
     }
 }

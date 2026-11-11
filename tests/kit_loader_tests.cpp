@@ -1,5 +1,6 @@
 #include "KitEngine.h"
 #include "KitLoader.h"
+#include "PackCatalog.h"
 #include "PluginProcessor.h"
 
 #include <catch2/catch_test_macros.hpp>
@@ -551,4 +552,357 @@ TEST_CASE ("loadKit plays a local WAV library in full length, 24-bit exact, with
     // Папки с манифестом нет: пакет пресета считается недоступным, а не падением
     opts.manifestDir = dir.getChildFile ("none");
     CHECK_FALSE (loadKit (presetOf ({ "local" }), opts).ok());
+}
+
+// ---------------------------------------------------------------- KitSpec (установка Studio600)
+
+namespace
+{
+    struct SpecLayer
+    {
+        juce::String id;
+        int lo = 1, hi = 127, hitKey = 96;
+        juce::String pick;
+        bool unverified = false;
+        int layerKey = -1;
+    };
+
+    pack::Group groupDef (const juce::String& id, std::vector<juce::String> layers, const juce::String& pick = {},
+                          std::vector<juce::String> picks = {})
+    {
+        pack::Group g;
+        g.id = id;
+        g.name = id;
+        g.layers = std::move (layers);
+        g.pick = pick;
+        g.picks = std::move (picks);
+        return g;
+    }
+
+    // Барабан типа tom: по одному удару на слой; блоки пака 0..2 используются по кругу
+    pack::Piece specPiece (const juce::String& id, std::vector<int> keys, const std::vector<SpecLayer>& layers,
+                           std::vector<pack::Group> groups = {})
+    {
+        pack::Piece p;
+        p.id = id;
+        p.name = id;
+        p.type = "tom";
+        p.keys = std::move (keys);
+        p.groups = std::move (groups);
+        int n = 0;
+        for (const auto& l : layers)
+        {
+            pack::Layer ml { l.id, "center", l.lo, l.hi };
+            if (l.pick.isNotEmpty())
+                ml.extra.set ("pick", l.pick);
+            if (l.unverified)
+                ml.extra.set ("unverified", true);
+            if (l.layerKey >= 0)
+                ml.extra.set ("key", l.layerKey);
+            p.layers.push_back (ml);
+
+            pack::Hit h;
+            h.id = id + "_" + l.id;
+            h.layer = l.id;
+            h.key = l.hitKey;
+            h.velLo = l.lo;
+            h.velHi = l.hi;
+            h.files["kick_in"] = fileOf (n % 3);
+            h.files["oh"] = fileOf ((n + 1) % 3);
+            if (l.unverified)
+                h.extra.set ("unverified", true);
+            p.hits.push_back (h);
+            ++n;
+        }
+        return p;
+    }
+
+    pack::PackKey writeSpecPack (const juce::File& dir, const juce::String& id, const std::vector<pack::Piece>& pieces)
+    {
+        const auto key = pack::generateKey();
+        juce::String error;
+        auto w = pack::PackWriter::create (dir.getChildFile (id + ".splpack"), id, key, error);
+        REQUIRE (w != nullptr);
+        REQUIRE (w->addAudio (tone (1000, 100000), error) == 0);
+        REQUIRE (w->addAudio (tone (1000, 200000), error) == 1);
+        REQUIRE (w->addAudio (tone (1000, 300000), error) == 2);
+        pack::Manifest m;
+        m.id = id;
+        m.mics = { { "kick_in", "Kick In", "close", 1 }, { "oh", "OH", "overhead", 2 } };
+        m.pieces = pieces;
+        REQUIRE (w->finish (m, error));
+        return key;
+    }
+
+    KitSpec::Place placeOf (const char* placeId, int slot, const juce::String& packId, const juce::String& pieceId,
+                            std::vector<int> keys)
+    {
+        KitSpec::Place p;
+        p.slot = slot;
+        p.placeId = placeId;
+        p.packId = packId;
+        p.pieceId = pieceId;
+        for (int k : keys)
+            p.keyMap[k] = k;
+        return p;
+    }
+
+    std::vector<SpecLayer> threeLayers (int key)
+    {
+        return { { "s", 1, 40, key }, { "m", 41, 90, key }, { "h", 91, 127, key } };
+    }
+
+    const PickChoice* findChoice (const Kit& kit, const std::string& id)
+    {
+        for (const auto& c : kit.choices)
+            if (c.id == id)
+                return &c;
+        return nullptr;
+    }
+}
+
+TEST_CASE ("KitSpec: two places from one pack read it once", "[loader][spec]")
+{
+    const auto dir = loaderDir();
+    const auto key = writeSpecPack (dir, "tp1", {
+        specPiece ("a", { 96, 97 }, { { "s", 1, 60, 96 }, { "h", 61, 127, 97 }, { "x", 1, 127, 96, {}, true } },
+                   { groupDef ("g1", { "s", "h" }), groupDef ("g2", { "x" }) }),
+        specPiece ("b", { 98 }, { { "u", 1, 64, 98 }, { "v", 65, 127, 98 } }) });
+    const auto opts = optionsFor (dir, { { "tp1", key } });
+
+    KitSpec spec;
+    spec.places.push_back (placeOf ("tom_16l", 8, "tp1", "a", { 96, 97 }));
+    spec.places.push_back (placeOf ("tom_16m", 9, "tp1", "b", { 98 }));
+
+    auto res = loadKit (spec, opts);
+    REQUIRE (res.ok());
+    REQUIRE (res.kit->pieces.size() == 2);
+    CHECK (res.kit->pieces[0].slot == 8);
+    CHECK (res.kit->pieces[1].slot == 9);
+    CHECK (res.kit->pieces[0].id == "a");
+    CHECK (res.decodedClips == 3);      // три блока пака, прочитаны один раз
+    CHECK (res.reusedClips == 0);
+    CHECK (res.kit->pieces[0].hits[0].files[0].clip == res.kit->pieces[1].hits[0].files[0].clip);
+
+    // Непроверенный слой x и его группа g2 не попали; у барабана b групп нет: группа на слой, имя «нота диапазон»
+    REQUIRE (res.kit->choices.size() == 3);
+    const auto* g1 = findChoice (*res.kit, "tom_16l:g1");
+    REQUIRE (g1 != nullptr);
+    CHECK (g1->pieces == std::vector<int> { 0 });
+    CHECK (res.kit->pieces[0].layers.size() == 2);
+    CHECK (res.kit->pieces[0].layers[0].choice == 0);
+    const auto* u = findChoice (*res.kit, "tom_16m:u");
+    REQUIRE (u != nullptr);
+    CHECK (juce::String::fromUTF8 (u->name.c_str()) == "D6 1–64"_s);
+    CHECK (findChoice (*res.kit, "tom_16m:v") != nullptr);
+    CHECK (res.kit->pieces[1].layers[0].choice == 1);
+
+    spec.includeUnverified = true;
+    res = loadKit (spec, opts);
+    REQUIRE (res.ok());
+    CHECK (res.kit->choices.size() == 4);
+    CHECK (res.kit->pieces[0].hits.size() == 3);
+    CHECK (findChoice (*res.kit, "tom_16l:g2") != nullptr);
+}
+
+TEST_CASE ("KitSpec: key shift reaches notes, dropped keys warn, disabled place is silent", "[loader][spec]")
+{
+    const auto dir = loaderDir();
+    const auto key = writeSpecPack (dir, "tp1", { specPiece ("a", { 96, 97 }, { { "s", 1, 60, 96 }, { "h", 61, 127, 97, {}, false, 97 } }) });
+    const auto opts = optionsFor (dir, { { "tp1", key } });
+
+    // Место tom_16m (98-99): клавиши барабана 96,97 уезжают на 98,99
+    KitSpec spec;
+    KitSpec::Place pl;
+    pl.slot = 9;
+    pl.placeId = "tom_16m";
+    pl.packId = "tp1";
+    pl.pieceId = "a";
+    const auto mapping = mapKeysToPlace ({ 96, 97 }, "tom", *findPlace ("tom_16m"));
+    pl.keyMap = mapping.keys;
+    spec.places.push_back (pl);
+
+    auto res = loadKit (spec, opts);
+    REQUIRE (res.ok());
+    CHECK (res.kit->pieces[0].keys == std::vector<int> { 98, 99 });
+    CHECK (res.kit->pieces[0].hits[1].key == 99);
+    CHECK (res.kit->pieces[0].layers[1].key == 99);     // клавиша слоя тоже перенесена
+    CHECK (res.kit->notes[98].piece == 0);
+    CHECK (res.kit->notes[99].piece == 0);
+    CHECK (res.kit->notes[96].piece < 0);               // тут теперь место tom_16l, которого в spec нет: молчит
+    CHECK (res.kit->notes[97].piece < 0);
+
+    // Клавиши нет в переносе: удар и слой отбрасываются с предупреждением, кит собирается
+    spec.places[0].keyMap = { { 96, 98 } };
+    res = loadKit (spec, opts);
+    REQUIRE (res.ok());
+    CHECK (res.kit->pieces[0].hits.size() == 1);
+    CHECK (res.kit->pieces[0].layers.size() == 1);
+    CHECK_FALSE (res.warnings.empty());
+}
+
+TEST_CASE ("KitSpec: missing pack silences its place, the rest plays", "[loader][spec]")
+{
+    const auto dir = loaderDir();
+    const auto key = writeSpecPack (dir, "tp1", { specPiece ("a", { 96 }, { { "s", 1, 127, 96 } }) });
+    const auto opts = optionsFor (dir, { { "tp1", key } });
+
+    KitSpec spec;
+    spec.places.push_back (placeOf ("tom_16l", 8, "tp1", "a", { 96 }));
+    spec.places.push_back (placeOf ("tom_16m", 9, "nopack", "z", { 98 }));
+    auto res = loadKit (spec, opts);
+    REQUIRE (res.ok());
+    REQUIRE (res.kit->pieces.size() == 1);
+    CHECK (res.kit->notes[96].piece == 0);
+    CHECK (res.kit->notes[98].piece < 0);
+    REQUIRE (res.missingPacks.size() == 1);
+    CHECK (res.missingPacks[0] == "nopack");
+
+    // Ни одного доступного пака: ошибка, как у пресета
+    KitSpec none;
+    none.places.push_back (placeOf ("tom_16m", 9, "nopack", "z", { 98 }));
+    CHECK_FALSE (loadKit (none, opts).ok());
+}
+
+TEST_CASE ("KitSpec: reuse takes clips from the current kit and decodes only what changed", "[loader][spec]")
+{
+    const auto dir = loaderDir();
+    const auto k1 = writeSpecPack (dir, "tp1", { specPiece ("a", { 96 }, threeLayers (96)) });
+    const auto k2 = writeSpecPack (dir, "tp2", { specPiece ("c", { 98 }, threeLayers (98)) });
+    const auto k3 = writeSpecPack (dir, "tp3", { specPiece ("d", { 98 }, threeLayers (98)) });
+    const auto opts = optionsFor (dir, { { "tp1", k1 }, { "tp2", k2 }, { "tp3", k3 } });
+
+    KitSpec spec;
+    spec.places.push_back (placeOf ("tom_16l", 8, "tp1", "a", { 96 }));
+    spec.places.push_back (placeOf ("tom_16m", 9, "tp2", "c", { 98 }));
+
+    const auto first = loadKit (spec, opts);
+    REQUIRE (first.ok());
+    CHECK (first.decodedClips == 6);
+
+    auto o = opts;
+    o.reuse = first.kit;
+    const auto second = loadKit (spec, o);
+    REQUIRE (second.ok());
+    CHECK (second.decodedClips == 0);
+    CHECK (second.reusedClips == 6);
+    CHECK (second.kit.get() != first.kit.get());
+    CHECK (second.kit->serial.value != first.kit->serial.value);
+    CHECK (second.kit->pieces[1].hits[2].files[1].clip == first.kit->pieces[1].hits[2].files[1].clip);
+    CHECK (second.memoryBytes == first.memoryBytes);
+
+    // Другой пак на втором месте: декодируется только он
+    spec.places[1] = placeOf ("tom_16m", 9, "tp3", "d", { 98 });
+    o.reuse = second.kit;
+    const auto third = loadKit (spec, o);
+    REQUIRE (third.ok());
+    CHECK (third.decodedClips == 3);
+    CHECK (third.reusedClips == 3);
+    CHECK (third.kit->pieces[0].hits[0].files[0].clip == second.kit->pieces[0].hits[0].files[0].clip);
+    CHECK (third.kit->pieces[1].hits[0].files[0].clip != second.kit->pieces[1].hits[0].files[0].clip);
+}
+
+TEST_CASE ("KitSpec: pick priority is user, group, layer, random; a pick outside picks is ignored", "[loader][spec]")
+{
+    const auto dir = loaderDir();
+    const auto key = writeSpecPack (dir, "tp1", { specPiece ("pr", { 96, 97, 98, 99, 100 }, {
+            { "lu", 1, 127, 96, "exact" },
+            { "lg", 1, 127, 97, "random" },
+            { "ll", 1, 127, 98, "exact" },
+            { "ld", 1, 127, 99 },
+            { "lx", 1, 127, 100 } },
+        { groupDef ("gU", { "lu" }, "random"),
+          groupDef ("gG", { "lg" }, "exact"),
+          groupDef ("gL", { "ll" }),
+          groupDef ("gD", { "ld" }),
+          groupDef ("gX", { "lx" }, "cycle", { "random", "cycle" }) }) });
+    const auto opts = optionsFor (dir, { { "tp1", key } });
+
+    KitSpec spec;
+    spec.places.push_back (placeOf ("tom_14", 10, "tp1", "pr", { 96, 97, 98, 99, 100 }));
+    spec.places[0].picks["gU"] = Pick::Cycle;
+    spec.places[0].picks["gX"] = Pick::Exact;       // gX не разрешает exact: берётся Group::pick
+
+    const auto res = loadKit (spec, opts);
+    REQUIRE (res.ok());
+    const auto& layers = res.kit->pieces[0].layers;
+    CHECK (layers[0].pick == Pick::Cycle);      // выбор пользователя
+    CHECK (layers[1].pick == Pick::Exact);      // Group::pick поверх pick слоя
+    CHECK (layers[2].pick == Pick::Exact);      // pick слоя
+    CHECK (layers[3].pick == Pick::Random);     // умолчание
+    CHECK (layers[4].pick == Pick::Cycle);      // exact вне picks игнорируется
+    CHECK (findChoice (*res.kit, "tom_14:gU")->pick == Pick::Cycle);
+    CHECK (findChoice (*res.kit, "tom_14:gG")->pick == Pick::Exact);
+    CHECK (findChoice (*res.kit, "tom_14:gX")->pick == Pick::Cycle);
+    CHECK (res.kit->notes[96].layers[0].pick == Pick::Cycle);
+}
+
+TEST_CASE ("KitSpec: choices over kMaxChoices are skipped with a warning", "[loader][spec]")
+{
+    const auto dir = loaderDir();
+    std::vector<SpecLayer> layers;
+    for (int i = 0; i < Kit::kMaxChoices + 3; ++i)
+        layers.push_back ({ "l" + juce::String (i), 1, 127, 96 });
+    const auto key = writeSpecPack (dir, "tp1", { specPiece ("a", { 96 }, layers) });
+    KitSpec spec;
+    spec.places.push_back (placeOf ("tom_16l", 8, "tp1", "a", { 96 }));
+    const auto res = loadKit (spec, optionsFor (dir, { { "tp1", key } }));
+    REQUIRE (res.ok());
+    CHECK ((int) res.kit->choices.size() == Kit::kMaxChoices);
+    CHECK (res.kit->pieces[0].layers.back().choice == -1);
+    CHECK_FALSE (res.warnings.empty());
+}
+
+TEST_CASE ("makeKitSpec builds the spec from Setup and the catalog", "[loader][spec]")
+{
+    auto drum = [] (const char* id, const char* type, std::vector<int> keys)
+    {
+        CatalogPiece p;
+        p.id = id;
+        p.type = type;
+        p.name = id;
+        p.keys = std::move (keys);
+        return p;
+    };
+    std::vector<CatalogPack> catalog (3);
+    catalog[0].packId = "studio600-kick-rode";
+    catalog[0].pieces = { drum ("kick", "kick", { 24 }) };
+    catalog[1].packId = "studio600-toms";
+    catalog[1].pieces = { drum ("tom_16l", "tom", { 96, 97 }), drum ("tom_16m", "tom", { 96, 97 }) };
+    catalog[2].packId = "studio600-snare-live";
+    catalog[2].pieces = { drum ("snare_a", "snare", { 25, 26 }), drum ("snare_b", "snare", { 25 }) };
+
+    auto setup = Setup::factory();
+    for (auto& p : setup.places)
+    {
+        if (p.placeId == "hat")
+            p.enabled = false;
+        if (p.placeId == "snare")
+            p.pieceId.clear();          // единственный барабан типа; тут их два
+    }
+
+    std::vector<juce::String> warnings;
+    const auto spec = makeKitSpec (setup, catalog, true, warnings);
+    CHECK (spec.includeUnverified);
+    CHECK (spec.places.size() == 11);   // hat выключен
+    for (const auto& p : spec.places)
+        CHECK (p.placeId != "hat");
+
+    auto find = [&] (const char* id) -> const KitSpec::Place&
+    {
+        for (const auto& p : spec.places)
+            if (p.placeId == id)
+                return p;
+        FAIL ("no place " << id);
+        return spec.places[0];
+    };
+    CHECK (find ("kick").keyMap == std::map<int, int> { { 24, 24 } });
+    CHECK (find ("tom_16l").keyMap == std::map<int, int> { { 96, 96 }, { 97, 97 } });
+    CHECK (find ("tom_16m").keyMap == std::map<int, int> { { 96, 98 }, { 97, 99 } });
+    CHECK (find ("tom_16m").slot == 9);
+    CHECK (find ("snare").pieceId == "snare_a");
+    CHECK_FALSE (warnings.empty());             // два барабана типа snare
+    // Пака нет в каталоге: место осталось, выбор не стёрт, клавиш нет
+    CHECK (find ("crash_a").packId == "studio600-crash18");
+    CHECK (find ("crash_a").keyMap.empty());
 }

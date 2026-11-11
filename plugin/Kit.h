@@ -23,23 +23,27 @@ namespace samplit
         int totalFrames = 0;            // 0: клип целиком в f32; иначе полная длина области (голова + хвост на диске)
         std::string path;               // потоковый клип: WAV (UTF-8)
         int64_t dataOffset = 0;         // потоковый клип: байт файла, с которого начинается область (учтён start)
+        std::string sourceKey;          // откуда клип (пак, блок, обрезка): по нему загрузчик переиспользует клип в новом ките
 
         int frames() const noexcept { return totalFrames > 0 ? totalFrames : (int) f32.size(); }
         int headFrames() const noexcept { return (int) f32.size(); }
         bool isStreamed() const noexcept { return totalFrames > (int) f32.size(); }
 
-        static std::shared_ptr<const DecodedClip> fromFloat (std::vector<float> data, double rate)
+        static std::shared_ptr<const DecodedClip> fromFloat (std::vector<float> data, double rate, std::string sourceKey = {})
         {
             auto c = std::make_shared<DecodedClip>();
+            c->sourceKey = std::move (sourceKey);
             c->f32 = std::move (data);
             c->sampleRate = rate;
             return c;
         }
 
         static std::shared_ptr<const DecodedClip> fromStream (std::vector<float> head, int total, double rate,
-                                                              std::string path, int64_t dataOffset)
+                                                              std::string path, int64_t dataOffset,
+                                                              std::string sourceKey = {})
         {
             auto c = std::make_shared<DecodedClip>();
+            c->sourceKey = std::move (sourceKey);
             c->f32 = std::move (head);
             c->totalFrames = total;
             c->sampleRate = rate;
@@ -102,6 +106,7 @@ namespace samplit
     struct Piece
     {
         std::string id, name;
+        int slot = -1;                  // место установки (Setup), -1: кит из пресета
         std::vector<int> keys;
         int choke = -1;
         std::vector<Layer> layers;

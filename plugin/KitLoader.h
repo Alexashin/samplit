@@ -98,6 +98,25 @@ namespace samplit
         const std::atomic<bool>* cancel = nullptr;      // true: загрузка прерывается
         std::function<void (float)> progress;           // 0..1, зовётся из рабочих потоков
         int threads = 0;                                // 0: по числу ядер
+        // Текущий кит: его клипы (по DecodedClip::sourceKey) берутся без повторного декодирования
+        std::shared_ptr<const Kit> reuse;
+    };
+
+    // Состав кита по установке (docs/setup-spec.md §3.3): что играет на каких местах. Выключенных мест здесь нет
+    struct KitSpec
+    {
+        struct Place
+        {
+            int slot = 0;
+            std::string placeId;
+            juce::String packId, pieceId;           // pieceId пуст: единственный барабан типа места
+            std::map<int, int> keyMap;              // клавиша барабана -> клавиша места
+            std::map<std::string, Pick> picks;      // id группы -> выбор пользователя
+        };
+
+        std::vector<Place> places;
+        bool includeUnverified = false;
+        HitSelect mode = HitSelect::Live;
     };
 
     struct KitLoadResult
@@ -109,6 +128,8 @@ namespace samplit
         juce::String error;
         bool cancelled = false;
         int64_t memoryBytes = 0;
+        int decodedClips = 0;       // клипов декодировано в этой загрузке
+        int reusedClips = 0;        // клипов взято из KitLoadOptions::reuse
 
         bool ok() const noexcept { return kit != nullptr; }
     };
@@ -117,4 +138,8 @@ namespace samplit
     // и удара. Блокирует вызывающий поток и сам ничего не публикует: вызывать из фонового потока, готовый кит
     // отдавать в SamplitProcessor::setKit(). Audio thread не затрагивает
     KitLoadResult loadKit (const Preset&, const KitLoadOptions&);
+
+    // Кит из установки: места, клавиши, группы слоёв -> переключатели Kit::choices. Один пак читается один раз,
+    // даже если обслуживает несколько мест. Пак без файла/лицензии: место молчит, id в missingPacks
+    KitLoadResult loadKit (const KitSpec&, const KitLoadOptions&);
 }

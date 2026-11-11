@@ -15,6 +15,7 @@ namespace samplit
     {
         juce::String id, type, name;
         std::vector<pack::Group> groups;
+        std::vector<int> keys;
     };
 
     struct CatalogPack
@@ -30,4 +31,9 @@ namespace samplit
 
     // Паки, у которых есть барабаны типа места; в pieces остаются только барабаны этого типа
     std::vector<CatalogPack> packsForPlace (const std::vector<CatalogPack>& catalog, const PlaceDef& place);
+
+    // Состав кита из установки: выключенные места пропускаются, клавиши барабана переносятся на место (mapKeysToPlace).
+    // Пак не найден в каталоге: место остаётся в составе с пустым keyMap, выбор не стирается (загрузчик сообщит missingPacks)
+    KitSpec makeKitSpec (const Setup&, const std::vector<CatalogPack>& catalog, bool includeUnverified,
+                         std::vector<juce::String>& warnings);
 }
