@@ -59,6 +59,7 @@ python tools\license_server\admin.py init     # один раз: каталог 
 .\tools\build.ps1 -Config Release
 .\tools\install_packs.ps1                     # сборка пакетов, ключи и пресеты; срок токена сверять с текущими аргументами скрипта
 .\tools\install_packs.ps1 -SkipBuild          # только пресеты и новый токен
+.\tools\install_packs.ps1 -NoRegister -OutDir <папка> [-Packs id,id]   # только собрать и проверить паки: без секретов, сервера лицензий и токена
 ```
 
 - Публичная часть ключа подписи зашита в `core/src/LicenseKey.cpp`. Приватная (`signing.seed`) и ключи пакетов (`packs\*.key`) лежат только в каталоге секретов, в git их нет. Каталог стоит сохранить: без него пакеты придётся собрать заново с новыми ключами, а плагин с новым публичным ключом.

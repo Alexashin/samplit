@@ -5,6 +5,9 @@
 #   .\tools\install_packs.ps1 -Days 120             токен на срок вместо бессрочного
 #   .\tools\install_packs.ps1 -Packs studio600-hat,studio600-ride
 #   .\tools\install_packs.ps1 -SkipBuild            только токен (пакеты уже собраны)
+#   .\tools\install_packs.ps1 -NoRegister -OutDir D:\tmp\packs
+#                                                   только собрать и проверить пакеты в OutDir: без секретов, сервера лицензий и токена,
+#                                                   одноразовые ключи в OutDir\keys (для проверки пересборки)
 #
 # Что делает:
 #   1. samplit-packer build: пакет .splpack в %APPDATA%\Samplit\packs. Ключ пакета создаётся при первой сборке
@@ -19,6 +22,8 @@ param(
     [int]$Days = 0,         # 0: бессрочный токен
     [switch]$All,
     [switch]$SkipBuild,
+    [switch]$NoRegister,    # только сборка и проверка: ключи одноразовые, без регистрации и токена
+    [string]$OutDir = '',   # куда писать .splpack (по умолчанию %APPDATA%\Samplit\packs)
     [string]$User = $env:USERNAME   # имя владельца токена
 )
 
@@ -34,12 +39,18 @@ $library = Join-Path $root 'sample_library\00-Studio600ru-Drum-LIB'
 $sources = Join-Path $root 'sample_library\packs-src'
 $secrets = if ($env:SAMPLIT_LICENSE_DIR) { $env:SAMPLIT_LICENSE_DIR } else { Join-Path $HOME '.samplit-license' }
 $data = Join-Path $env:APPDATA 'Samplit'
+$packsDir = if ($OutDir) { $OutDir } else { Join-Path $data 'packs' }
+if ($NoRegister -and -not $OutDir) { throw '-NoRegister требует -OutDir (в установленную папку собирать без регистрации нельзя)' }
+# Ключи: в режиме -NoRegister одноразовые рядом с пакетами, иначе в каталоге секретов
+$keysDir = if ($NoRegister) { Join-Path $OutDir 'keys' } else { Join-Path $secrets 'packs' }
 
-foreach ($need in @($packer, $python, $library, $sources, (Join-Path $secrets 'signing.seed'))) {
+$needs = @($packer, $library, $sources)
+if (-not $NoRegister) { $needs += @($python, (Join-Path $secrets 'signing.seed')) }
+foreach ($need in $needs) {
     if (-not (Test-Path $need)) { throw "не найдено: $need" }
 }
 
-New-Item -ItemType Directory -Force (Join-Path $data 'packs'), (Join-Path $secrets 'packs') | Out-Null
+New-Item -ItemType Directory -Force $packsDir, $keysDir | Out-Null
 
 $manifests = Get-ChildItem $sources -Filter '*.json' | Sort-Object Name
 # studio600-unverified по умолчанию не собираем: основная установка его не берёт, он нужен
@@ -51,8 +62,8 @@ if (-not $manifests) { throw 'нет манифестов для сборки' }
 
 foreach ($m in $manifests) {
     $id = $m.BaseName
-    $out = Join-Path $data "packs\$id.splpack"
-    $keyFile = Join-Path $secrets "packs\$id.key"
+    $out = Join-Path $packsDir "$id.splpack"
+    $keyFile = Join-Path $keysDir "$id.key"
 
     if (-not $SkipBuild) {
         $keyArgs = if (Test-Path $keyFile) { @('--key-file', $keyFile) } else { @('--gen-key', $keyFile) }
@@ -65,12 +76,18 @@ foreach ($m in $manifests) {
         Write-Host ("   {0:N0} МБ за {1:N0} с" -f ((Get-Item $out).Length / 1MB), ((Get-Date) - $started).TotalSeconds)
     }
 
+    if ($NoRegister) { continue }
     & $python (Join-Path $root 'tools\license_server\admin.py') add-pack-key --pack-id $id --key-file $keyFile | Out-Null
     if ($LASTEXITCODE -ne 0) { throw "регистрация ключа $id не прошла" }
 }
 
+if ($NoRegister) {
+    Write-Host "Готово (без регистрации и токена): $packsDir"
+    return
+}
+
 # Токен на все пакеты, которые лежат в папке и чей ключ есть в секретах
-$installed = Get-ChildItem (Join-Path $data 'packs') -Filter '*.splpack' |
+$installed = Get-ChildItem $packsDir -Filter '*.splpack' |
     Where-Object { Test-Path (Join-Path $secrets "packs\$($_.BaseName).key") } | ForEach-Object { $_.BaseName }
 $fingerprint = (& $packer fingerprint).Trim()
 $term = @(if ($Days -gt 0) { '--days', "$Days" } else { '--perpetual' })
