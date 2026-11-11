@@ -40,10 +40,23 @@ namespace samplit
     inline const char* studio600OutputName (int output) noexcept
     {
         static constexpr const char* names[] = {
-            "Kick In", "Kick Out", "Snare Top", "Snare Bottom", "Over Hat", "Over Ride",
-            "Room Hat", "Room Ride", "Room Mid", "Hi-Hat", "Ride", "Альт 10", "Альт 12",
-            "Том 14", "Флор том 16", "Out 16"
+            "Kick In", "Kick Out", "Snare Top", "Snare Bottom", "Hi-Hat", "Ride", "Room Mid",
+            "Toms", "Over", "Room"
         };
-        return output >= 1 && output <= 16 ? names[output - 1] : nullptr;
+        return output >= 1 && output <= 10 ? names[output - 1] : nullptr;
+    }
+
+    // Стартовая панорама микрофона на стерео-шине (Over, Room, Toms): слева направо как на схеме. Остальные по центру
+    inline float studio600MicPan (std::string_view id) noexcept
+    {
+        using Pair = std::pair<std::string_view, float>;
+        static constexpr Pair pans[] = {
+            { "oh_1", -1.0f }, { "oh_2", 1.0f }, { "room_1", -1.0f }, { "room_2", 1.0f },
+            { "tom_a1", -0.7f }, { "tom_a2", -0.25f }, { "tom_a3", 0.25f }, { "tom_a4", 0.7f }
+        };
+        for (const auto& [key, pan] : pans)
+            if (key == id)
+                return pan;
+        return 0.0f;
     }
 }

@@ -111,11 +111,16 @@ namespace samplit
             float pan = 0.0f;
             bool mute = false;
             bool solo = false;
-            int out = 0;            // 0 = Main, 1..kNumOutputs = Out N
+            int out = 0;            // 0 = Main, 1..kNumOutputs = выход плагина (в режиме «Мульти-аут»)
         };
 
         MicState getMicState (int mic) const;
         void setMicState (int mic, const MicState&);
+
+        // ---- Режим выходов: false = «Стерео» (все микрофоны в Main с панорамой), true = «Мульти-аут» (каждый микрофон на
+        // свой выход, как выбрано в микшере; выключенный в DAW выход играет в Main). Хранится в проекте ----
+        bool isMultiOut() const noexcept { return multiOut.load(); }
+        void setMultiOut (bool multi);
 
         // ---- Автоматизация в DAW: уровень и панорама первых kAutomatedMics микрофонов кита (параметры "micNN_level", "micNN_pan").
         // Хост двигает параметр, микшер следует за ним, и наоборот. Mute, Solo и выход не автоматизируются ----
@@ -133,7 +138,7 @@ namespace samplit
         // Какие клавиши звучат (биты 0..127 в двух словах)
         std::array<uint64_t, 2> getActiveKeys() const noexcept { return { activeLo.load(), activeHi.load() }; }
 
-        // Какие моно-выходы 1..kNumOutputs включены в хосте (бит N-1). Микрофон на выключенный выход играет в Main
+        // Какие выходы 1..kNumOutputs включены в хосте (бит N-1). Микрофон на выключенный выход играет в Main
         uint32_t getEnabledOutputMask() const noexcept { return enabledOutputs.load(); }
 
         // Для тестов и сборки мусора: сколько китов ещё ждут удаления
@@ -168,6 +173,7 @@ namespace samplit
         std::atomic<uint32_t> queueRead { 0 };
         std::atomic<uint64_t> activeLo { 0 }, activeHi { 0 };
         std::atomic<uint32_t> enabledOutputs { 0 };
+        std::atomic<bool> multiOut { false };
         void applyMixer();
         void pushParam (int mic);
         void pushAllParams();

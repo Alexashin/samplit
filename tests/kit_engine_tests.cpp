@@ -17,7 +17,7 @@ namespace
 {
     constexpr int kBlock = 1024;
 
-    // Движок и выходные буферы: выходы 1..16 моно (правый указатель nullptr), Main стерео
+    // Движок и выходные буферы: выходы 1..kNumOutputs моно (правый указатель nullptr), Main стерео
     struct Rig
     {
         Rig()
@@ -163,6 +163,30 @@ TEST_CASE ("kit: mic level and pan apply, pan only on Main", "[kit]")
         REQUIRE (std::abs (r.level (0, 1) - 1.0f) < 1e-4f);
         REQUIRE (std::abs (r.level (1) - 1.0f) < 1e-4f);
     }
+}
+
+TEST_CASE ("kit: pan places a mono mic on a stereo output bus (Over, Toms)", "[kit]")
+{
+    KitBuilder b;
+    b.mic ("oh_1", kFirstStereoOutput + 1);
+    b.mic ("oh_2", kFirstStereoOutput + 1);
+    const int p = b.piece ("p");
+    b.hit (p, b.layer (p, 1, 127), 60, { 1.0f, 1.0f });
+    const auto kit = b.done();
+
+    Rig r;
+    const size_t over = (size_t) kFirstStereoOutput + 1;
+    r.pr[over] = r.R[over].data();      // DAW включила стерео-шину Over
+    r.engine.setKit (kit.get());
+    r.engine.setMicMix (0, 0.0f, -1.0f);
+    r.engine.setMicMix (1, 0.0f, 1.0f);
+    r.hitOnce (60, 100);
+
+    // Левый микрофон только слева, правый только справа, в Main ничего
+    REQUIRE (std::abs (r.level ((int) over, 0) - 1.0f) < 1e-4f);
+    REQUIRE (std::abs (r.level ((int) over, 1) - 1.0f) < 1e-4f);
+    REQUIRE (r.level (0, 0) == 0.0f);
+    REQUIRE (r.level (0, 1) == 0.0f);
 }
 
 TEST_CASE ("kit: mic output can be moved without rebuilding the kit", "[kit]")
@@ -642,7 +666,7 @@ TEST_CASE ("kit: Hermite interpolation follows a sine when the rates differ", "[
 
 // ---------------------------------------------------------------- процессор: 16 моно-выходов и кит
 
-TEST_CASE ("16 mono outputs: Main is stereo, named outputs are mono and off by default", "[kit]")
+TEST_CASE ("outputs: Main is stereo, 1..7 mono, 8..10 stereo, all off by default", "[kit]")
 {
     SamplitProcessor p;
 
@@ -651,20 +675,25 @@ TEST_CASE ("16 mono outputs: Main is stereo, named outputs are mono and off by d
     for (int bus = 1; bus <= kNumOutputs; ++bus)
     {
         REQUIRE_FALSE (p.getBus (false, bus)->isEnabled());
-        REQUIRE (p.getBus (false, bus)->getDefaultLayout() == juce::AudioChannelSet::mono());
+        REQUIRE (p.getBus (false, bus)->getDefaultLayout() == (isStereoOutput (bus) ? juce::AudioChannelSet::stereo() : juce::AudioChannelSet::mono()));
         REQUIRE (p.getBus (false, bus)->getName() == juce::String::fromUTF8 (studio600OutputName (bus)));
     }
 }
 
-TEST_CASE ("16 mono outputs: layout rules", "[kit]")
+TEST_CASE ("outputs: layout rules", "[kit]")
 {
     SamplitProcessor p;
     auto layout = p.getBusesLayout();
     REQUIRE (p.checkBusesLayoutSupported (layout));
 
-    SECTION ("stereo extra output is rejected")
+    SECTION ("stereo on a mono output is rejected")
     {
         layout.outputBuses.getReference (3) = juce::AudioChannelSet::stereo();
+        REQUIRE_FALSE (p.checkBusesLayoutSupported (layout));
+    }
+    SECTION ("mono on a stereo output (Toms, Over, Room) is rejected")
+    {
+        layout.outputBuses.getReference (kFirstStereoOutput) = juce::AudioChannelSet::mono();
         REQUIRE_FALSE (p.checkBusesLayoutSupported (layout));
     }
     SECTION ("mono Main is rejected")
@@ -677,10 +706,10 @@ TEST_CASE ("16 mono outputs: layout rules", "[kit]")
         layout.outputBuses.getReference (0) = juce::AudioChannelSet::disabled();
         REQUIRE_FALSE (p.checkBusesLayoutSupported (layout));
     }
-    SECTION ("all extra outputs mono is accepted")
+    SECTION ("all extra outputs in their own layout is accepted")
     {
         for (int i = 1; i < layout.outputBuses.size(); ++i)
-            layout.outputBuses.getReference (i) = juce::AudioChannelSet::mono();
+            layout.outputBuses.getReference (i) = isStereoOutput (i) ? juce::AudioChannelSet::stereo() : juce::AudioChannelSet::mono();
         REQUIRE (p.checkBusesLayoutSupported (layout));
     }
 }
@@ -689,6 +718,7 @@ TEST_CASE ("processor with a kit: mics go to their mono outputs", "[kit]")
 {
     KitFixture f { 1, 2 };   // каналы: Main = 0/1, Out 1 = 2, Out 2 = 3
     f.processor.setKit (f.kit);
+    f.processor.setMultiOut (true);
 
     auto out = f.play (36);
     REQUIRE (KitFixture::peak (out, 2) > 0.0f);   // kick_in

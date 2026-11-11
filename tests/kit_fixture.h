@@ -88,6 +88,7 @@ namespace kittest
             for (int bus : enabledAuxBuses)
                 REQUIRE (processor.getBus (false, bus)->enable (true));
             processor.prepareToPlay (kRate, kFixtureBlock);
+            processor.setMultiOut (true);       // тесты проверяют раскладку по выходам
             kit = makeKit ({ 1, 2, 0 });
         }
 

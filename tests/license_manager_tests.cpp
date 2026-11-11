@@ -734,7 +734,7 @@ TEST_CASE ("setup state v3 round trip keeps setup and mixer", "[licmgr][setup]")
     e.processor.getStateInformation (saved);
     const auto xml = SamplitProcessor::getXmlFromBinary (saved.getData(), (int) saved.getSize());
     REQUIRE (xml != nullptr);
-    CHECK (xml->getIntAttribute ("version") == 3);
+    CHECK (xml->getIntAttribute ("version") == 4);
     CHECK (xml->hasAttribute ("setup"));
     CHECK_FALSE (xml->hasAttribute ("preset"));
     CHECK (xml->getChildByName ("PICK") == nullptr);
@@ -789,14 +789,14 @@ TEST_CASE ("setup state v2 migrates: snare by preset id, MIC kept, PICK dropped"
         e.processor.getStateInformation (again);
         const auto xml = SamplitProcessor::getXmlFromBinary (again.getData(), (int) again.getSize());
         REQUIRE (xml != nullptr);
-        CHECK (xml->getIntAttribute ("version") == 3);
+        CHECK (xml->getIntAttribute ("version") == 4);
         CHECK (xml->getChildByName ("PICK") == nullptr);
         CHECK_FALSE (xml->hasAttribute ("mix"));
         const auto* mic = xml->getChildByName ("MIC");
         REQUIRE (mic != nullptr);
         CHECK (mic->getStringAttribute ("id") == "sn_top");
         CHECK (mic->getDoubleAttribute ("level") == -4.0);
-        CHECK (mic->getIntAttribute ("out") == 3);
+        CHECK (mic->getIntAttribute ("out") == -1);   // старый номер выхода не переносится
     }
 }
 

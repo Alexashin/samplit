@@ -409,8 +409,8 @@ namespace samplit::pack
                 err ("микрофон без id"_s);
             else if (! micIds.insert (mic.id).second)
                 err ("микрофон "_s + mic.id + " объявлен дважды"_s);
-            if (mic.out < 0 || mic.out > 16)
-                err ("микрофон "_s + mic.id + ": выход "_s + juce::String (mic.out) + " вне диапазона 0..16"_s);
+            if (mic.out < 0 || mic.out > 10)
+                err ("микрофон "_s + mic.id + ": выход "_s + juce::String (mic.out) + " вне диапазона 0..10"_s);
         }
 
         std::set<juce::String> pieceIds, hitIds;

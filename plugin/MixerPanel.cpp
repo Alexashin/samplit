@@ -112,7 +112,7 @@ namespace samplit
         }
 
         // anyEnabled: DAW включила хоть один отдельный выход. Если ни одного, предупреждение одно на весь микшер
-        void update (uint32_t enabledOutputs)
+        void update (uint32_t enabledOutputs, bool multiOut)
         {
             const juce::ScopedValueSetter<bool> guard (updating, true);
             const auto s = processor.getMicState (index);
@@ -140,8 +140,9 @@ namespace samplit
             }
             output.setSelectedId (s.out + 1, juce::dontSendNotification);
 
-            const bool unavailable = s.out > 0 && (enabledOutputs & (1u << (s.out - 1))) == 0;
-            const bool warn = unavailable && enabledOutputs != 0;
+            output.setEnabled (multiOut);
+            const bool unavailable = multiOut && s.out > 0 && (enabledOutputs & (1u << (s.out - 1))) == 0;
+            const bool warn = unavailable && enabledOutputs != 0;   // в режиме «Стерео» выход не используется
             output.setColour (juce::ComboBox::textColourId, warn ? kWarning : brand::text);
             output.setColour (juce::ComboBox::outlineColourId, warn ? kWarning : brand::line);
             routeNote.setColour (juce::Label::textColourId, warn ? kWarning : brand::textMuted);
@@ -216,7 +217,15 @@ namespace samplit
         viewport.setViewedComponent (&content, false);
         viewport.setScrollBarsShown (false, true);
 
-        for (auto* c : std::initializer_list<juce::Component*> { &title, &hint, &emptyText, &viewport })
+        modeLabel.setText (utf8 ("Выходы:"), juce::dontSendNotification);
+        modeLabel.setFont (juce::FontOptions (12.0f));
+        modeLabel.setColour (juce::Label::textColourId, brand::textMuted);
+        mode.addItem (utf8 ("Стерео"), 1);
+        mode.addItem (utf8 ("Мульти-аут"), 2);
+        mode.setTooltip (utf8 ("Стерео: всё играет в Main, панорама на линейках. Мульти-аут: каждый микрофон на свой выход DAW"));
+        mode.onChange = [this] { processor.setMultiOut (mode.getSelectedId() == 2); };
+
+        for (auto* c : std::initializer_list<juce::Component*> { &title, &hint, &emptyText, &viewport, &modeLabel, &mode })
             addAndMakeVisible (c);
 
         processor.addChangeListener (this);
@@ -239,7 +248,7 @@ namespace samplit
 
     void MixerPanel::timerCallback()
     {
-        if (processor.getEnabledOutputMask() != shownOutputs)
+        if (processor.getEnabledOutputMask() != shownOutputs || processor.isMultiOut() != shownMulti)
             updateStrips();
     }
 
@@ -268,7 +277,14 @@ namespace samplit
     void MixerPanel::updateStrips()
     {
         shownOutputs = processor.getEnabledOutputMask();
-        if (shownOutputs == 0)
+        shownMulti = processor.isMultiOut();
+        mode.setSelectedId (shownMulti ? 2 : 1, juce::dontSendNotification);
+        if (! shownMulti)
+        {
+            hint.setText (utf8 ("Всё играет в Main. Для раздельных дорожек в DAW выберите «Мульти-аут»"), juce::dontSendNotification);
+            hint.setColour (juce::Label::textColourId, brand::textMuted);
+        }
+        else if (shownOutputs == 0)
         {
             hint.setText (utf8 ("Отдельные выходы в DAW выключены: все микрофоны играют в Main"), juce::dontSendNotification);
             hint.setColour (juce::Label::textColourId, kWarning);
@@ -279,7 +295,7 @@ namespace samplit
             hint.setColour (juce::Label::textColourId, brand::textMuted);
         }
         for (auto& s : strips)
-            s->update (shownOutputs);
+            s->update (shownOutputs, shownMulti);
     }
 
     void MixerPanel::paint (juce::Graphics& g)
@@ -294,6 +310,9 @@ namespace samplit
         auto header = area.removeFromTop (kHeaderHeight - 10);
         title.setBounds (header.removeFromLeft (juce::jmax (220, header.getWidth() * 2 / 5)));
         title.setTooltip (title.getText());
+        mode.setBounds (header.removeFromRight (120).reduced (0, 2));
+        modeLabel.setBounds (header.removeFromRight (62));
+        header.removeFromRight (8);
         hint.setBounds (header);
         area.removeFromTop (8);
 

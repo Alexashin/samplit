@@ -14,10 +14,11 @@ namespace samplit
 
     juce::AudioProcessor::BusesProperties SamplitProcessor::makeBuses()
     {
-        // Шина 0 это Main (стерео). Шины 1..16 это отдельные моно-выходы групп и микрофонов. DAW включает их сама
+        // Шина 0 это Main (стерео). Шины 1..7 моно (отдельные микрофоны), 8..10 стерео (Toms, Over, Room). DAW включает их сама
         auto props = BusesProperties().withOutput ("Main", juce::AudioChannelSet::stereo(), true);
         for (int i = 0; i < kNumOutputs; ++i)
-            props = props.withOutput (juce::String::fromUTF8 (studio600OutputName (i + 1)), juce::AudioChannelSet::mono(), false);
+            props = props.withOutput (juce::String::fromUTF8 (studio600OutputName (i + 1)),
+                                      isStereoOutput (i + 1) ? juce::AudioChannelSet::stereo() : juce::AudioChannelSet::mono(), false);
         return props;
     }
 
@@ -86,11 +87,13 @@ namespace samplit
         if (layouts.getMainOutputChannelSet() != juce::AudioChannelSet::stereo())
             return false;
 
-        // Выходы микрофонов и групп только моно (или выключены)
+        // Отдельные выходы: 1..7 моно, 8..10 стерео (или выключены)
         for (int i = 1; i < layouts.outputBuses.size(); ++i)
-            if (! layouts.outputBuses.getReference (i).isDisabled()
-                && layouts.outputBuses.getReference (i) != juce::AudioChannelSet::mono())
+        {
+            const auto& set = layouts.outputBuses.getReference (i);
+            if (! set.isDisabled() && set != (isStereoOutput (i) ? juce::AudioChannelSet::stereo() : juce::AudioChannelSet::mono()))
                 return false;
+        }
 
         return layouts.inputBuses.isEmpty();
     }
@@ -345,7 +348,9 @@ namespace samplit
                         {
                             const auto& mic = result->kit->mics[i];
                             const auto saved = savedMix.find (juce::String (mic.id));
-                            fresh.push_back (saved != savedMix.end() ? saved->second : MicState { 0.0f, 0.0f, false, false, mic.out });
+                            fresh.push_back (saved != savedMix.end() ? saved->second : MicState { 0.0f, mic.pan, false, false, mic.out });
+                            if (fresh.back().out < 0)
+                                fresh.back().out = mic.out;
                         }
                         for (size_t i = 0; i < fresh.size(); ++i)
                             savedMix[juce::String (result->kit->mics[i].id)] = fresh[i];
@@ -684,14 +689,22 @@ namespace samplit
                 const auto& m = mixer[(size_t) i];
                 const bool silent = m.mute || (anySolo && ! m.solo);
                 kitEngine.setMicMix (i, silent ? -100.0f : m.levelDb, m.pan);
-                kitEngine.setMicOutput (i, m.out);
+                kitEngine.setMicOutput (i, multiOut.load() ? m.out : 0);
             }
             else
             {
                 kitEngine.setMicMix (i, 0.0f, 0.0f);
-                kitEngine.setMicOutput (i, -1);
+                kitEngine.setMicOutput (i, multiOut.load() ? -1 : 0);
             }
         }
+    }
+
+    void SamplitProcessor::setMultiOut (bool multi)
+    {
+        if (multiOut.exchange (multi) == multi)
+            return;
+        applyMixer();
+        sendChangeMessage();
     }
 
     std::shared_ptr<const Kit> SamplitProcessor::getKit() const
@@ -705,7 +718,8 @@ namespace samplit
     void SamplitProcessor::getStateInformation (juce::MemoryBlock& dest)
     {
         juce::ValueTree state ("SAMPLIT");
-        state.setProperty ("version", 3, nullptr);
+        state.setProperty ("version", 4, nullptr);
+        state.setProperty ("multiOut", multiOut.load(), nullptr);
 
         Setup copy;
         {
@@ -740,6 +754,14 @@ namespace samplit
         if (version < 2)
             return;
 
+        // До версии 4 выходы были другими (до 15 моно): сохранённый out не переносим, а проект, где отдельные выходы
+        // использовались, остаётся в режиме «Мульти-аут» с выходами по умолчанию
+        bool oldRouted = false;
+        for (const auto& v : state)
+            if (v.hasType ("MIC") && (int) v.getProperty ("out", 0) > 0)
+                oldRouted = true;
+        multiOut.store (version >= 4 ? (bool) state.getProperty ("multiOut", false) : oldRouted);
+
         std::map<juce::String, MicState> mix;
         for (const auto& v : state)
         {
@@ -750,7 +772,8 @@ namespace samplit
             m.pan = juce::jlimit (-1.0f, 1.0f, (float) v.getProperty ("pan", 0.0));
             m.mute = (bool) v.getProperty ("mute", false);
             m.solo = (bool) v.getProperty ("solo", false);
-            m.out = juce::jlimit (0, kNumOutputs, (int) v.getProperty ("out", 0));
+            m.out = version < 4 ? -1        // -1: выход по умолчанию из манифеста пака
+                                : juce::jlimit (0, kNumOutputs, (int) v.getProperty ("out", 0));
             mix[v.getProperty ("id").toString()] = m;
         }
 

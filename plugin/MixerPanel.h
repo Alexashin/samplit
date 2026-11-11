@@ -9,7 +9,7 @@
 
 namespace samplit
 {
-    // Микшер микрофонов кита: по линейке на микрофон. Выход (Main или Out N), панорама в Main, уровень, Mute и Solo.
+    // Микшер микрофонов кита: по линейке на микрофон. Выход (в режиме «Мульти-аут»), панорама, уровень, Mute и Solo.
     // Выход, который DAW не включила, подсвечен: микрофон с него играет в Main
     class MixerPanel final : public juce::Component,
                              private juce::ChangeListener,
@@ -34,6 +34,9 @@ namespace samplit
         SamplitProcessor& processor;
         std::shared_ptr<const Kit> kit;
         uint32_t shownOutputs = 0;
+        bool shownMulti = false;
+        juce::Label modeLabel;
+        juce::ComboBox mode;
 
         juce::Label title, hint, emptyText;
         juce::Viewport viewport;

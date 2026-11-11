@@ -10,8 +10,11 @@
 
 namespace samplit
 {
-    // Выходы плагина: 0 = Main (стерео), 1..kNumOutputs = отдельные моно-шины Out 1..Out N
-    constexpr int kNumOutputs = 16;
+    // Выходы плагина: 0 = Main (стерео), 1..7 = моно-шины (Kick In, Kick Out, Snare Top, Snare Bottom, Hi-Hat, Ride, Room Mid),
+    // 8..10 = стерео-шины (Toms, Over, Room). Микрофоны моно: на стерео-шине их разводит панорама
+    constexpr int kNumOutputs = 10;
+    constexpr int kFirstStereoOutput = 8;
+    constexpr bool isStereoOutput (int out) noexcept { return out >= kFirstStereoOutput && out <= kNumOutputs; }
 
     // Декодированный моно-файл удара: float32, 24 бит без потерь (значение / 8388608).
     // Целиком в f32, либо (потоковый клип, totalFrames > f32.size()) только голова, а остальное движок читает с диска
@@ -55,11 +58,12 @@ namespace samplit
 
     using ClipPtr = std::shared_ptr<const DecodedClip>;
 
-    // Микрофон установки. out: 0 = Main, 1..kNumOutputs = моно-выход Out N
+    // Микрофон установки. out: 0 = Main, 1..kNumOutputs = выход плагина (см. kNumOutputs); pan: стартовая панорама
     struct Mic
     {
         std::string id, name, role;
         int out = 0;
+        float pan = 0.0f;
     };
 
     // Файл удара на одном микрофоне. Обрезка (start, end) уже применена к клипу
@@ -168,7 +172,7 @@ namespace samplit
     struct Kit
     {
         KitSerial serial;               // идентичность кита для движка (lastKit), см. KitSerial
-        static constexpr int kMaxMics = kNumOutputs;
+        static constexpr int kMaxMics = 16;
         static constexpr int kMaxChoices = 128;
 
         std::string id, title;

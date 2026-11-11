@@ -14,7 +14,7 @@ using namespace kittest;
 TEST_CASE ("processor: Studio600 mono buses use microphone names", "[processor]")
 {
     SamplitProcessor processor;
-    REQUIRE (processor.getBusCount (false) == 17);
+    REQUIRE (processor.getBusCount (false) == 1 + kNumOutputs);
     CHECK (processor.getBus (false, 0)->getName() == "Main");
     for (int i = 1; i <= kNumOutputs; ++i)
     {

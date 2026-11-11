@@ -288,9 +288,10 @@ namespace samplit
                         }
 
                         micIndex[m.id] = (int) kit->mics.size();
-                        const auto name = pk.id.startsWith ("studio600-") ? studio600MicName (m.id.toStdString()) : nullptr;
+                        const bool studio = pk.id.startsWith ("studio600-");
+                        const auto name = studio ? studio600MicName (m.id.toStdString()) : nullptr;
                         kit->mics.push_back ({ m.id.toStdString(), name != nullptr ? name : m.name.toStdString(), m.role.toStdString(),
-                                               juce::jlimit (0, kNumOutputs, m.out) });
+                                               juce::jlimit (0, kNumOutputs, m.out), studio ? studio600MicPan (m.id.toStdString()) : 0.0f });
                     }
                 return true;
             }

@@ -74,7 +74,7 @@ namespace samplit
             drawFocus (g, slider, 6.0f);
         }
 
-        // Невысокие списки (выход в линейке микшера) мельче, чтобы влезало «Out 16»
+        // Невысокие списки (выход в линейке микшера) мельче, чтобы влезало «Snare Bottom»
         juce::Font getComboBoxFont (juce::ComboBox& box) override
         {
             return juce::FontOptions (box.getHeight() <= 24 ? 13.0f : juce::jmin (16.0f, (float) box.getHeight() * 0.85f));

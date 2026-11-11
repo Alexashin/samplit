@@ -19,7 +19,7 @@ namespace samplit::pack
     struct Mic
     {
         juce::String id, name, role;
-        int out = 0;  // выход по умолчанию: 0 = Main, 1..16 = Out N (моно)
+        int out = 0;  // выход по умолчанию: 0 = Main, 1..10 = выход плагина (1..7 моно, 8..10 стерео)
         juce::NamedValueSet extra;  // поля, которых нет в схеме: читаются и пишутся как есть
     };
 

@@ -269,7 +269,7 @@ class MarkKitTest(unittest.TestCase):
         expanded = mark_kit.expand_templates(kit)
         mark_kit.key_index(expanded)   # клавиши не пересекаются внутри источника
         outputs = sorted(m['out'] for m in kit['mics'])
-        self.assertEqual(outputs, list(range(1, 16)))
+        self.assertEqual(sorted(set(outputs)), list(range(1, 11)))   # 7 моно + Toms, Over, Room (стерео)
         self.assertEqual(len({m['id'] for m in kit['mics']}), 15)
         packs = {p['id'] for p in kit['packs']}
         self.assertTrue({p['pack'] for p in kit['pieces']} <= packs)
