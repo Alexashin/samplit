@@ -20,7 +20,7 @@ namespace samplit
     }
 
     SamplitEditor::SamplitEditor (SamplitProcessor& p)
-        : AudioProcessorEditor (&p), processor (p), headerBar (p), mixer (p), kitView (p), keyboard (p)
+        : AudioProcessorEditor (&p), processor (p), headerBar (p), mixer (p), instruments (p), kitView (p), keyboard (p)
     {
         setLookAndFeel (&lookAndFeel);
         logo = juce::Drawable::createFromImageData (BinaryData::lockuphondark_svg, BinaryData::lockuphondark_svgSize);
@@ -49,25 +49,35 @@ namespace samplit
 
         kitTab.setButtonText (utf8 ("Установка"));
         kitTab.setTooltip (utf8 ("Схема барабанов: клик по барабану играет его и открывает его настройки"));
+        instrumentsTab.setButtonText (utf8 ("Инструменты"));
+        instrumentsTab.setTooltip (utf8 ("Для каждого барабана: включить, выбрать звук, громкость и как выбирается удар"));
         mixerTab.setButtonText (utf8 ("Микшер"));
         mixerTab.setTooltip (utf8 ("Уровень, панорама, выход, Mute и Solo каждого микрофона"));
-        for (auto* t : { &kitTab, &mixerTab })
+        for (auto* t : { &kitTab, &instrumentsTab, &mixerTab })
         {
             t->setClickingTogglesState (true);
             t->setRadioGroupId (1);
         }
-        kitTab.onClick = [this] { showMainTab (false); };
-        mixerTab.onClick = [this] { showMainTab (true); };
+        kitTab.onClick = [this] { showMainTab (MainTab::Kit); };
+        instrumentsTab.onClick = [this] { showMainTab (MainTab::Instruments); };
+        mixerTab.onClick = [this] { showMainTab (MainTab::Mixer); };
+        kitView.onOpenInstruments = [safe = juce::Component::SafePointer<SamplitEditor> (this)] (const juce::String& placeId)
+        {
+            if (safe == nullptr)
+                return;
+            safe->instruments.selectPlace (placeId);
+            safe->showMainTab (MainTab::Instruments);
+        };
 
         // Порядок добавления = порядок наложения: подложка и выпадающие панели поверх всего
-        for (auto* c : std::initializer_list<juce::Component*> { &mixer, &kitView, &kitTab, &mixerTab, &keyboard, &headerBar,
+        for (auto* c : std::initializer_list<juce::Component*> { &mixer, &instruments, &kitView, &kitTab, &instrumentsTab, &mixerTab, &keyboard, &headerBar,
                                                                   &licenseButton, &scrim })
             addChildComponent (c);
         if (license != nullptr)
             addChildComponent (license.get());
-        for (auto* c : std::initializer_list<juce::Component*> { &kitTab, &mixerTab, &keyboard, &headerBar, &licenseButton })
+        for (auto* c : std::initializer_list<juce::Component*> { &kitTab, &instrumentsTab, &mixerTab, &keyboard, &headerBar, &licenseButton })
             c->setVisible (true);
-        showMainTab (false);
+        showMainTab (MainTab::Kit);
         updateHeader();
 
         juce::Desktop::getInstance().addFocusChangeListener (this);
@@ -156,11 +166,13 @@ namespace samplit
         return false;
     }
 
-    void SamplitEditor::showMainTab (bool mixerShown)
+    void SamplitEditor::showMainTab (MainTab tab)
     {
-        (mixerShown ? mixerTab : kitTab).setToggleState (true, juce::dontSendNotification);
-        mixer.setVisible (mixerShown);
-        kitView.setVisible (! mixerShown);
+        (tab == MainTab::Mixer ? mixerTab : tab == MainTab::Instruments ? instrumentsTab : kitTab)
+            .setToggleState (true, juce::dontSendNotification);
+        mixer.setVisible (tab == MainTab::Mixer);
+        instruments.setVisible (tab == MainTab::Instruments);
+        kitView.setVisible (tab == MainTab::Kit);
     }
 
     void SamplitEditor::resized()
@@ -189,9 +201,12 @@ namespace samplit
         auto tabs = area.removeFromTop (30);
         kitTab.setBounds (tabs.removeFromLeft (130));
         tabs.removeFromLeft (6);
+        instrumentsTab.setBounds (tabs.removeFromLeft (130));
+        tabs.removeFromLeft (6);
         mixerTab.setBounds (tabs.removeFromLeft (130));
         area.removeFromTop (8);
         mixer.setBounds (area);
+        instruments.setBounds (area);
         kitView.setBounds (area);
 
         // Выпадающая панель под шапкой: лицензия у правого края

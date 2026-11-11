@@ -5,6 +5,7 @@
 
 #include <juce_gui_basics/juce_gui_basics.h>
 
+#include <functional>
 #include <memory>
 #include <vector>
 
@@ -26,6 +27,9 @@ namespace samplit
         void mouseDown (const juce::MouseEvent&) override;
         void mouseMove (const juce::MouseEvent&) override;
         void mouseExit (const juce::MouseEvent&) override;
+
+        // Пункт меню места «Открыть в «Инструментах»»: окно переключает вкладку и выбирает место
+        std::function<void (const juce::String& placeId)> onOpenInstruments;
 
     private:
         // Место на схеме: экранный прямоугольник, подпись и барабан кита, играющий на этом месте (по Piece::slot)

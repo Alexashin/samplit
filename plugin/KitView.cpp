@@ -195,6 +195,8 @@ namespace samplit
 
         juce::PopupMenu menu;
         menu.addSectionHeader (spot.label);
+        menu.addItem (2, utf8 ("Открыть в «Инструментах»"), onOpenInstruments != nullptr);
+        menu.addSeparator();
         menu.addItem (1, utf8 ("Включено"), true, ps->enabled);
 
         // Звук (пак): паки с барабанами нужного типа; барабаны выбираются, если в паке их несколько этого типа
@@ -306,7 +308,12 @@ namespace samplit
             if (safe == nullptr || result <= 0)
                 return;
             auto& p = safe->processor;
-            if (result == 1)
+            if (result == 2)
+            {
+                if (safe->onOpenInstruments)
+                    safe->onOpenInstruments (placeId);
+            }
+            else if (result == 1)
             {
                 p.setPlaceEnabled (placeId, ! enabled);
                 safe->refreshState();

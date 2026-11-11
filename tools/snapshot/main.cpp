@@ -80,13 +80,31 @@ namespace
             const int lo = tom ? 96 : pd.keyLo, hi = tom ? 97 : pd.keyHi;
             for (int k = lo; k <= hi; ++k)
                 p.keys.push_back (k);
+            // Малый и хэт: две группы слоёв, чтобы вкладка «Инструменты» показывала строки групп
+            const bool grouped = pd.slot == 1 || pd.slot == 6;
             p.layers = { { "all", "center", 1, 127 } };
+            if (grouped)
+            {
+                p.layers = { { "hit", "center", 1, 74 }, { "rim", "rim", 75, 127 } };
+                pack::Group g1, g2;
+                g1.id = "hit"; g1.name = juce::String::fromUTF8 ("Основной удар");
+                g1.hint = juce::String::fromUTF8 ("Тихие и средние удары по центру");
+                g1.layers = { "hit" };
+                g2.id = "rim"; g2.name = juce::String::fromUTF8 ("Сильный удар");
+                g2.hint = juce::String::fromUTF8 ("Громкие акценты, играются по кругу");
+                g2.layers = { "rim" };
+                g2.pick = "cycle"; g2.picks = { "cycle" };
+                p.groups = { g1, g2 };
+            }
+            for (const auto& layer : p.layers)
             for (int k : p.keys)
             {
                 pack::Hit h;
-                h.id = p.id + juce::String (k);
-                h.layer = "all";
+                h.id = p.id + juce::String (k) + layer.id;
+                h.layer = layer.id;
                 h.key = k;
+                h.velLo = layer.velLo;
+                h.velHi = layer.velHi;
                 for (const auto& mic : kMics)
                 {
                     pack::HitFile f;
@@ -135,14 +153,18 @@ namespace
     }
 
     // tab: схема установки или микшер; over: лицензия, открытая поверх окна
-    enum class Tab { Kit, Mixer };
+    enum class Tab { Kit, Instruments, Mixer };
     enum class Over { None, License };
 
-    bool shoot (SamplitProcessor& processor, const juce::File& out, int w, int h, Tab tab = Tab::Kit, Over over = Over::None)
+    bool shoot (SamplitProcessor& processor, const juce::File& out, int w, int h, Tab tab = Tab::Kit, Over over = Over::None,
+               const char* place = nullptr)
     {
         std::unique_ptr<juce::AudioProcessorEditor> editor (processor.createEditor());
         auto& samplitEditor = static_cast<SamplitEditor&> (*editor);
-        samplitEditor.showMainTab (tab == Tab::Mixer);
+        samplitEditor.showMainTab (tab == Tab::Mixer ? SamplitEditor::MainTab::Mixer
+                                   : tab == Tab::Instruments ? SamplitEditor::MainTab::Instruments : SamplitEditor::MainTab::Kit);
+        if (place != nullptr)
+            samplitEditor.selectInstrument (place);
         editor->setSize (w, h);
         if (over == Over::License)
             samplitEditor.openLicense();
@@ -269,6 +291,8 @@ int main (int argc, char** argv)
         failures += shoot (processor, outDir.getChildFile ("03-kit.png"), 1180, 780) ? 0 : 1;
         failures += shoot (processor, outDir.getChildFile ("04-kit-narrow.png"), 900, 620) ? 0 : 1;
         failures += shoot (processor, outDir.getChildFile ("05-kit-wide.png"), 1600, 900) ? 0 : 1;
+        failures += shoot (processor, outDir.getChildFile ("04-instruments.png"), 1180, 780, Tab::Instruments, Over::None, "snare") ? 0 : 1;
+        failures += shoot (processor, outDir.getChildFile ("04-instruments-hat.png"), 1180, 780, Tab::Instruments, Over::None, "hat") ? 0 : 1;
         failures += shoot (processor, outDir.getChildFile ("07-mixer.png"), 1180, 780, Tab::Mixer) ? 0 : 1;
         failures += shoot (processor, outDir.getChildFile ("08-mixer-narrow.png"), 900, 620, Tab::Mixer) ? 0 : 1;
         failures += shoot (processor, outDir.getChildFile ("10-license.png"), 1180, 780, Tab::Kit, Over::License) ? 0 : 1;

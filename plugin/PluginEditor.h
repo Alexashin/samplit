@@ -1,6 +1,7 @@
 #pragma once
 
 #include "HeaderBar.h"
+#include "InstrumentsPanel.h"
 #include "KeyboardView.h"
 #include "KitView.h"
 #include "LicensePanel.h"
@@ -30,8 +31,11 @@ namespace samplit
         void resized() override;
         bool keyPressed (const juce::KeyPress&) override;
 
-        // Основной экран: схема установки (false) или микшер микрофонов (true)
-        void showMainTab (bool mixerShown);
+        // Основной экран: схема установки, инструменты (настройка мест) или микшер микрофонов
+        enum class MainTab { Kit, Instruments, Mixer };
+        void showMainTab (MainTab);
+
+        void selectInstrument (const juce::String& placeId) { instruments.selectPlace (placeId); }
 
         // Выпадающие панели поверх окна (кнопки шапки, снимки окна)
         void openLicense() { if (license != nullptr) showOverlay (Overlay::License); }
@@ -62,8 +66,9 @@ namespace samplit
         HeaderBar headerBar;
         std::unique_ptr<LicensePanel> license;     // nullptr, пока лицензия отложена
         MixerPanel mixer;
+        InstrumentsPanel instruments;
         KitView kitView;
-        juce::TextButton kitTab, mixerTab;
+        juce::TextButton kitTab, instrumentsTab, mixerTab;
         juce::TextButton licenseButton;
         Scrim scrim;
         Overlay overlay = Overlay::None;
