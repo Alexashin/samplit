@@ -187,10 +187,10 @@ namespace samplit
         {
             const auto name = pieceName (selectedKey);
             return noteName (selectedKey) + (name.isNotEmpty() ? utf8 ("  ·  ") + name : juce::String())
-                   + utf8 ("  ·  клик играет барабан, ниже по клавише сильнее удар  ·  ←/→ выбор клавиши, пробел играет");
+                   + utf8 ("  ·  клик ниже — сильнее удар  ·  ←/→ выбор клавиши, пробел играет");
         }
 
-        return utf8 ("Клик играет клавишу, ниже = громче  ·  ←/→ выбор клавиши");
+        return utf8 ("Клик играет клавишу; клик ниже — сильнее удар  ·  ←/→ выбор клавиши");
     }
 
     void KeyboardView::paint (juce::Graphics& g)

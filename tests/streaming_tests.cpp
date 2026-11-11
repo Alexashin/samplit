@@ -10,6 +10,7 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <cmath>
+#include <fstream>
 
 using namespace samplit;
 
@@ -557,7 +558,13 @@ TEST_CASE ("health counts read errors and names the file", "[stream]")
         const auto clip = streamedClip (wav, 4000);
         juce::MemoryBlock all;
         REQUIRE (wav.loadFileAsData (all));
-        REQUIRE (wav.replaceWithData (all.getData(), 30000));
+        // Прямое усечение работает и на Windows: replaceWithData пытается заменить открытый файл переименованием.
+        {
+            std::ofstream cut (wav.getFullPathName().toStdString(), std::ios::binary | std::ios::trunc);
+            REQUIRE (cut.is_open());
+            cut.write (static_cast<const char*> (all.getData()), 30000);
+            REQUIRE (cut.good());
+        }
 
         DiskStreamer streamer (false);
         KitEngine engine;

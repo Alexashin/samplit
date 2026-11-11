@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <fstream>
 
 using namespace samplit::pack;
 
@@ -373,13 +374,23 @@ TEST_CASE ("truncated and foreign files do not open", "[pack]")
         const auto cut = packDir().getChildFile ("cut.splpack");
         juce::MemoryBlock all;
         REQUIRE (b.file.loadFileAsData (all));
-        REQUIRE (cut.replaceWithData (all.getData(), all.getSize() - 50));
+        {
+            std::ofstream out (cut.getFullPathName().toStdString(), std::ios::binary | std::ios::trunc);
+            REQUIRE (out.is_open());
+            out.write (static_cast<const char*> (all.getData()), (std::streamsize) all.getSize() - 50);
+            REQUIRE (out.good());
+        }
         REQUIRE (PackReader::open (cut, error) == nullptr);
     }
     SECTION ("short garbage")
     {
         const auto junk = packDir().getChildFile ("junk.splpack");
-        REQUIRE (junk.replaceWithText ("hello"));
+        {
+            std::ofstream out (junk.getFullPathName().toStdString(), std::ios::binary | std::ios::trunc);
+            REQUIRE (out.is_open());
+            out.write ("hello", 5);
+            REQUIRE (out.good());
+        }
         REQUIRE (PackReader::open (junk, error) == nullptr);
     }
     SECTION ("missing file")

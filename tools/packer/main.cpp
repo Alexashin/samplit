@@ -7,6 +7,7 @@
 //     Файлы из одних нулей считаются повреждёнными и останавливают сборку, если нет --allow-silent.
 //   samplit-packer verify <файл.splpack> (--key <hex64> | --key-file <файл>) [--deep]
 //   samplit-packer info <файл.splpack> [--key <hex64> | --key-file <файл>]
+//   samplit-packer extract <файл.splpack> --out <новая папка> (--key <hex64> | --key-file <файл>)
 //   samplit-packer fingerprint
 //     Отпечаток этой машины: его принимает tools/make_token.py, чтобы выпустить токен лицензии на этот компьютер.
 //
@@ -38,6 +39,7 @@ namespace
                 "                       [--allow-silent]\n"_s
                 "  samplit-packer verify <файл.splpack> (--key <hex64> | --key-file <файл>) [--deep]\n"_s
                 "  samplit-packer info <файл.splpack> [--key <hex64> | --key-file <файл>]\n"_s
+                "  samplit-packer extract <файл.splpack> --out <новая папка> (--key <hex64> | --key-file <файл>)\n"_s
                 "  samplit-packer fingerprint"_s);
         return 2;
     }
@@ -331,6 +333,112 @@ namespace
         }
         return 0;
     }
+
+    // Распаковка для режима «Моя библиотека…»: один WAV на блок и исходный манифест с путями к ним.
+    int extract (const Args& a)
+    {
+        if (a.positional.size() != 1 || ! a.has ("out"))
+            return usage();
+        PackKey key {};
+        if (! loadKey (a, key))
+            return 2;
+
+        juce::String error;
+        auto reader = PackReader::open (asFile (a.positional[0]), error);
+        if (reader == nullptr)
+        {
+            sayErr (error);
+            return 1;
+        }
+        Manifest manifest;
+        if (! reader->readManifest (key, manifest, error))
+        {
+            sayErr (error);
+            return 1;
+        }
+        const auto report = verifyManifest (manifest);
+        printReport (report);
+        if (! report.ok())
+            return 1;
+
+        // Имена файлов берутся только из номера блока. ID используется в имени манифеста,
+        // поэтому запрещаем разделители и имена, которые Windows трактует как путь.
+        if (manifest.id.isEmpty() || ! manifest.id.containsOnly ("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-"))
+        {
+            sayErr ("небезопасный id пакета"_s);
+            return 1;
+        }
+        for (const auto& piece : manifest.pieces)
+            for (const auto& hit : piece.hits)
+                for (const auto& [micId, f] : hit.files)
+                    if (f.chunk < 0 || f.chunk >= reader->getChunkCount() || f.tailChunk >= 0)
+                    {
+                        sayErr ("неподдерживаемая ссылка на блок: "_s + hit.id + ", " + micId);
+                        return 1;
+                    }
+
+        const auto outDir = asFile (a.get ("out"));
+        if (outDir.exists() || ! outDir.createDirectory())
+        {
+            sayErr ("нужна новая доступная папка --out: "_s + outDir.getFullPathName());
+            return 1;
+        }
+        const auto audioDir = outDir.getChildFile (manifest.id);
+        if (! audioDir.createDirectory())
+        {
+            sayErr ("не удалось создать папку WAV"_s);
+            return 1;
+        }
+
+        // Декодируем по одному блоку, чтобы большой пакет не занимал RAM целиком.
+        for (int chunk = 0; chunk < reader->getChunkCount(); ++chunk)
+        {
+            DecodedAudio audio;
+            if (! reader->decodeChunk (key, chunk, audio, error))
+            {
+                sayErr ("блок "_s + juce::String (chunk) + ": " + error);
+                return 1;
+            }
+            const auto wavFile = audioDir.getChildFile (juce::String (chunk) + ".wav");
+            std::unique_ptr<juce::OutputStream> stream = std::make_unique<juce::FileOutputStream> (wavFile);
+            juce::WavAudioFormat wav;
+            auto options = juce::AudioFormatWriterOptions{}.withSampleRate (audio.sampleRate)
+                                                      .withNumChannels (1).withBitsPerSample (24);
+            auto writer = wav.createWriterFor (stream, options);
+            if (writer == nullptr)
+            {
+                sayErr ("не удалось открыть WAV: "_s + wavFile.getFullPathName());
+                return 1;
+            }
+            std::vector<int32_t> justified (audio.samples.size());
+            for (size_t i = 0; i < justified.size(); ++i)
+                justified[i] = (int32_t) ((uint32_t) audio.samples[i] << 8);
+            const int* channel = justified.data();
+            if (! writer->write (&channel, audio.frames))
+            {
+                sayErr ("не удалось записать WAV: "_s + wavFile.getFullPathName());
+                return 1;
+            }
+        }
+
+        for (auto& piece : manifest.pieces)
+            for (auto& hit : piece.hits)
+                for (auto& [micId, f] : hit.files)
+                {
+                    f.path = manifest.id + "/" + juce::String (f.chunk) + ".wav";
+                    f.chunk = -1;
+                    f.start = 0;
+                    f.end = 0;
+                }
+        const auto manifestFile = outDir.getChildFile (manifest.id + ".json");
+        if (! manifestFile.replaceWithText (manifest.toJson()))
+        {
+            sayErr ("не удалось записать манифест"_s);
+            return 1;
+        }
+        say ("распаковано в "_s + outDir.getFullPathName());
+        return 0;
+    }
 }
 
 int main (int argc, char** argv)
@@ -353,6 +461,8 @@ int main (int argc, char** argv)
         return verify (parsed);
     if (args[0] == "info")
         return info (parsed);
+    if (args[0] == "extract")
+        return extract (parsed);
     if (args[0] == "fingerprint")
     {
         const auto fp = samplit::license::machineFingerprint();
