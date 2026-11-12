@@ -1,5 +1,6 @@
 #include "MidiDragSource.h"
 #include "Brand.h"
+#include "ui/Fonts.h"
 
 namespace samplit
 {
@@ -11,12 +12,26 @@ namespace samplit
 
     void MidiDragSource::paint (juce::Graphics& g)
     {
-        const auto r = getLocalBounds().toFloat().reduced (0.5f);
-        g.setColour (brand::line);
-        g.drawRoundedRectangle (r, 6.0f, 1.0f);
-        g.setColour (lastReady ? brand::textMuted : brand::textMuted.withAlpha (0.4f));
-        g.setFont (juce::FontOptions (12.0f));
-        g.drawText (utf8 ("Партия → Cubase"), getLocalBounds(), juce::Justification::centred);
+        // Главное действие окна: единственная заливка акцентом на странице. Неактивна, пока партия пуста
+        const auto r = getLocalBounds().toFloat();
+        g.setColour (lastReady ? brand::accent : brand::pad);
+        g.fillRoundedRectangle (r, brand::radiusM);
+        if (! lastReady)
+        {
+            g.setColour (brand::lineStrong);
+            g.drawRoundedRectangle (r.reduced (0.5f), brand::radiusM, 1.0f);
+        }
+        const auto ink = lastReady ? brand::onAccent : brand::textFaint;
+        // Значок: стрелка вниз к линии
+        const auto c = juce::Point<float> (20.0f, r.getCentreY());
+        g.setColour (ink);
+        g.drawLine (c.x, c.y - 7.0f, c.x, c.y + 3.0f, 2.0f);
+        juce::Path head;
+        head.addTriangle (c.x - 5.0f, c.y - 1.0f, c.x + 5.0f, c.y - 1.0f, c.x, c.y + 6.0f);
+        g.fillPath (head);
+        g.fillRect (c.x - 7.0f, c.y + 8.0f, 14.0f, 2.0f);
+        g.setFont (fonts::strong (13.0f));
+        g.drawText (utf8 ("Перетащить в Cubase"), getLocalBounds().withTrimmedLeft (38).withTrimmedRight (8), juce::Justification::centredLeft, true);
     }
 
     void MidiDragSource::refreshState()

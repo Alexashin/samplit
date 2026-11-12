@@ -162,8 +162,8 @@ namespace
     }
 
     // tab: схема установки или микшер; over: лицензия, открытая поверх окна
-    enum class Tab { Kit, Instruments, Pattern, Mixer };
-    enum class Over { None, License };
+    enum class Tab { Kit, Pattern, Mixer };
+    enum class Over { None, License, Settings };
 
     // Пример партии для снимков вкладки «Партия»: бочка, малый, хэт по палитре загруженного кита
     void drawDemoPattern (SamplitProcessor& processor, int bars)
@@ -192,18 +192,20 @@ namespace
     }
 
     bool shoot (SamplitProcessor& processor, const juce::File& out, int w, int h, Tab tab = Tab::Kit, Over over = Over::None,
-               const char* place = nullptr)
+               const char* place = nullptr, bool details = false)
     {
         std::unique_ptr<juce::AudioProcessorEditor> editor (processor.createEditor());
         auto& samplitEditor = static_cast<SamplitEditor&> (*editor);
         samplitEditor.showMainTab (tab == Tab::Mixer ? SamplitEditor::MainTab::Mixer
-                                   : tab == Tab::Instruments ? SamplitEditor::MainTab::Instruments
                                    : tab == Tab::Pattern ? SamplitEditor::MainTab::Pattern : SamplitEditor::MainTab::Kit);
         if (place != nullptr)
             samplitEditor.selectInstrument (place);
+        samplitEditor.openDrumDetails (details);
         editor->setSize (w, h);
         if (over == Over::License)
             samplitEditor.openLicense();
+        if (over == Over::Settings)
+            samplitEditor.openSettings();
         pumpUntil ([] { return false; }, 300);  // таймеры панелей успевают обновиться
         const auto image = editor->createComponentSnapshot (editor->getLocalBounds(), true, 1.0f);
         out.deleteFile();
@@ -422,8 +424,8 @@ int main (int argc, char** argv)
         failures += shoot (processor, outDir.getChildFile ("03-kit.png"), 1120, 640) ? 0 : 1;
         failures += shoot (processor, outDir.getChildFile ("04-kit-narrow.png"), 920, 560) ? 0 : 1;
         failures += shoot (processor, outDir.getChildFile ("05-kit-wide.png"), 1400, 800) ? 0 : 1;
-        failures += shoot (processor, outDir.getChildFile ("04-instruments.png"), 1120, 640, Tab::Instruments, Over::None, "snare") ? 0 : 1;
-        failures += shoot (processor, outDir.getChildFile ("04-instruments-hat.png"), 1120, 640, Tab::Instruments, Over::None, "hat") ? 0 : 1;
+        failures += shoot (processor, outDir.getChildFile ("04-instruments.png"), 1120, 640, Tab::Kit, Over::None, "snare", true) ? 0 : 1;
+        failures += shoot (processor, outDir.getChildFile ("04-instruments-hat.png"), 1120, 640, Tab::Kit, Over::None, "hat", true) ? 0 : 1;
         drawDemoPattern (processor, 1);
         failures += shoot (processor, outDir.getChildFile ("06-pattern.png"), 1120, 640, Tab::Pattern) ? 0 : 1;
         drawDemoPattern (processor, 4);
@@ -433,6 +435,7 @@ int main (int argc, char** argv)
         processor.setPattern (Pattern {});
         failures += shoot (processor, outDir.getChildFile ("07-mixer.png"), 1120, 640, Tab::Mixer) ? 0 : 1;
         failures += shoot (processor, outDir.getChildFile ("08-mixer-narrow.png"), 920, 560, Tab::Mixer) ? 0 : 1;
+        failures += shoot (processor, outDir.getChildFile ("11-settings.png"), 1120, 640, Tab::Kit, Over::Settings) ? 0 : 1;
         failures += shoot (processor, outDir.getChildFile ("10-license.png"), 1120, 640, Tab::Kit, Over::License) ? 0 : 1;
     }
 

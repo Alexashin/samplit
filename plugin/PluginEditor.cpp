@@ -49,7 +49,7 @@ namespace samplit
     }
 
     SamplitEditor::SamplitEditor (SamplitProcessor& p)
-        : AudioProcessorEditor (&p), processor (p), headerBar (p), mixer (p), instruments (p), kitView (p), patternPanel (p), keyboard (p)
+        : AudioProcessorEditor (&p), processor (p), headerBar (p), settingsPanel (p), mixer (p), drumPanel (p), kitView (p), patternPanel (p), strip (p), keyboard (p)
     {
         setLookAndFeel (&lookAndFeel);
         logo = juce::Drawable::createFromImageData (BinaryData::lockuphondark_svg, BinaryData::lockuphondark_svgSize);
@@ -77,10 +77,9 @@ namespace samplit
         scrim.onClick = [this] { showOverlay (Overlay::None); };
 
         // Страницы окна: порядок = порядок вкладок. Новая страница добавляется сюда одной строкой
-        pages = { { utf8 ("Барабаны"), &kitView, true },
-                  { utf8 ("Партия"), &patternPanel, true },
-                  { utf8 ("Микшер"), &mixer, false },
-                  { utf8 ("Инструменты"), &instruments, false } };
+        pages = { { utf8 ("Барабаны"), &kitView, &drumPanel, true },
+                  { utf8 ("Партия"), &patternPanel, nullptr, true },
+                  { utf8 ("Микшер"), &mixer, nullptr, false } };
         std::vector<juce::String> names;
         for (const auto& page : pages)
             names.push_back (page.name);
@@ -90,7 +89,10 @@ namespace samplit
         setupButton.setButtonText (utf8 ("Установка  ▾"));
         setupButton.setTooltip (utf8 ("Папка со звуком, стандартная и заводская установка, файлы установки"));
         setupButton.onClick = [this] { headerBar.showSetupMenu (setupButton); };
-        settingsButton.onClick = [this] { showSettingsMenu(); };
+        settingsButton.onClick = [this] { showOverlay (overlay == Overlay::Settings ? Overlay::None : Overlay::Settings); };
+        settingsPanel.onWindowSize = [this] (int i) { setWindowSize (i == 0 ? WindowSize::Compact : i == 1 ? WindowSize::Standard : WindowSize::Expanded); };
+        settingsPanel.onChooseFolder = [this] { showOverlay (Overlay::None); headerBar.chooseLibrary(); };
+        settingsPanel.onRescan = [this] { processor.rescanCatalog(); showOverlay (Overlay::None); };
         helpButton.onClick = [this] { showHelp(); };
 
         keyboardToggle.setColour (juce::TextButton::buttonColourId, juce::Colours::transparentBlack);
@@ -98,22 +100,22 @@ namespace samplit
         keyboardToggle.setTooltip (utf8 ("Показать или скрыть клавиатуру внизу"));
         keyboardToggle.onClick = [this] { setKeyboardOpen (! processor.getUiState().keyboardOpen); };
 
-        kitView.onOpenInstruments = [safe = juce::Component::SafePointer<SamplitEditor> (this)] (const juce::String& placeId)
+        kitView.onSelect = [safe = juce::Component::SafePointer<SamplitEditor> (this)] (const juce::String& placeId)
         {
-            if (safe == nullptr)
-                return;
-            safe->instruments.selectPlace (placeId);
-            safe->showMainTab (MainTab::Instruments);
+            if (safe != nullptr)
+                safe->drumPanel.selectPlace (placeId);
         };
+        selectInstrument ("kick");
 
         // Порядок добавления = порядок наложения: подложка и выпадающие панели поверх всего
-        for (auto* c : std::initializer_list<juce::Component*> { &mixer, &instruments, &kitView, &patternPanel, &firstRun, &phraseSource, &keyboard,
+        for (auto* c : std::initializer_list<juce::Component*> { &mixer, &drumPanel, &kitView, &patternPanel, &firstRun, &strip, &keyboard,
                                                                   &headerBar, &setupButton, &pageTabs, &settingsButton, &helpButton, &licenseButton,
                                                                   &keyboardToggle, &scrim })
             addChildComponent (c);
+        addChildComponent (settingsPanel);
         if (license != nullptr)
             addChildComponent (license.get());
-        for (auto* c : std::initializer_list<juce::Component*> { &phraseSource, &keyboard, &headerBar, &setupButton, &pageTabs,
+        for (auto* c : std::initializer_list<juce::Component*> { &strip, &keyboard, &headerBar, &setupButton, &pageTabs,
                                                                   &settingsButton, &helpButton, &keyboardToggle })
             c->setVisible (true);
         firstRun.chooseButton.onClick = [this] { headerBar.chooseLibrary(); };
@@ -138,13 +140,6 @@ namespace samplit
         licenseButton.setVisible (license != nullptr);
         if (license != nullptr && ! license->isOk())
             showOverlay (Overlay::License);
-        phraseSource.makeFile = [this] { return processor.getPattern().toMidiFile(); };
-        phraseSource.ready = [this] { return ! processor.getPattern().steps.empty(); };
-        phraseSource.fileName = [this]
-        {
-            const auto pat = processor.getPattern();
-            return "Samplit-" + juce::String (pat.bars) + "t-" + juce::String (juce::roundToInt (pat.bpm)) + "bpm.mid";
-        };
         startTimerHz (10);
     }
 
@@ -170,7 +165,6 @@ namespace samplit
     void SamplitEditor::timerCallback()
     {
         updateHeader();
-        phraseSource.refreshState();
         const bool first = ! processor.getLicense().isEnforced() && processor.getLicense().getLibraryRoot() == juce::File()
                            && processor.getKit() == nullptr;
         if (first != firstRun.isVisible())
@@ -217,6 +211,9 @@ namespace samplit
         scrim.setVisible (which != Overlay::None);
         if (license != nullptr)
             license->setVisible (which == Overlay::License);
+        settingsPanel.setVisible (which == Overlay::Settings);
+        if (which == Overlay::Settings)
+            settingsPanel.refresh();
         resized();
         repaint();
     }
@@ -233,7 +230,7 @@ namespace samplit
 
     void SamplitEditor::showMainTab (MainTab tab)
     {
-        showPage (tab == MainTab::Kit ? 0 : tab == MainTab::Pattern ? 1 : tab == MainTab::Mixer ? 2 : 3);
+        showPage (tab == MainTab::Kit ? 0 : tab == MainTab::Pattern ? 1 : 2);
     }
 
     void SamplitEditor::showPage (int index)
@@ -242,7 +239,9 @@ namespace samplit
         pageTabs.setSelected (currentPage);
         for (int i = 0; i < (int) pages.size(); ++i)
             pages[(size_t) i].content->setVisible (i == currentPage);
-        phraseSource.setVisible (pages[(size_t) currentPage].hasFooter);
+        drumPanel.setVisible (pages[(size_t) currentPage].side == &drumPanel);
+        strip.setVisible (pages[(size_t) currentPage].hasFooter);
+        strip.setTransportVisible (currentPage == 0);
         resized();
         repaint();
     }
@@ -266,32 +265,6 @@ namespace samplit
             h = juce::jmin (h, display->userArea.getHeight() - 96);
         }
         setSize (juce::jmax (880, w), juce::jmax (520, h));
-    }
-
-    // Временное меню настроек (Р3 заменит его панелью): как выбирается удар и размер окна
-    void SamplitEditor::showSettingsMenu()
-    {
-        juce::PopupMenu m;
-        m.addSectionHeader (utf8 ("Что значит сила удара (velocity)"));
-        m.addItem (1, utf8 ("Сила: запись выбирает плагин"), true, ! processor.isPartMode());
-        m.addItem (2, utf8 ("Номер записи: как в Kontakt, для партий"), true, processor.isPartMode());
-        m.addSectionHeader (utf8 ("Какая запись играет"));
-        m.addItem (3, utf8 ("Повторяемо: одно место песни, одна запись"), ! processor.isPartMode(), processor.isRepeatable());
-        m.addItem (4, utf8 ("Живой выбор: каждый раз по-новому"), ! processor.isPartMode(), ! processor.isRepeatable());
-        m.addSectionHeader (utf8 ("Размер окна"));
-        m.addItem (5, utf8 ("Компактный 920 × 560"));
-        m.addItem (6, utf8 ("Стандартный 1120 × 640"));
-        m.addItem (7, utf8 ("Большой 1400 × 800"));
-        m.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&settingsButton),
-                         [safe = juce::Component::SafePointer<SamplitEditor> (this)] (int r)
-        {
-            if (safe == nullptr || r == 0)
-                return;
-            auto& pr = safe->processor;
-            if (r == 1 || r == 2)      pr.setPartMode (r == 2);
-            else if (r == 3 || r == 4) pr.setRepeatable (r == 3);
-            else                       safe->setWindowSize (r == 5 ? WindowSize::Compact : r == 6 ? WindowSize::Standard : WindowSize::Expanded);
-        });
     }
 
     void SamplitEditor::showHelp()
@@ -337,14 +310,15 @@ namespace samplit
             keyboard.setBounds (bounds.removeFromBottom (juce::jlimit (88, 140, bounds.getHeight() / 5)).reduced (kMargin, 0));
 
         auto area = bounds;
-        if (pages[(size_t) currentPage].hasFooter)
+        if (pages[(size_t) currentPage].side != nullptr)
         {
-            auto footer = area.removeFromBottom (kFooterHeight).reduced (kMargin, 6);
-            phraseSource.setBounds (footer.removeFromRight (juce::jmin (220, footer.getWidth())));
+            const int sideWidth = juce::jlimit (268, 340, area.getWidth() / 4);
+            drumPanel.setBounds (area.removeFromRight (sideWidth));
         }
+        if (pages[(size_t) currentPage].hasFooter)
+            strip.setBounds (area.removeFromBottom (kFooterHeight).reduced (kMargin, 6));
         area = area.reduced (kMargin, 8);
         mixer.setBounds (area);
-        instruments.setBounds (area);
         kitView.setBounds (area);
         patternPanel.setBounds (area);
         firstRun.setBounds (area);
@@ -354,6 +328,7 @@ namespace samplit
         const int width = juce::jmin (kOverlayWidth, getWidth() - 2 * kMargin);
         if (license != nullptr)
             license->setBounds (getWidth() - kMargin - width, kHeaderHeight + 6, width, license->isOk() ? 130 : 180);
+        settingsPanel.setBounds (getWidth() - kMargin - width, kHeaderHeight + 6, width, juce::jmin (SettingsPanel::preferredHeight(), getHeight() - kHeaderHeight - 24));
 
         if (trackSize)
         {
@@ -396,7 +371,7 @@ namespace samplit
             g.fillEllipse (juce::Rectangle<float> (8.0f, 8.0f).withCentre ({ (float) chip.getX() + 16.0f, (float) chip.getCentreY() }));
         }
 
-        for (auto* c : std::initializer_list<juce::Component*> { license.get() })
+        for (auto* c : std::initializer_list<juce::Component*> { license.get(), &settingsPanel })
             if (c != nullptr && c->isVisible())
             {
                 g.setColour (brand::lineStrong);

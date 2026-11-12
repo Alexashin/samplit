@@ -1,6 +1,7 @@
 #pragma once
 
 #include "PackCatalog.h"
+#include "ui/Fonts.h"
 #include "PluginProcessor.h"
 
 #include <juce_gui_basics/juce_gui_basics.h>
@@ -11,8 +12,8 @@
 
 namespace samplit
 {
-    // Схема барабанной установки: двенадцать мест Studio600. Клик по месту играет его барабан и открывает меню места:
-    // включить или выключить, выбрать звук (пак) и как выбирается удар в группах слоёв. Выключенное место рисуется приглушённым
+    // Схема барабанной установки: двенадцать мест Studio600. Левый клик играет барабан и выбирает его (сила по высоте клика,
+    // ниже = сильнее), параметры выбранного барабана в панели справа. Выключенное место приглушено, но выбирается
     class KitView final : public juce::Component,
                           public juce::SettableTooltipClient,
                           private juce::ChangeListener,
@@ -28,8 +29,9 @@ namespace samplit
         void mouseMove (const juce::MouseEvent&) override;
         void mouseExit (const juce::MouseEvent&) override;
 
-        // Пункт меню места «Открыть в «Инструментах»»: окно переключает вкладку и выбирает место
-        std::function<void (const juce::String& placeId)> onOpenInstruments;
+        // Выбор барабана кликом: окно показывает его в панели справа
+        std::function<void (const juce::String& placeId)> onSelect;
+        void setSelected (const juce::String& placeId);
 
     private:
         // Место на схеме: экранный прямоугольник, подпись и барабан кита, играющий на этом месте (по Piece::slot)
@@ -52,7 +54,6 @@ namespace samplit
         void layoutSpots();
         void refreshState();
         int spotAt (juce::Point<float>) const;
-        void showPlaceMenu (int spot);
 
         SamplitProcessor& processor;
         std::shared_ptr<const Kit> kit;
@@ -61,8 +62,8 @@ namespace samplit
         std::vector<std::vector<int>> pieceKeys;
         int hovered = -1;
 
-        juce::Rectangle<int> stageArea, hintArea;
-        juce::Rectangle<float> stool;
+        juce::Rectangle<int> stageArea;
+        std::string selectedId;
 
         juce::Label emptyText;
 

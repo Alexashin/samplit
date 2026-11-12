@@ -1,4 +1,4 @@
-#include "InstrumentsPanel.h"
+#include "DrumPanel.h"
 #include "Brand.h"
 #include "PatternPalette.h"
 
@@ -9,9 +9,7 @@ namespace samplit
 {
     namespace
     {
-        constexpr int kListWidth = 270;
-        constexpr int kPad = 20;
-        const juce::Colour kWarning { 0xffffb454 };
+        constexpr int kPad = 16;
 
         juce::String pickText (Pick p)
         {
@@ -51,70 +49,19 @@ namespace samplit
             return pack.pieces.size() == 1 || pieceId.isEmpty() ? &pack.pieces.front() : nullptr;
         }
 
-        juce::String packTitle (const CatalogPack& p) { return p.title.isNotEmpty() ? p.title : p.packId; }
-
-        void styleSection (juce::Label& l, const juce::String& text)
+        // Название звука без служебного префикса библиотеки
+        juce::String packTitle (const CatalogPack& p)
         {
-            l.setText (text, juce::dontSendNotification);
-            l.setFont (boldFont (12.0f));
-            l.setColour (juce::Label::textColourId, brand::textMuted);
+            auto t = p.title.isNotEmpty() ? p.title : p.packId;
+            if (t.startsWithIgnoreCase ("Studio600 Drum LIB:"))
+                t = t.fromFirstOccurrenceOf (":", false, false).trim();
+            return t;
         }
     }
 
-    // ---- Список мест ----
-
-    struct InstrumentsPanel::PlaceList final : juce::ListBox, private juce::ListBoxModel
-    {
-        struct Row { juce::String label, sub; bool enabled = true, warn = false; };
-
-        explicit PlaceList (InstrumentsPanel& o) : juce::ListBox ({}, nullptr), owner (o)
-        {
-            setModel (this);
-            setRowHeight (54);
-            setTitle (utf8 ("Места установки"));
-            rows.resize (kStudio600Places.size());
-        }
-
-        int getNumRows() override { return (int) rows.size(); }
-
-        void paintListBoxItem (int row, juce::Graphics& g, int w, int h, bool isSelected) override
-        {
-            if (! juce::isPositiveAndBelow (row, (int) rows.size()))
-                return;
-            const auto& r = rows[(size_t) row];
-            const auto box = juce::Rectangle<float> (0.0f, 0.0f, (float) w, (float) h).reduced (6.0f, 3.0f);
-            if (isSelected)
-            {
-                g.setColour (brand::accentSoft);
-                g.fillRoundedRectangle (box, 8.0f);
-                g.setColour (brand::accent);
-                g.drawRoundedRectangle (box.reduced (0.5f), 8.0f, 1.0f);
-            }
-            auto text = box.reduced (12.0f, h < 46 ? 2.0f : 6.0f).toNearestInt();
-            g.setColour (r.enabled ? brand::text : brand::textMuted);
-            g.setFont (boldFont (14.0f));
-            g.drawText (r.label, text.removeFromTop (20), juce::Justification::centredLeft, true);
-            g.setColour (r.warn ? kWarning : brand::textMuted);
-            g.setFont (plainFont (12.0f));
-            g.drawText (r.sub, text, juce::Justification::centredLeft, true);
-        }
-
-        void selectedRowsChanged (int row) override
-        {
-            if (row >= 0 && row != owner.selected)
-            {
-                owner.selected = row;
-                owner.refresh (true);
-            }
-        }
-
-        InstrumentsPanel& owner;
-        std::vector<Row> rows;
-    };
-
     // ---- Строка группы ударов ----
 
-    struct InstrumentsPanel::GroupRow final : juce::Component
+    struct DrumPanel::GroupRow final : juce::Component
     {
         GroupRow (juce::String n, juce::String h, juce::String w, std::vector<Pick> allowedModes, Pick cur,
                   std::function<void (Pick)> cb)
@@ -275,7 +222,7 @@ namespace samplit
         std::vector<std::unique_ptr<juce::TextButton>> buttons, strengthButtons;
     };
 
-    struct InstrumentsPanel::GroupsContent final : juce::Component
+    struct DrumPanel::GroupsContent final : juce::Component
     {
         void layoutRows (int width)
         {
@@ -294,40 +241,29 @@ namespace samplit
 
     // ---- Панель ----
 
-    InstrumentsPanel::InstrumentsPanel (SamplitProcessor& p)
-        : processor (p), list (std::make_unique<PlaceList> (*this)), groupsContent (std::make_unique<GroupsContent>())
+    DrumPanel::DrumPanel (SamplitProcessor& p)
+        : processor (p), groupsContent (std::make_unique<GroupsContent>())
     {
-        setTitle (utf8 ("Инструменты"));
-        list->setColour (juce::ListBox::backgroundColourId, brand::surface);
-        addAndMakeVisible (*list);
-
-        title.setFont (boldFont (22.0f));
+        setTitle (utf8 ("Барабан"));
+        title.setFont (fonts::strong (17.0f));
         title.setMinimumHorizontalScale (0.8f);
-        styleSection (soundLabel, utf8 ("ЗВУК"));
-        styleSection (levelLabel, utf8 ("ГРОМКОСТЬ"));
-        styleSection (groupsLabel, utf8 ("ГРУППЫ УДАРОВ"));
-        packWarning.setFont (plainFont (13.0f));
-        packWarning.setColour (juce::Label::textColourId, kWarning);
-        savedHint.setFont (plainFont (12.0f));
-        savedHint.setColour (juce::Label::textColourId, brand::textMuted);
-        savedHint.setText (utf8 ("Установка сохраняется вместе с проектом. Стандартную можно задать кнопками в шапке."),
-                           juce::dontSendNotification);
-        noGroups.setFont (plainFont (13.0f));
+        packWarning.setFont (fonts::text (12.5f));
+        packWarning.setColour (juce::Label::textColourId, brand::warn);
+        noGroups.setFont (fonts::text (12.5f));
         noGroups.setColour (juce::Label::textColourId, brand::textMuted);
         noGroups.setText (utf8 ("У этого звука нет настраиваемых групп: удар выбирается автоматически."),
                           juce::dontSendNotification);
 
-        enabledToggle.setButtonText (utf8 ("Включено"));
-        enabledToggle.setTooltip (utf8 ("Выключенное место молчит и не загружается в память"));
-        enabledToggle.onClick = [this]
+        enabledLed.setTooltip (utf8 ("Выключенный барабан молчит и не загружается в память"));
+        enabledLed.onClick = [this]
         {
             if (! updating)
-                processor.setPlaceEnabled (juce::String (currentPlace().id), enabledToggle.getToggleState());
+                processor.setPlaceEnabled (juce::String (currentPlace().id), enabledLed.getToggleState());
         };
 
-        packBox.setTitle (utf8 ("Пак"));
-        packBox.setTooltip (utf8 ("Набор записей, который играет на этом месте"));
-        packBox.setTextWhenNothingSelected (utf8 ("Выберите пак"));
+        packBox.setTitle (utf8 ("Звук"));
+        packBox.setTooltip (utf8 ("Набор записей, который играет на этом барабане"));
+        packBox.setTextWhenNothingSelected (utf8 ("Выберите звук"));
         packBox.onChange = [this]
         {
             const auto idx = packBox.getSelectedId() - 1;
@@ -342,7 +278,7 @@ namespace samplit
             processor.setPlacePack (juce::String (def.id), pk.packId, piece);
         };
         pieceBox.setTitle (utf8 ("Барабан"));
-        pieceBox.setTooltip (utf8 ("В этом паке несколько барабанов такого типа: выберите нужный"));
+        pieceBox.setTooltip (utf8 ("В этом звуке несколько барабанов такого типа: выберите нужный"));
         pieceBox.onChange = [this]
         {
             const auto idx = packBox.getSelectedId() - 1;
@@ -354,103 +290,66 @@ namespace samplit
                 processor.setPlacePack (juce::String (currentPlace().id), pk.packId, pk.pieces[(size_t) pi].id);
         };
 
-        level.setSliderStyle (juce::Slider::LinearHorizontal);
-        level.setRange (kPlaceLevelMinDb, kPlaceLevelMaxDb, 0.1);
-        level.setDoubleClickReturnValue (true, 0.0);
-        level.setTextBoxStyle (juce::Slider::TextBoxRight, false, 80, 24);
-        level.setTitle (utf8 ("Громкость места"));
-        level.setTooltip (utf8 ("Громкость этого барабана, дБ. Двойной клик: 0 дБ"));
-        level.textFromValueFunction = [] (double v)
-        {
-            return (v > 0.05 ? "+" : "") + juce::String (v, 1) + utf8 (" дБ");
-        };
-        level.valueFromTextFunction = [] (const juce::String& t) { return t.retainCharacters ("0123456789.,-+").replaceCharacter (',', '.').getDoubleValue(); };
-        level.updateText();
-        level.setColour (juce::Slider::trackColourId, brand::accent);
-        level.setColour (juce::Slider::backgroundColourId, brand::line);
-        level.setColour (juce::Slider::thumbColourId, brand::text);
-        level.setColour (juce::Slider::textBoxTextColourId, brand::text);
-        level.setColour (juce::Slider::textBoxOutlineColourId, juce::Colours::transparentBlack);
-        level.onValueChange = [this]
+        levelKnob.setRange (kPlaceLevelMinDb, kPlaceLevelMaxDb, 0.1, 0.0);
+        levelKnob.setTooltip (utf8 ("Громкость этого барабана, дБ. Двойной клик: 0 дБ. Уровень микрофонов настраивается в микшере"));
+        levelKnob.format = [] (double v) { return (v > 0.05 ? "+" : "") + juce::String (v, 1) + utf8 (" дБ"); };
+        levelKnob.parse = [] (const juce::String& t) { return t.retainCharacters ("0123456789.,-+").replaceCharacter (',', '.').getDoubleValue(); };
+        levelKnob.onChange = [this]
         {
             if (! updating)
-                processor.setPlaceLevel (juce::String (currentPlace().id), (float) level.getValue());
+                processor.setPlaceLevel (juce::String (currentPlace().id), (float) levelKnob.getValue());
         };
 
         listen.setButtonText (utf8 ("Прослушать"));
         listen.setTooltip (utf8 ("Сыграть этот барабан один раз"));
         listen.onClick = [this] { processor.triggerNote (currentPlace().keyLo, 100); };
 
+        disclosure.setTooltip (utf8 ("Группы ударов, режимы выбора записи и карта силы"));
+        disclosure.onClick = [this] { groupsOpen = disclosure.getToggleState(); resized(); repaint(); };
+
         viewport.setViewedComponent (groupsContent.get(), false);
         viewport.setScrollBarsShown (true, false);
         viewport.setTitle (utf8 ("Группы ударов"));
 
-        for (auto* c : std::initializer_list<juce::Component*> { &title, &enabledToggle, &soundLabel, &packBox, &pieceBox,
-                                                                  &packWarning, &levelLabel, &level, &listen, &groupsLabel,
-                                                                  &viewport, &noGroups, &savedHint })
+        for (auto* c : std::initializer_list<juce::Component*> { &title, &enabledLed, &packBox, &pieceBox, &packWarning, &levelKnob,
+                                                                  &listen, &disclosure, &viewport, &noGroups })
             addAndMakeVisible (c);
 
         processor.addChangeListener (this);
         refresh (true);
-        list->selectRow (selected);
     }
 
-    InstrumentsPanel::~InstrumentsPanel()
+    DrumPanel::~DrumPanel()
     {
         processor.removeChangeListener (this);
     }
 
-    const PlaceDef& InstrumentsPanel::currentPlace() const
+    const PlaceDef& DrumPanel::currentPlace() const
     {
         return kStudio600Places[(size_t) juce::jlimit (0, (int) kStudio600Places.size() - 1, selected)];
     }
 
-    void InstrumentsPanel::selectPlace (const juce::String& placeId)
+    void DrumPanel::selectPlace (const juce::String& placeId)
     {
         for (int i = 0; i < (int) kStudio600Places.size(); ++i)
             if (placeId == kStudio600Places[(size_t) i].id)
             {
                 selected = i;
-                list->selectRow (i);
                 refresh (true);
                 return;
             }
     }
 
-    void InstrumentsPanel::changeListenerCallback (juce::ChangeBroadcaster*)
+    void DrumPanel::changeListenerCallback (juce::ChangeBroadcaster*)
     {
         refresh (false);
     }
 
-    void InstrumentsPanel::refresh (bool forceGroups)
+    void DrumPanel::refresh (bool forceGroups)
     {
         const juce::ScopedValueSetter<bool> guard (updating, true);
         const auto setup = processor.getSetup();
         const auto catalog = processor.getCatalog();
-
-        // Список слева
-        for (size_t i = 0; i < kStudio600Places.size(); ++i)
-        {
-            const auto& def = kStudio600Places[i];
-            auto& row = list->rows[i];
-            row.label = juce::String::fromUTF8 (def.label);
-            const auto* ps = setup.find (def.id);
-            const auto pks = packsForPlace (catalog, def);
-            const auto* pk = ps != nullptr ? findPack (pks, juce::String (ps->packId)) : nullptr;
-            row.enabled = ps == nullptr || ps->enabled;
-            row.warn = false;
-            if (ps != nullptr && ! ps->enabled)
-                row.sub = utf8 ("выключено");
-            else if (ps != nullptr && pk == nullptr)
-            {
-                row.sub = utf8 ("пак не найден");
-                row.warn = true;
-            }
-            else
-                row.sub = pk != nullptr ? packTitle (*pk) : juce::String();
-        }
-        list->updateContent();
-        list->repaint();
 
         // Карточка
         const auto& def = currentPlace();
@@ -460,7 +359,7 @@ namespace samplit
         packs = packsForPlace (catalog, def);
 
         title.setText (juce::String::fromUTF8 (def.label), juce::dontSendNotification);
-        enabledToggle.setToggleState (ps->enabled, juce::dontSendNotification);
+        enabledLed.setToggleState (ps->enabled, juce::dontSendNotification);
 
         // Список паков перестраивается только при изменении, чтобы не закрывать открытое меню
         juce::String sig;
@@ -508,11 +407,11 @@ namespace samplit
         }
         pieceBox.setVisible (severalPieces);
 
-        if (! level.isMouseButtonDown() && std::abs (level.getValue() - (double) ps->levelDb) > 0.001)
-            level.setValue (ps->levelDb, juce::dontSendNotification);
+        if (! levelKnob.getSlider().isMouseButtonDown() && std::abs (levelKnob.getValue() - (double) ps->levelDb) > 0.001)
+            levelKnob.setValue (ps->levelDb);
 
         const bool on = ps->enabled;
-        for (auto* c : std::initializer_list<juce::Component*> { &packBox, &pieceBox, &level, &listen })
+        for (auto* c : std::initializer_list<juce::Component*> { &packBox, &pieceBox, &levelKnob, &listen })
             c->setEnabled (on);
         viewport.setAlpha (on ? 1.0f : 0.45f);
         viewport.setEnabled (on);
@@ -521,12 +420,12 @@ namespace samplit
         rebuildGroups (setup, def, *ps, packs);
         (void) forceGroups;
         resized();
-        repaint (cardArea);
+        repaint();
     }
 
     // Строки групп: пересоздаются при смене места, пака, барабана или кита; иначе только обновляется режим
     // (строка не удаляется внутри собственного обработчика, прокрутка сохраняется)
-    void InstrumentsPanel::rebuildGroups (const Setup&, const PlaceDef& def, const PlaceSetup& ps,
+    void DrumPanel::rebuildGroups (const Setup&, const PlaceDef& def, const PlaceSetup& ps,
                                           const std::vector<CatalogPack>& pks)
     {
         const auto kit = processor.getKit();
@@ -631,7 +530,7 @@ namespace samplit
                     mode = allowed.front();
                 const auto choiceId = placeId + ":" + g.id;
                 auto row = std::make_unique<GroupRow> (g.name.isNotEmpty() ? g.name : g.id, g.hint, where, allowed, mode,
-                                                       [safe = juce::Component::SafePointer<InstrumentsPanel> (this), choiceId] (Pick p)
+                                                       [safe = juce::Component::SafePointer<DrumPanel> (this), choiceId] (Pick p)
                                                        {
                                                            if (safe != nullptr)
                                                                safe->processor.setGroupPick (choiceId, p);
@@ -640,7 +539,7 @@ namespace samplit
                 for (const auto& o : palette)
                     if (o.groupId == g.id)
                         mine.push_back (o);
-                row->setStrengths (mine, [safe = juce::Component::SafePointer<InstrumentsPanel> (this)] (int key, int vel)
+                row->setStrengths (mine, [safe = juce::Component::SafePointer<DrumPanel> (this)] (int key, int vel)
                                    {
                                        if (safe != nullptr)
                                            safe->processor.triggerNote (key, vel);
@@ -649,67 +548,57 @@ namespace samplit
                 groupsContent->rows.push_back (std::move (row));
             }
 
-        noGroups.setVisible (groupsContent->rows.empty());
+        noGroups.setVisible (groupsOpen && groupsContent->rows.empty());
         layoutGroups();
         viewport.setViewPosition (samePlace ? savedPos : juce::Point<int> (0, 0));
     }
 
-    void InstrumentsPanel::layoutGroups()
+    void DrumPanel::layoutGroups()
     {
         groupsContent->layoutRows (juce::jmax (100, viewport.getMaximumVisibleWidth()));
     }
 
-    void InstrumentsPanel::paint (juce::Graphics& g)
+    void DrumPanel::paint (juce::Graphics& g)
     {
-        g.setColour (brand::surface);
-        g.fillRoundedRectangle (cardArea.toFloat(), 10.0f);
+        g.fillAll (brand::surface);
         g.setColour (brand::line);
-        g.drawRoundedRectangle (cardArea.toFloat().reduced (0.5f), 10.0f, 1.0f);
-        const auto l = list->getBounds().toFloat();
-        g.drawRoundedRectangle (l.expanded (0.5f), 10.0f, 1.0f);
+        g.fillRect (0, 0, 1, getHeight());
+        drawSectionCaption (g, utf8 ("Звук"), soundCaption);
     }
 
-    void InstrumentsPanel::resized()
+    void DrumPanel::resized()
     {
-        auto area = getLocalBounds();
-        list->setBounds (area.removeFromLeft (kListWidth).reduced (1));
-        list->setRowHeight (juce::jlimit (36, 54, list->getHeight() / (int) kStudio600Places.size()));
-        area.removeFromLeft (16);
-        cardArea = area;
+        auto area = getLocalBounds().reduced (kPad, kPad);
 
-        auto card = area.reduced (kPad, 16);
-        savedHint.setBounds (card.removeFromBottom (20));
-        card.removeFromBottom (6);
-
-        auto head = card.removeFromTop (34);
-        enabledToggle.setBounds (head.removeFromRight (120));
+        auto head = area.removeFromTop (30);
+        enabledLed.setBounds (head.removeFromRight (68));
         title.setBounds (head);
-        card.removeFromTop (10);
+        area.removeFromTop (12);
 
-        soundLabel.setBounds (card.removeFromTop (18));
-        auto sound = card.removeFromTop (30);
-        const bool pieces = pieceBox.isVisible();
-        packBox.setBounds (sound.removeFromLeft (juce::jmin (pieces ? 300 : 380, sound.getWidth() - (pieces ? 160 : 0))));
-        if (pieces)
+        soundCaption = area.removeFromTop (18);
+        area.removeFromTop (4);
+        packBox.setBounds (area.removeFromTop (30));
+        if (pieceBox.isVisible())
         {
-            sound.removeFromLeft (10);
-            pieceBox.setBounds (sound.removeFromLeft (juce::jmin (260, sound.getWidth())));
+            area.removeFromTop (6);
+            pieceBox.setBounds (area.removeFromTop (30));
         }
         const bool warn = packWarning.getText().isNotEmpty();
-        packWarning.setBounds (card.removeFromTop (warn ? 24 : 0));
-        card.removeFromTop (14);
+        packWarning.setBounds (area.removeFromTop (warn ? 22 : 0));
+        area.removeFromTop (16);
 
-        levelLabel.setBounds (card.removeFromTop (18));
-        auto lv = card.removeFromTop (30);
-        listen.setBounds (lv.removeFromRight (120));
-        lv.removeFromRight (16);
-        level.setBounds (lv.removeFromLeft (juce::jmin (lv.getWidth(), 520)));
-        card.removeFromTop (16);
+        auto row = area.removeFromTop (levelKnob.preferredHeight());
+        levelKnob.setBounds (row.removeFromLeft (levelKnob.preferredWidth()));
+        row.removeFromLeft (12);
+        listen.setBounds (row.withSizeKeepingCentre (row.getWidth(), 32));
+        area.removeFromTop (12);
 
-        groupsLabel.setBounds (card.removeFromTop (18));
-        card.removeFromTop (4);
-        viewport.setBounds (card);
-        noGroups.setBounds (card.withHeight (30));
+        disclosure.setBounds (area.removeFromTop (28));
+        area.removeFromTop (4);
+        viewport.setVisible (groupsOpen);
+        noGroups.setVisible (groupsOpen && groupsContent->rows.empty());
+        viewport.setBounds (area);
+        noGroups.setBounds (area.withHeight (40));
         layoutGroups();
     }
 }

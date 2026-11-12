@@ -75,12 +75,16 @@ target_sources(Samplit PRIVATE
     LicensePanel.cpp
     MixerPanel.h
     MixerPanel.cpp
-    InstrumentsPanel.h
-    InstrumentsPanel.cpp
+    DrumPanel.h
+    DrumPanel.cpp
     KitView.h
     KitView.cpp
     PatternPanel.h
     PatternPanel.cpp
+    SettingsPanel.h
+    SettingsPanel.cpp
+    PatternStrip.h
+    PatternStrip.cpp
     PluginEditor.h
     PluginEditor.cpp)
 

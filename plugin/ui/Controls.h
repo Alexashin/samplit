@@ -92,6 +92,7 @@ namespace samplit
 
         void paint (juce::Graphics& g) override
         {
+            g.beginTransparencyLayer (isEnabled() ? 1.0f : 0.45f);
             const auto r = getLocalBounds().toFloat();
             g.setColour (brand::bg);
             g.fillRoundedRectangle (r, brand::radiusM);
@@ -116,10 +117,13 @@ namespace samplit
                 g.setColour (brand::accentHover);
                 g.drawRoundedRectangle (r.reduced (1.0f), brand::radiusM, 2.0f);
             }
+            g.endTransparencyLayer();
         }
 
         void mouseDown (const juce::MouseEvent& e) override
         {
+            if (! isEnabled())
+                return;
             for (int i = 0; i < (int) items.size(); ++i)
                 if (cellBounds (i).contains (e.getPosition()))
                     setSelected (i, true);

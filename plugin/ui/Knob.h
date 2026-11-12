@@ -12,7 +12,8 @@ namespace samplit
     // Крутилка с подписью и значением. Жесты везде одни (docs/ui-guidelines.md §3):
     // тянуть вверх/вниз; Shift: точный шаг; двойной клик по крутилке: сброс; двойной клик по числу: ввод с клавиатуры;
     // колесо: малый шаг; правый клик: «Сбросить»; Tab и стрелки с видимым фокусом (стандарт JUCE Slider)
-    class Knob final : public juce::Component
+    class Knob final : public juce::Component,
+                       public juce::SettableTooltipClient
     {
     public:
         enum class Size { Large, Small };   // диск 48 или 32 px

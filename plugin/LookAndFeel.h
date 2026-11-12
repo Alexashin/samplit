@@ -157,7 +157,7 @@ namespace samplit
         }
         juce::Font getTextButtonFont (juce::TextButton&, int) override { return fonts::strong (13.0f); }
         juce::Font getPopupMenuFont() override { return fonts::text (13.5f); }
-        juce::Font getLabelFont (juce::Label&) override { return fonts::text (13.0f); }
+        juce::Font getLabelFont (juce::Label& l) override { return l.getFont(); }
 
         void drawButtonBackground (juce::Graphics& g, juce::Button& button, const juce::Colour& background,
                                    bool highlighted, bool down) override

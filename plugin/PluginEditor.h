@@ -1,15 +1,16 @@
 #pragma once
 
 #include "HeaderBar.h"
-#include "InstrumentsPanel.h"
+#include "DrumPanel.h"
 #include "KeyboardView.h"
-#include "MidiDragSource.h"
+#include "PatternStrip.h"
 #include "KitView.h"
 #include "LicensePanel.h"
 #include "LookAndFeel.h"
 #include "MixerPanel.h"
 #include "PatternPanel.h"
 #include "PluginProcessor.h"
+#include "SettingsPanel.h"
 #include "ui/Controls.h"
 
 #include <juce_gui_basics/juce_gui_basics.h>
@@ -36,14 +37,16 @@ namespace samplit
         void resized() override;
         bool keyPressed (const juce::KeyPress&) override;
 
-        // Страницы окна. Instruments пока отдельная страница, до переноса в панель барабана (Р4)
-        enum class MainTab { Kit, Instruments, Pattern, Mixer };
+        // Страницы окна
+        enum class MainTab { Kit, Pattern, Mixer };
         void showMainTab (MainTab);
 
-        void selectInstrument (const juce::String& placeId) { instruments.selectPlace (placeId); }
+        void selectInstrument (const juce::String& placeId) { kitView.setSelected (placeId); drumPanel.selectPlace (placeId); }
 
         // Выпадающие панели поверх окна (кнопки шапки, снимки окна)
         void openLicense() { if (license != nullptr) showOverlay (Overlay::License); }
+        void openDrumDetails (bool open) { drumPanel.setDetailsOpen (open); }
+        void openSettings() { showOverlay (Overlay::Settings); }
 
         // Размер окна: компактный 920×560, стандартный 1120×640, большой 1400×800 (с ограничением рабочей областью экрана)
         enum class WindowSize { Compact, Standard, Expanded };
@@ -71,17 +74,17 @@ namespace samplit
         {
             juce::String name;
             juce::Component* content;
-            bool hasFooter;     // под страницей полоса партии (перетаскивание в DAW)
+            juce::Component* side;      // панель справа от страницы или nullptr
+            bool hasFooter;             // под страницей полоса партии (перетаскивание в DAW)
         };
 
-        enum class Overlay { None, License };
+        enum class Overlay { None, License, Settings };
 
         void globalFocusChanged (juce::Component*) override;
         void timerCallback() override;
         void showOverlay (Overlay);
         void showPage (int index);
         void updateHeader();
-        void showSettingsMenu();
         void showHelp();
 
         juce::Component::SafePointer<juce::Component> lastFocused;
@@ -94,8 +97,9 @@ namespace samplit
 
         HeaderBar headerBar;                       // строка статуса внизу, меню «Установка ▾»
         std::unique_ptr<LicensePanel> license;     // nullptr, пока лицензия отложена
+        SettingsPanel settingsPanel;
         MixerPanel mixer;
-        InstrumentsPanel instruments;
+        DrumPanel drumPanel;
         KitView kitView;
         FirstRunPanel firstRun;
         PatternPanel patternPanel;
@@ -107,7 +111,7 @@ namespace samplit
         IconButton settingsButton { IconButton::Icon::Gear, utf8 ("Настройки: как выбирается удар, размер окна") };
         IconButton helpButton { IconButton::Icon::Help, utf8 ("Как пользоваться") };
         juce::TextButton licenseButton;
-        MidiDragSource phraseSource;
+        PatternStrip strip;
         Scrim scrim;
         Overlay overlay = Overlay::None;
         float shownProgress = -1.0f;
