@@ -538,3 +538,103 @@ TEST_CASE ("processor: the setup file round trip keeps places and the mic mix, a
     CHECK (error.isNotEmpty());
     CHECK (b.getSetup().toJson() == before);
 }
+
+namespace
+{
+    // Хост-заглушка: что отдать плагину как позицию транспорта
+    struct FakeHead final : juce::AudioPlayHead
+    {
+        juce::Optional<PositionInfo> getPosition() const override { return info; }
+        juce::Optional<PositionInfo> info;
+    };
+
+    // Помеченная запись, которую выбрал повторяемый режим при ударе в блоке (уровень = метка записи)
+    float takeAt (const std::shared_ptr<const Kit>& kit, FakeHead& head, int offsetInBlock)
+    {
+        SamplitProcessor proc;
+        proc.setRateAndBufferSizeDetails (kRate, kFixtureBlock);
+        proc.prepareToPlay (kRate, kFixtureBlock);
+        proc.setPlayHead (&head);
+        proc.setKit (kit);
+        proc.setRepeatable (true);
+        juce::AudioBuffer<float> buffer (proc.getTotalNumOutputChannels(), kFixtureBlock);
+        juce::MidiBuffer midi;
+        midi.addEvent (juce::MidiMessage::noteOn (1, 26, 1.0f), offsetInBlock);
+        proc.processBlock (buffer, midi);
+        return KitFixture::peak (buffer, 0, offsetInBlock, kFixtureBlock);
+    }
+
+    std::shared_ptr<const Kit> takesKit()
+    {
+        KitBuilder b;
+        b.mic ("m", 0);
+        const int p = b.piece ("snare");
+        const int l = b.layer (p, 1, 127);
+        for (int i = 0; i < 6; ++i)
+            b.hit (p, l, 26, { 0.1f * (float) (i + 1) });
+        return b.done();
+    }
+
+    juce::AudioPlayHead::PositionInfo playing()
+    {
+        juce::AudioPlayHead::PositionInfo i;
+        i.setIsPlaying (true);
+        return i;
+    }
+}
+
+TEST_CASE ("processor: transport position in samples, PPQ and block offset give the same repeatable take", "[processor][transport]")
+{
+    const auto kit = takesKit();
+    std::set<int> seen;
+    for (int k = 0; k < 12; ++k)
+    {
+        const juce::int64 pos = (juce::int64) k * 24000;      // целое число долей при 120 bpm
+
+        FakeHead bySamples, byPpq, byOffset;
+        bySamples.info = playing();
+        bySamples.info->setTimeInSamples (pos);
+        byPpq.info = playing();
+        byPpq.info->setBpm (120.0);
+        byPpq.info->setPpqPosition ((double) pos / kRate * 2.0);
+        byOffset.info = playing();
+        byOffset.info->setTimeInSamples (pos - 100);
+
+        const float a = takeAt (kit, bySamples, 0);
+        REQUIRE (a > 0.0f);
+        REQUIRE (takeAt (kit, byPpq, 0) == a);
+        REQUIRE (takeAt (kit, byOffset, 100) == a);           // позиция удара = начало блока + смещение
+        seen.insert ((int) std::lround (a * 100.0f));
+    }
+    REQUIRE (seen.size() >= 3);
+}
+
+TEST_CASE ("processor: a missing or unusable transport still plays the note", "[processor][transport]")
+{
+    const auto kit = takesKit();
+
+    FakeHead none;                                             // хост без позиции
+    CHECK (takeAt (kit, none, 0) > 0.0f);
+
+    FakeHead stopped;                                          // транспорт стоит
+    stopped.info = juce::AudioPlayHead::PositionInfo();
+    stopped.info->setTimeInSamples (24000);
+    CHECK (takeAt (kit, stopped, 0) > 0.0f);
+
+    FakeHead noTime;                                           // идёт, но ни сэмплов, ни PPQ
+    noTime.info = playing();
+    CHECK (takeAt (kit, noTime, 0) > 0.0f);
+
+    FakeHead zeroBpm;                                          // PPQ есть, темп нулевой или без темпа
+    zeroBpm.info = playing();
+    zeroBpm.info->setPpqPosition (4.0);
+    zeroBpm.info->setBpm (0.0);
+    CHECK (takeAt (kit, zeroBpm, 0) > 0.0f);
+    zeroBpm.info->setBpm (juce::nullopt);
+    CHECK (takeAt (kit, zeroBpm, 0) > 0.0f);
+
+    FakeHead negative;                                         // позиция до нуля (преролл)
+    negative.info = playing();
+    negative.info->setTimeInSamples (-48000);
+    CHECK (takeAt (kit, negative, 0) > 0.0f);
+}
