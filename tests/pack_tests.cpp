@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <cmath>
 #include <fstream>
+#include <functional>
 
 using namespace samplit::pack;
 
@@ -826,4 +827,220 @@ TEST_CASE ("verifyManifest checks groups", "[pack]")
         REQUIRE (r.ok());
         REQUIRE (r.warnings.size() == 1);
     }
+}
+
+// ---------------------------------------------------------------- голова + хвост из кусков (формат v2)
+
+namespace
+{
+    struct TailPack
+    {
+        juce::File file;
+        PackKey key;
+        std::vector<DecodedAudio> audio;
+        Manifest manifest;
+    };
+
+    // По одному удару на длину; голова head, кусок chunk кадров
+    TailPack buildTailPack (const juce::String& name, const std::vector<int>& lengths, int head, int chunk)
+    {
+        TailPack t;
+        t.file = packDir().getChildFile (name);
+        t.key = generateKey();
+        juce::String error;
+        auto w = PackWriter::create (t.file, "tail-pack", t.key, error, kFormatVersionTail);
+        REQUIRE (w != nullptr);
+
+        t.manifest = makeManifest ("tail-pack", {});
+        auto& p = t.manifest.pieces[0];
+        for (size_t i = 0; i < lengths.size(); ++i)
+        {
+            t.audio.push_back (makeAudio (lengths[i], 48000.0, (int) i + 1));
+            Hit h;
+            h.id = "k" + juce::String ((int) i);
+            h.layer = "all";
+            h.key = 21;
+            h.velLo = 1 + (int) i * 10;
+            h.velHi = h.velLo + 9;
+            HitFile f;
+            REQUIRE (w->addClip (t.audio.back(), head, chunk, f, error));
+            h.files["kick_in"] = f;
+            p.hits.push_back (h);
+        }
+        REQUIRE (w->finish (t.manifest, error));
+        return t;
+    }
+
+    // Куски хвоста, склеенные с головой, должны совпасть с исходником бит в бит (через float32)
+    void checkTailPack (const TailPack& t)
+    {
+        juce::String error;
+        auto reader = PackReader::open (t.file, error);
+        REQUIRE (reader != nullptr);
+        Manifest m;
+        REQUIRE (reader->readManifest (t.key, m, error));
+        const auto& hits = m.pieces[0].hits;
+        REQUIRE (hits.size() == t.audio.size());
+
+        for (size_t i = 0; i < hits.size(); ++i)
+        {
+            const auto& f = hits[i].files.at ("kick_in");
+            const auto& src = t.audio[i];
+            REQUIRE (f.frames == src.frames);
+
+            DecodedAudio whole;
+            REQUIRE (reader->decodeWhole (t.key, f, whole, error));
+            REQUIRE (whole.frames == src.frames);
+            REQUIRE (whole.samples == src.samples);
+
+            if (f.tailFirstChunk < 0)
+                continue;
+
+            // по кускам: голова + decodeTailChunk
+            DecodedAudio head;
+            REQUIRE (reader->decodeChunk (t.key, f.chunk, head, error));
+            REQUIRE (head.frames == f.headFrames);
+            std::vector<float> all = toFloat24 (head);
+            std::vector<float> buf ((size_t) f.chunkFrames);
+            for (int c = 0; c < tailChunkCount (f); ++c)
+            {
+                int n = 0;
+                REQUIRE (reader->decodeTailChunk (t.key, f, c, buf.data(), (int) buf.size(), n, error));
+                REQUIRE (n == std::min (f.chunkFrames, f.frames - f.headFrames - c * f.chunkFrames));
+                all.insert (all.end(), buf.begin(), buf.begin() + n);
+            }
+            REQUIRE (all == toFloat24 (src));
+        }
+    }
+}
+
+TEST_CASE ("pack with head and tail chunks round trips bit exact", "[pack][tail]")
+{
+    // 600: не длиннее головы + кусок, целый блок; 1500: ровно голова + 2 куска (кратно); 1000: ровно голова + 1 кусок;
+    // 1001: хвост 501 (не кратно); 20001: много кусков, последний в один кадр
+    const auto t = buildTailPack ("tail-roundtrip.splpack", { 600, 1500, 1000, 1001, 20001 }, 500, 500);
+    checkTailPack (t);
+
+    juce::String error;
+    auto reader = PackReader::open (t.file, error);
+    REQUIRE (reader->getHeader().formatVersion == kFormatVersionTail);
+    Manifest m;
+    REQUIRE (reader->readManifest (t.key, m, error));
+    const auto& hits = m.pieces[0].hits;
+    CHECK (hits[0].files.at ("kick_in").tailFirstChunk < 0);
+    CHECK (hits[1].files.at ("kick_in").tailFirstChunk >= 0);
+    CHECK (tailChunkCount (hits[1].files.at ("kick_in")) == 2);
+    CHECK (tailChunkCount (hits[2].files.at ("kick_in")) == 1);
+    CHECK (tailChunkCount (hits[3].files.at ("kick_in")) == 2);
+    CHECK (tailChunkCount (hits[4].files.at ("kick_in")) == 40);
+
+    // обычная проверка пакета, в том числе глубокая
+    const auto report = verifyPack (*reader, t.key, true);
+    CHECK (report.errors.empty());
+    CHECK (report.warnings.empty());
+}
+
+TEST_CASE ("tail chunk boundaries: head plus one frame", "[pack][tail]")
+{
+    // chunk 1 кадр: длина головы + 1 уже даёт хвост из одного кадра
+    const auto t = buildTailPack ("tail-edge.splpack", { 501, 502, 1000 }, 500, 1);
+    checkTailPack (t);
+}
+
+TEST_CASE ("a damaged tail chunk is reported", "[pack][tail]")
+{
+    const auto t = buildTailPack ("tail-damage.splpack", { 3000 }, 500, 1000);
+    const auto copy = packDir().getChildFile ("tail-damage-copy.splpack");
+    REQUIRE (t.file.copyFileTo (copy));
+    {
+        juce::FileOutputStream out (copy);  // портим последний байт файла: тег последнего куска
+        REQUIRE (! out.failedToOpen());
+        REQUIRE (out.setPosition (copy.getSize() - 1));
+        out.writeByte ((char) 0x5A);
+    }
+
+    juce::String error;
+    auto reader = PackReader::open (copy, error);
+    REQUIRE (reader != nullptr);
+    Manifest m;
+    REQUIRE (reader->readManifest (t.key, m, error));
+    const auto& f = m.pieces[0].hits[0].files.at ("kick_in");
+    REQUIRE (tailChunkCount (f) == 3);
+
+    std::vector<float> buf (1000);
+    int n = 0;
+    CHECK (reader->decodeTailChunk (t.key, f, 0, buf.data(), 1000, n, error));      // чужие куски целы
+    CHECK_FALSE (reader->decodeTailChunk (t.key, f, 2, buf.data(), 1000, n, error));
+    CHECK (error.isNotEmpty());
+    DecodedAudio whole;
+    CHECK_FALSE (reader->decodeWhole (t.key, f, whole, error));
+    CHECK_FALSE (verifyPack (*reader, t.key).ok());
+
+    // неверные аргументы
+    CHECK_FALSE (reader->decodeTailChunk (t.key, f, 3, buf.data(), 1000, n, error));
+    CHECK_FALSE (reader->decodeTailChunk (t.key, f, -1, buf.data(), 1000, n, error));
+    CHECK_FALSE (reader->decodeTailChunk (t.key, f, 0, buf.data(), 10, n, error));
+}
+
+TEST_CASE ("an old version 1 pack still reads, decodeWhole and no tail", "[pack][tail]")
+{
+    const auto b = buildPack ("tail-old.splpack", 2);
+    juce::String error;
+    auto reader = PackReader::open (b.file, error);
+    REQUIRE (reader != nullptr);
+    REQUIRE (reader->getHeader().formatVersion == kFormatVersion);
+    Manifest m;
+    REQUIRE (reader->readManifest (b.key, m, error));
+    DecodedAudio whole;
+    REQUIRE (reader->decodeWhole (b.key, m.pieces[0].hits[1].files.at ("kick_in"), whole, error));
+    CHECK (whole.samples == b.audio[1].samples);
+
+    // писатель версии 1 не пишет хвосты и не принимает манифест с ними
+    auto w = PackWriter::create (packDir().getChildFile ("tail-v1.splpack"), "x", b.key, error);
+    REQUIRE (w != nullptr);
+    HitFile f;
+    CHECK_FALSE (w->addClip (makeAudio (3000), 500, 500, f, error));
+    HitFile g;
+    CHECK (w->addClip (makeAudio (600), 500, 500, g, error));  // короткий клип остаётся целым блоком
+    CHECK (g.tailFirstChunk < 0);
+}
+
+TEST_CASE ("inconsistent tail fields are rejected", "[pack][tail]")
+{
+    auto jsonWith = [] (const std::function<void (HitFile&)>& edit)
+    {
+        auto m = makeManifest ("x", { 0 });
+        auto& f = m.pieces[0].hits[0].files["kick_in"];
+        f.frames = 3000;
+        f.tailFirstChunk = 1;
+        f.headFrames = 500;
+        f.chunkFrames = 1000;
+        edit (f);
+        return m.toJson();
+    };
+    Manifest out;
+    juce::String error;
+
+    CHECK (Manifest::fromJson (jsonWith ([] (HitFile&) {}), out, error));
+    CHECK_FALSE (Manifest::fromJson (jsonWith ([] (HitFile& f) { f.chunkFrames = 0; }), out, error));
+    CHECK_FALSE (Manifest::fromJson (jsonWith ([] (HitFile& f) { f.headFrames = 0; }), out, error));
+    CHECK_FALSE (Manifest::fromJson (jsonWith ([] (HitFile& f) { f.frames = 500; }), out, error));
+    CHECK_FALSE (Manifest::fromJson (jsonWith ([] (HitFile& f) { f.chunk = -1; f.path = "a.wav"; }), out, error));
+    CHECK_FALSE (Manifest::fromJson (jsonWith ([] (HitFile& f) { f.tailFirstChunk = 0; }), out, error));
+    CHECK_FALSE (Manifest::fromJson (jsonWith ([] (HitFile& f) { f.start = 10; }), out, error));
+
+    // куски хвоста за таблицей блоков: писатель не запишет такой манифест
+    const auto key = generateKey();
+    auto w = PackWriter::create (packDir().getChildFile ("tail-bad.splpack"), "x", key, error, kFormatVersionTail);
+    REQUIRE (w != nullptr);
+    REQUIRE (w->addAudio (makeAudio (500), error) == 0);
+    REQUIRE (w->addAudio (makeAudio (1000), error) == 1);  // нужно 3 куска: блоки 1..3, есть только 1
+    auto m = makeManifest ("x", { 0 });
+    auto& f = m.pieces[0].hits[0].files["kick_in"];
+    f.frames = 3500;
+    f.tailFirstChunk = 1;
+    f.headFrames = 500;
+    f.chunkFrames = 1000;
+    CHECK_FALSE (w->finish (m, error));
+    CHECK (error.contains ("tailFirstChunk"));
 }

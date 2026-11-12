@@ -20,6 +20,7 @@
 
 #include <iostream>
 #include <map>
+#include <set>
 
 #if JUCE_WINDOWS
 extern "C" __declspec (dllimport) int __stdcall SetConsoleOutputCP (unsigned int);
@@ -36,7 +37,7 @@ namespace
     {
         sayErr ("Использование:\n"_s
                 "  samplit-packer build <манифест.json> --root <папка> --out <файл.splpack> (--key <hex64> | --key-file <файл> | --gen-key <файл>)\n"_s
-                "                       [--allow-silent]\n"_s
+                "                       [--allow-silent] [--head-seconds <с, по умолчанию 0.35; 0 = без хвостов>] [--chunk-frames <кадров, по умолчанию 48000>]\n"_s
                 "  samplit-packer verify <файл.splpack> (--key <hex64> | --key-file <файл>) [--deep]\n"_s
                 "  samplit-packer info <файл.splpack> [--key <hex64> | --key-file <файл>]\n"_s
                 "  samplit-packer extract <файл.splpack> --out <новая папка> (--key <hex64> | --key-file <файл>)\n"_s
@@ -168,7 +169,15 @@ namespace
             return 1;
         }
 
-        auto writer = PackWriter::create (outFile, manifest.id, key, error);
+        const double headSeconds = a.has ("head-seconds") ? a.get ("head-seconds").getDoubleValue() : 0.35;
+        const int chunkFrames = a.has ("chunk-frames") ? a.get ("chunk-frames").getIntValue() : kDefaultChunkFrames;
+        if (headSeconds < 0.0 || chunkFrames < 1024)
+        {
+            sayErr ("--head-seconds >= 0, --chunk-frames >= 1024"_s);
+            return 2;
+        }
+
+        auto writer = PackWriter::create (outFile, manifest.id, key, error, headSeconds > 0.0 ? kFormatVersionTail : kFormatVersion);
         if (writer == nullptr)
         {
             sayErr (error);
@@ -181,7 +190,7 @@ namespace
         formats.registerBasicFormats();
 
         // Одинаковый файл с одинаковой обрезкой кладём в пакет один раз
-        struct Stored { int chunk, frames, peak; double rate; };
+        struct Stored { HitFile file; int peak; };
         juce::StringArray silentFiles;
         std::map<juce::String, Stored> done;
 
@@ -206,9 +215,13 @@ namespace
 
                     if (const auto it = done.find (cacheKey); it != done.end())
                     {
-                        f.chunk = it->second.chunk;
-                        f.frames = it->second.frames;
-                        f.rate = it->second.rate;
+                        const auto& s = it->second.file;
+                        f.chunk = s.chunk;
+                        f.tailFirstChunk = s.tailFirstChunk;
+                        f.headFrames = s.headFrames;
+                        f.chunkFrames = s.chunkFrames;
+                        f.frames = s.frames;
+                        f.rate = s.rate;
                         f.peak = it->second.peak;
                     }
                     else
@@ -223,18 +236,15 @@ namespace
                         if (peak == 0)
                             silentFiles.add (f.path + " (удар "_s + hit.id + ", " + micId + ")");
 
-                        const int chunk = writer->addAudio (audio, error);
-                        if (chunk < 0)
+                        // Голова + куски хвоста (длина головы по частоте файла); короткие клипы остаются одним блоком
+                        if (! writer->addClip (audio, (int) (headSeconds * audio.sampleRate), chunkFrames, f, error))
                         {
                             sayErr (error);
                             return 1;
                         }
                         wavBytes += src.getSize();
-                        done[cacheKey] = { chunk, audio.frames, peak, audio.sampleRate };
-                        f.chunk = chunk;
-                        f.frames = audio.frames;
-                        f.rate = audio.sampleRate;
                         f.peak = peak;
+                        done[cacheKey] = { f, peak };
                     }
 
                     // Обрезка применена физически, путь в пакет не попадает
@@ -368,13 +378,23 @@ namespace
             sayErr ("небезопасный id пакета"_s);
             return 1;
         }
+        std::map<int, HitFile> splitHeads;  // голова -> файл с хвостом: пишется одним WAV (голова + куски)
+        std::set<int> tailBlocks;           // куски хвоста отдельными WAV не пишутся
         for (const auto& piece : manifest.pieces)
             for (const auto& hit : piece.hits)
                 for (const auto& [micId, f] : hit.files)
-                    if (f.chunk < 0 || f.chunk >= reader->getChunkCount() || f.tailChunk >= 0)
                     {
-                        sayErr ("неподдерживаемая ссылка на блок: "_s + hit.id + ", " + micId);
-                        return 1;
+                        if (f.chunk < 0 || f.chunk >= reader->getChunkCount())
+                        {
+                            sayErr ("неподдерживаемая ссылка на блок: "_s + hit.id + ", " + micId);
+                            return 1;
+                        }
+                        if (f.tailFirstChunk >= 0)
+                        {
+                            splitHeads[f.chunk] = f;
+                            for (int i = 0; i < tailChunkCount (f); ++i)
+                                tailBlocks.insert (f.tailFirstChunk + i);
+                        }
                     }
 
         const auto outDir = asFile (a.get ("out"));
@@ -393,8 +413,12 @@ namespace
         // Декодируем по одному блоку, чтобы большой пакет не занимал RAM целиком.
         for (int chunk = 0; chunk < reader->getChunkCount(); ++chunk)
         {
+            if (tailBlocks.count (chunk))
+                continue;
             DecodedAudio audio;
-            if (! reader->decodeChunk (key, chunk, audio, error))
+            const auto split = splitHeads.find (chunk);
+            if (! (split != splitHeads.end() ? reader->decodeWhole (key, split->second, audio, error)
+                                              : reader->decodeChunk (key, chunk, audio, error)))
             {
                 sayErr ("блок "_s + juce::String (chunk) + ": " + error);
                 return 1;
@@ -427,6 +451,8 @@ namespace
                 {
                     f.path = manifest.id + "/" + juce::String (f.chunk) + ".wav";
                     f.chunk = -1;
+                    f.tailFirstChunk = -1;
+                    f.headFrames = f.chunkFrames = 0;
                     f.start = 0;
                     f.end = 0;
                 }

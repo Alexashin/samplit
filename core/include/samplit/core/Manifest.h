@@ -34,12 +34,14 @@ namespace samplit::pack
     struct HitFile
     {
         juce::String path;     // исходный манифест: путь относительно корня библиотеки
-        int chunk = -1;        // хранимый манифест: номер блока с FLAC (целиком файл, либо голова при tailChunk)
-        int tailChunk = -1;    // блок с хвостом, если файл разрезан (см. docs/streaming-design.md), иначе -1
+        int chunk = -1;        // хранимый манифест: номер блока с FLAC (целиком файл, либо голова при tailFirstChunk >= 0)
+        int tailFirstChunk = -1;  // файл с хвостом: номер первого блока хвоста (блоки идут подряд), иначе -1
+        int headFrames = 0;    // файл с хвостом: длина головы (блок chunk) в кадрах
+        int chunkFrames = 0;   // файл с хвостом: длина одного куска хвоста; последний кусок может быть короче
         float gainDb = 0.0f;   // громкость зоны
         int start = 0;         // обрезка в отсчётах: первый оставленный отсчёт
         int end = 0;           // обрезка: отсчёт, на котором файл заканчивается (0 = без обрезки)
-        int frames = 0;        // хранимый: длина после обрезки
+        int frames = 0;        // хранимый: длина после обрезки (у файла с хвостом: полная длина голова + хвост)
         double rate = 0.0;     // хранимый: частота дискретизации
         int peak = -1;         // хранимый: пик |отсчёта| в 24-битных единицах, −1 = неизвестен, 0 = файл из нулей
         juce::NamedValueSet extra;
@@ -109,6 +111,13 @@ namespace samplit::pack
         const Mic* findMic (const juce::String& micId) const;
         int countHits() const;
     };
+
+    // Число кусков хвоста файла (0, если хвоста нет): ceil ((frames - headFrames) / chunkFrames)
+    int tailChunkCount (const HitFile&);
+
+    // Согласованность полей хвоста одного файла хранимого манифеста; true, если всё верно или хвоста нет.
+    // chunkCount >= 0: ещё и проверка, что блоки хвоста лежат в таблице блоков пакета
+    bool checkTailFields (const HitFile&, int chunkCount, juce::String& error);
 
     // Результат проверки. errors: пакет нельзя собирать или играть. warnings: странности, возможные намеренно
     struct VerifyReport

@@ -10,7 +10,7 @@
 |---|---|---|---|---|
 | 0 | Доки и комментарии (выходы 7+3, v4) | готово | (см. git log) | |
 | 1 | В3: вытеснение ячеек стримера | готово | см. git log | ctest 161/161; ревью учтено (офлайн вытесняет при canGrow()==false) |
-| 2 | P1: формат пака с кусками хвоста, сборщик, PackReader | в очереди | | |
+| 2 | P1: формат пака с кусками хвоста, сборщик, PackReader | готово | см. git log | ctest 166/166. Формат v2: tailFirstChunk/headFrames/chunkFrames; API PackReader::decodeTailChunk/decodeWhole/tailChunkCount; packer build --head-seconds 0.35 --chunk-frames 48000. Загрузчик пока собирает клип с хвостом целиком (decodeWhole) |
 | 3 | P2: ClipSource, DiskStreamer через интерфейс | в очереди | | |
 | 4 | P3: KitLoader, ветка пакета со стримингом | в очереди | | |
 | 5 | P4: пересборка паков, замер RAM, доки | в очереди | | |

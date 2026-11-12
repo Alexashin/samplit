@@ -230,7 +230,7 @@ namespace samplit::pack
     // ---------------------------------------------------------------- запись
 
     std::unique_ptr<PackWriter> PackWriter::create (const juce::File& outFile, const juce::String& packId,
-                                                    const PackKey& key, juce::String& error)
+                                                    const PackKey& key, juce::String& error, uint32_t formatVersion)
     {
         if (packId.isEmpty() || packId.toStdString().size() > kMaxPackIdSize)
         {
@@ -248,7 +248,13 @@ namespace samplit::pack
             error = "не удалось создать "_s + w->dataFile.getFullPathName();
             return nullptr;
         }
-        w->headerAd = makeHeaderAd (kFormatVersion, packId);
+        if (formatVersion != kFormatVersion && formatVersion != kFormatVersionTail)
+        {
+            error = "неизвестная версия формата для записи"_s;
+            return nullptr;
+        }
+        w->formatVersion = formatVersion;
+        w->headerAd = makeHeaderAd (formatVersion, packId);
         w->key = key;
         w->packId = packId;
         return w;
@@ -296,10 +302,69 @@ namespace samplit::pack
         return addFlac (flac.getData(), flac.getSize(), error);
     }
 
+    bool PackWriter::addClip (const DecodedAudio& audio, int headFrames, int chunkFrames, HitFile& f, juce::String& error)
+    {
+        f.chunk = f.tailFirstChunk = -1;
+        f.headFrames = f.chunkFrames = 0;
+        f.frames = audio.frames;
+        f.rate = audio.sampleRate;
+
+        const bool split = headFrames > 0 && chunkFrames > 0 && (int64_t) audio.frames >= (int64_t) headFrames + chunkFrames;
+        if (! split)
+        {
+            f.chunk = addAudio (audio, error);
+            return f.chunk >= 0;
+        }
+        if (formatVersion < kFormatVersionTail)
+            return fail (error, "хвосты требуют версии формата 2"_s);
+        if (audio.channels != 1)
+            return fail (error, "ожидался моно-звук"_s);
+
+        auto part = [&audio] (int from, int count)
+        {
+            DecodedAudio a;
+            a.sampleRate = audio.sampleRate;
+            a.channels = 1;
+            a.frames = count;
+            a.samples.assign (audio.samples.begin() + from, audio.samples.begin() + from + count);
+            return a;
+        };
+
+        const int head = addAudio (part (0, headFrames), error);
+        if (head < 0)
+            return false;
+        int first = -1;
+        for (int from = headFrames; from < audio.frames; from += chunkFrames)
+        {
+            const int c = addAudio (part (from, std::min (chunkFrames, audio.frames - from)), error);
+            if (c < 0)
+                return false;
+            if (first < 0)
+                first = c;
+        }
+        f.chunk = head;
+        f.tailFirstChunk = first;
+        f.headFrames = headFrames;
+        f.chunkFrames = chunkFrames;
+        return true;
+    }
+
     bool PackWriter::finish (const Manifest& stored, juce::String& error)
     {
         if (finished || data == nullptr)
             return fail (error, "писатель закрыт"_s);
+
+        // Манифест не должен ссылаться на то, чего в пакете нет; куски хвоста только в версии 2
+        for (const auto& piece : stored.pieces)
+            for (const auto& hit : piece.hits)
+                for (const auto& [micId, f] : hit.files)
+                {
+                    juce::String tailError;
+                    if (! checkTailFields (f, (int) chunks.size(), tailError))
+                        return fail (error, "удар "_s + hit.id + ", " + micId + ": " + tailError);
+                    if (f.tailFirstChunk >= 0 && formatVersion < kFormatVersionTail)
+                        return fail (error, "хвосты в пакете версии 1 не поддерживаются"_s);
+                }
 
         data->flush();
         data.reset();
@@ -314,7 +379,7 @@ namespace samplit::pack
 
         // Заголовок до таблицы блоков, чтобы знать, где начинаются данные
         std::vector<uint8_t> head (kMagic, kMagic + 4);
-        put32 (head, kFormatVersion);
+        put32 (head, formatVersion);
         const auto id = packId.toStdString();
         put16 (head, (uint16_t) id.size());
         head.insert (head.end(), id.begin(), id.end());
@@ -392,7 +457,7 @@ namespace samplit::pack
             return nullptr;
         }
         r->header.formatVersion = get32 (fixed + 4);
-        if (r->header.formatVersion != kFormatVersion)
+        if (r->header.formatVersion != kFormatVersion && r->header.formatVersion != kFormatVersionTail)
         {
             error = "версия формата пакета "_s + juce::String ((int) r->header.formatVersion) + " не поддерживается"_s;
             return nullptr;
@@ -477,8 +542,24 @@ namespace samplit::pack
         if (! unseal (key, manifestNonce.data(), headerAd, manifestCipher.data(), manifestCipher.size(), plain))
             return fail (error, "манифест не расшифровывается: неверный ключ или пакет изменён"_s);
 
-        return Manifest::fromJson (juce::String::fromUTF8 (reinterpret_cast<const char*> (plain.data()), (int) plain.size()),
-                                   out, error);
+        if (! Manifest::fromJson (juce::String::fromUTF8 (reinterpret_cast<const char*> (plain.data()), (int) plain.size()),
+                                  out, error))
+            return false;
+
+        // Хвосты: только в версии 2, куски внутри таблицы блоков
+        for (const auto& piece : out.pieces)
+            for (const auto& hit : piece.hits)
+                for (const auto& [micId, f] : hit.files)
+                {
+                    if (f.tailFirstChunk < 0)
+                        continue;
+                    juce::String tailError;
+                    if (header.formatVersion < kFormatVersionTail)
+                        return fail (error, "манифест: хвосты в пакете версии 1"_s);
+                    if (! checkTailFields (f, getChunkCount(), tailError))
+                        return fail (error, "манифест: удар "_s + hit.id + ", " + micId + ": " + tailError);
+                }
+        return true;
     }
 
     bool PackReader::readChunk (const PackKey& key, int chunk, std::vector<uint8_t>& flac, juce::String& error) const
@@ -506,6 +587,73 @@ namespace samplit::pack
         if (! readChunk (key, chunk, flac, error))
             return false;
         return decodeFlac (flac.data(), flac.size(), out, error);
+    }
+
+    bool PackReader::decodeWhole (const PackKey& key, const HitFile& f, DecodedAudio& out, juce::String& error) const
+    {
+        juce::String tailError;
+        if (! checkTailFields (f, getChunkCount(), tailError))
+            return fail (error, tailError);
+
+        DecodedAudio head;
+        if (! decodeChunk (key, f.chunk, head, error))
+            return false;
+        if (head.channels != 1)
+            return fail (error, "не моно"_s);
+        if (f.tailFirstChunk < 0)
+        {
+            out = std::move (head);
+            return true;
+        }
+        if (head.frames != f.headFrames)
+            return fail (error, "блок "_s + juce::String (f.chunk) + ": длина головы не совпадает с манифестом"_s);
+
+        out.sampleRate = head.sampleRate;
+        out.channels = 1;
+        out.frames = f.frames;
+        out.samples.clear();
+        out.samples.reserve ((size_t) f.frames);
+        out.samples.insert (out.samples.end(), head.samples.begin(), head.samples.end());
+        head = {};
+
+        const int n = tailChunkCount (f);
+        for (int i = 0; i < n; ++i)
+        {
+            DecodedAudio part;
+            if (! decodeChunk (key, f.tailFirstChunk + i, part, error))
+                return false;
+            const int expected = std::min (f.chunkFrames, f.frames - f.headFrames - i * f.chunkFrames);
+            if (part.channels != 1 || part.frames != expected)
+                return fail (error, "блок "_s + juce::String (f.tailFirstChunk + i) + ": длина куска не совпадает с манифестом"_s);
+            out.samples.insert (out.samples.end(), part.samples.begin(), part.samples.end());
+        }
+        return true;
+    }
+
+    bool PackReader::decodeTailChunk (const PackKey& key, const HitFile& f, int tailIndex, float* out, int outCapacity,
+                                      int& frames, juce::String& error) const
+    {
+        frames = 0;
+        juce::String tailError;
+        if (! checkTailFields (f, getChunkCount(), tailError) || f.tailFirstChunk < 0)
+            return fail (error, tailError.isNotEmpty() ? tailError : "у файла нет хвоста"_s);
+        if (tailIndex < 0 || tailIndex >= tailChunkCount (f))
+            return fail (error, "нет куска хвоста "_s + juce::String (tailIndex));
+
+        const int expected = std::min (f.chunkFrames, f.frames - f.headFrames - tailIndex * f.chunkFrames);
+        if (out == nullptr || outCapacity < expected)
+            return fail (error, "буфер куска мал"_s);
+
+        DecodedAudio part;
+        if (! decodeChunk (key, f.tailFirstChunk + tailIndex, part, error))
+            return false;
+        if (part.channels != 1 || part.frames != expected)
+            return fail (error, "блок "_s + juce::String (f.tailFirstChunk + tailIndex) + ": длина куска не совпадает с манифестом"_s);
+
+        for (int i = 0; i < expected; ++i)
+            out[i] = (float) part.samples[(size_t) i] / 8388608.0f;
+        frames = expected;
+        return true;
     }
 
     // ---------------------------------------------------------------- проверка
@@ -539,23 +687,41 @@ namespace samplit::pack
         // Какие блоки нужны манифесту и что в них должно быть
         std::set<int> referenced;
         std::map<int, const HitFile*> expected;
+        std::set<int> splitBlocks;
+        std::map<int, int> expectedLength;
+        std::map<int, double> expectedRate;
         for (const auto& piece : manifest.pieces)
             for (const auto& hit : piece.hits)
                 for (const auto& [micId, f] : hit.files)
-                    for (int c : { f.chunk, f.tailChunk })
+                {
+                    std::vector<int> refs;
+                    if (f.chunk >= 0)
+                        refs.push_back (f.chunk);
+                    if (f.tailFirstChunk >= 0)
+                        for (int i = 0; i < tailChunkCount (f); ++i)
+                            refs.push_back (f.tailFirstChunk + i);
+                    for (int c : refs)
                     {
-                        if (c < 0)
-                            continue;
                         if (c >= reader.getChunkCount())
                             report.errors.push_back ("удар "_s + hit.id + ", " + micId + ": ссылка на несуществующий блок "_s
                                                      + juce::String (c));
                         else
                         {
                             referenced.insert (c);
-                            if (c == f.chunk)
+                            if (f.tailFirstChunk < 0)
                                 expected[c] = &f;
+                            else
+                            {
+                                // голова и куски: своя длина у каждого блока; пик у них не проверяется (кусок вполне может быть тихим)
+                                splitBlocks.insert (c);
+                                expectedLength[c] = c == f.chunk ? f.headFrames
+                                                                 : std::min (f.chunkFrames, f.frames - f.headFrames
+                                                                                              - (c - f.tailFirstChunk) * f.chunkFrames);
+                                expectedRate[c] = f.rate;
+                            }
                         }
                     }
+                }
 
         for (int c = 0; c < reader.getChunkCount(); ++c)
         {
@@ -573,7 +739,15 @@ namespace samplit::pack
                 DecodedAudio audio;
                 if (! decodeFlac (flac.data(), flac.size(), audio, error))
                     report.errors.push_back ("блок "_s + juce::String (c) + ": " + error);
-                else if (const auto it = expected.find (c); it != expected.end() && it->second->tailChunk < 0)
+                else if (const auto sl = expectedLength.find (c); sl != expectedLength.end())
+                {
+                    if (sl->second != audio.frames)
+                        report.errors.push_back ("блок "_s + juce::String (c) + ": длина "_s + juce::String (audio.frames)
+                                                 + " не совпадает с манифестом ("_s + juce::String (sl->second) + ")");
+                    if (expectedRate[c] != 0.0 && std::abs (expectedRate[c] - audio.sampleRate) > 0.5)
+                        report.errors.push_back ("блок "_s + juce::String (c) + ": частота не совпадает с манифестом"_s);
+                }
+                else if (const auto it = expected.find (c); it != expected.end())
                 {
                     if (it->second->frames != 0 && it->second->frames != audio.frames)
                         report.errors.push_back ("блок "_s + juce::String (c) + ": длина "_s
@@ -584,6 +758,8 @@ namespace samplit::pack
                 }
 
                 // Нули в самом звуке: ловим и тогда, когда сборщик не записал пик
+                if (splitBlocks.count (c))
+                    continue;
                 const int peak = peakOf (audio);
                 const auto it = expected.find (c);
                 const bool flagged = it != expected.end() && it->second->peak == 0;

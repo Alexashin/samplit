@@ -666,7 +666,7 @@ TEST_CASE ("many strikes with few slots stay clean and finite", "[stream]")
     CHECK (streamer.getAllocatedSlots() <= 4);
 }
 
-TEST_CASE ("a manifest with a split file (tailChunk) is rejected clearly", "[stream][loader]")
+TEST_CASE ("a local manifest with tailFirstChunk is rejected", "[stream][loader]")
 {
     auto dir = juce::File::getSpecialLocation (juce::File::tempDirectory).getChildFile ("samplit-tests").getChildFile ("streaming-tail");
     dir.deleteRecursively();
@@ -689,7 +689,7 @@ TEST_CASE ("a manifest with a split file (tailChunk) is rejected clearly", "[str
     hit.layer = "all";
     hit.key = 36;
     hit.files["kick_in"].path = "KICK/in/0-01.wav";
-    hit.files["kick_in"].tailChunk = 3;
+    hit.files["kick_in"].tailFirstChunk = 3;
     p.hits = { hit };
     m.pieces.push_back (p);
     manifests.getChildFile ("local.json").replaceWithText (m.toJson());
@@ -700,7 +700,7 @@ TEST_CASE ("a manifest with a split file (tailChunk) is rejected clearly", "[str
     opts.threads = 1;
     const auto res = loadKit (testspec::oneSpec ("local", "kick", 36), opts);
     CHECK_FALSE (res.ok());
-    CHECK (res.error.contains ("tailChunk"));
+    CHECK (res.error.isNotEmpty());  // манифест с несогласованным tailFirstChunk (без chunk) не принимается; тексты ошибок в pack_tests
 }
 
 TEST_CASE ("offline render waits for the disk and matches the in-memory render", "[stream]")

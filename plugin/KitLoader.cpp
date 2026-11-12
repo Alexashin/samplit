@@ -49,7 +49,7 @@ namespace samplit
         };
 
         // Что декодировать: блок пакета с обрезкой. Одинаковые блоки декодируются один раз
-        using ClipKey = std::tuple<int, int, int, int, int>;     // пакет, блок, start, end, tailChunk
+        using ClipKey = std::tuple<int, int, int, int, int, int, int, int>;  // пакет, блок, start, end, tailFirstChunk, кадров всего, chunkFrames, headFrames
 
         struct ClipJob
         {
@@ -77,7 +77,7 @@ namespace samplit
                     + "|"_s + juce::String (headSeconds);
             else
                 s = "p|"_s + pk.id + "|v"_s + juce::String (pk.manifest.version) + "|c"_s + juce::String (std::get<1> (key));
-            s << "|" << std::get<2> (key) << "|" << std::get<3> (key) << "|t" << std::get<4> (key);
+            s << "|" << std::get<2> (key) << "|" << std::get<3> (key) << "|t" << std::get<4> (key) << "|n" << std::get<5> (key) << "|k" << std::get<6> (key) << "|h" << std::get<7> (key);
             return s.toStdString();
         }
 
@@ -125,7 +125,19 @@ namespace samplit
                     return nullptr;
                 return DecodedClip::fromFloat (pack::toFloat24 (audio), audio.sampleRate, std::move (sourceKey));
             }
-            if (! pk.reader->decodeChunk (pk.key, std::get<1> (key), audio, error))
+            // Файл с хвостом (формат v2) собираем целиком: голова + куски. Стриминг хвоста из пакета подключит следующий шаг
+            if (std::get<4> (key) >= 0)
+            {
+                pack::HitFile whole;
+                whole.chunk = std::get<1> (key);
+                whole.tailFirstChunk = std::get<4> (key);
+                whole.frames = std::get<5> (key);
+                whole.chunkFrames = std::get<6> (key);
+                whole.headFrames = std::get<7> (key);
+                if (! pk.reader->decodeWhole (pk.key, whole, audio, error))
+                    return nullptr;
+            }
+            else if (! pk.reader->decodeChunk (pk.key, std::get<1> (key), audio, error))
                 return nullptr;
             if (audio.channels != 1)
             {
@@ -251,17 +263,18 @@ namespace samplit
                     return false;
                 }
 
-                // Файл, разрезанный на голову и хвост (tailChunk), загрузчик пока не собирает: молча играть одну голову нельзя
+                // Хвост (tailFirstChunk) бывает только у файлов пакета; в локальной библиотеке (путь к WAV) это ошибка манифеста
                 for (const auto& pk : packs)
-                    for (const auto& mp : pk.manifest.pieces)
-                        for (const auto& mh : mp.hits)
-                            for (const auto& [micId, f] : mh.files)
-                                if (f.tailChunk >= 0)
-                                {
-                                    res.error = "Пакет "_s + pk.id + ": удар "_s + mh.id + ", микрофон "_s + micId
-                                                + ": файл разрезан на голову и хвост (tailChunk), такой формат пока не поддерживается"_s;
-                                    return false;
-                                }
+                    if (pk.reader == nullptr)
+                        for (const auto& mp : pk.manifest.pieces)
+                            for (const auto& mh : mp.hits)
+                                for (const auto& [micId, f] : mh.files)
+                                    if (f.tailFirstChunk >= 0)
+                                    {
+                                        res.error = "Манифест "_s + pk.id + ": удар "_s + mh.id + ", микрофон "_s + micId
+                                                    + ": tailFirstChunk допустим только в пакете"_s;
+                                        return false;
+                                    }
                 return true;
             }
 
@@ -310,7 +323,7 @@ namespace samplit
                         continue;
                     }
 
-                    const ClipKey key { pi, f.chunk, f.start, f.end, f.tailChunk };
+                    const ClipKey key { pi, f.chunk, f.start, f.end, f.tailFirstChunk, f.frames, f.chunkFrames, f.headFrames };
                     const auto [it, added] = jobIndex.emplace (key, (int) jobs.size());
                     if (added)
                         jobs.push_back ({ key, {}, nullptr, {} });

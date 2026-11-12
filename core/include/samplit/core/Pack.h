@@ -12,7 +12,11 @@ namespace juce { class AudioFormatManager; }
 // Контейнер .splpack: манифест и FLAC-блоки, зашифрованные XChaCha20-Poly1305. Формат в docs/pack-format.md.
 namespace samplit::pack
 {
+    // Версия 1: файл сэмпла = один блок. Версия 2: файл может быть головой + хвостом из кусков (tailFirstChunk в манифесте).
+    // Писатель ставит 2, только если нужны куски; читатель понимает обе. Старый плагин пак версии 2 отвергает по заголовку
     constexpr uint32_t kFormatVersion = 1;
+    constexpr uint32_t kFormatVersionTail = 2;
+    constexpr int kDefaultChunkFrames = 48000;  // кусок хвоста по умолчанию: 1 с при 48 кГц
 
     // Ключ пакета. В контейнере не хранится: его выдаёт токен лицензии
     using PackKey = std::array<uint8_t, 32>;
@@ -50,12 +54,19 @@ namespace samplit::pack
     class PackWriter
     {
     public:
+        // formatVersion: kFormatVersion или kFormatVersionTail (последний нужен для addClip с хвостом)
         static std::unique_ptr<PackWriter> create (const juce::File& outFile, const juce::String& packId,
-                                                   const PackKey&, juce::String& error);
+                                                   const PackKey&, juce::String& error,
+                                                   uint32_t formatVersion = kFormatVersion);
         ~PackWriter();
 
         // Кодирует в FLAC, шифрует, дописывает. Возвращает номер блока или −1 (причина в error)
         int addAudio (const DecodedAudio&, juce::String& error);
+
+        // Клип целиком в хранимую запись f: если frames >= headFrames + chunkFrames (и headFrames > 0), пишет голову (f.chunk)
+        // и куски хвоста подряд (f.tailFirstChunk, headFrames, chunkFrames), каждый независимым FLAC; иначе один блок.
+        // Всегда заполняет chunk, frames, rate. Куски с хвостом требуют версии kFormatVersionTail. Сбой: false
+        bool addClip (const DecodedAudio&, int headFrames, int chunkFrames, HitFile& f, juce::String& error);
 
         // Блок, который уже закодирован в FLAC
         int addFlac (const void* flac, size_t size, juce::String& error);
@@ -73,6 +84,7 @@ namespace samplit::pack
         juce::File outFile, dataFile;
         std::unique_ptr<juce::FileOutputStream> data;
         std::vector<uint8_t> headerAd;  // magic + версия + packId
+        uint32_t formatVersion = kFormatVersion;
         PackKey key {};
         juce::String packId;
         std::vector<ChunkInfo> chunks;
@@ -107,6 +119,17 @@ namespace samplit::pack
 
         // Блок сразу в звук
         bool decodeChunk (const PackKey&, int chunk, DecodedAudio& out, juce::String& error) const;
+
+        // Файл целиком: блок или голова + все куски хвоста, склеенные (путь загрузчика без стриминга). Манифест
+        // должен быть согласован (checkTailFields); число кадров и моно проверяются
+        bool decodeWhole (const PackKey&, const HitFile&, DecodedAudio& out, juce::String& error) const;
+
+        // Один кусок хвоста файла в float32 (24 бит / 8388608, как toFloat24). tailIndex 0..tailChunkCount-1.
+        // out: буфер вызывающего на outCapacity кадров (хватает chunkFrames); frames: сколько кадров записано
+        // (chunkFrames, у последнего куска меньше). Потокобезопасно: файл открывается на вызов, общего состояния нет.
+        // Внутри остаются временные буферы (шифртекст, FLAC, int32): без аллокаций в вызывающем коде не обойтись, это фоновый поток
+        bool decodeTailChunk (const PackKey&, const HitFile&, int tailIndex, float* out, int outCapacity,
+                              int& frames, juce::String& error) const;
 
     private:
         struct ChunkInfo { uint64_t offset = 0; uint32_t length = 0; std::array<uint8_t, 24> nonce {}; };

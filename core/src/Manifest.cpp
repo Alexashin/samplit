@@ -217,15 +217,22 @@ namespace samplit::pack
                                 HitFile f;
                                 f.path = strProp (prop.value, "path");
                                 f.chunk = intProp (prop.value, "chunk", -1);
-                                f.tailChunk = intProp (prop.value, "tailChunk", -1);
+                                f.tailFirstChunk = intProp (prop.value, "tailFirstChunk", -1);
+                                f.headFrames = intProp (prop.value, "headFrames", 0);
+                                f.chunkFrames = intProp (prop.value, "chunkFrames", 0);
                                 f.gainDb = (float) (double) prop.value.getProperty ("gainDb", 0.0);
                                 f.start = intProp (prop.value, "start", 0);
                                 f.end = intProp (prop.value, "end", 0);
                                 f.frames = intProp (prop.value, "frames", 0);
                                 f.rate = (double) prop.value.getProperty ("rate", 0.0);
                                 f.peak = intProp (prop.value, "peak", -1);
-                                f.extra = extraOf (prop.value, { "path", "chunk", "tailChunk", "gainDb", "start", "end",
+                                f.extra = extraOf (prop.value, { "path", "chunk", "tailFirstChunk", "headFrames", "chunkFrames", "gainDb", "start", "end",
                                                                  "frames", "rate", "peak" });
+                                if (juce::String tailError; ! checkTailFields (f, -1, tailError))
+                                {
+                                    error = "удар "_s + hit.id + ", микрофон "_s + prop.name.toString() + ": " + tailError;
+                                    return false;
+                                }
                                 hit.files[prop.name.toString()] = f;
                             }
 
@@ -238,6 +245,43 @@ namespace samplit::pack
         m.extra = extraOf (root, { "format", "id", "version", "tier", "requires", "title", "mics", "pieces" });
         out = std::move (m);
         return true;
+    }
+
+    int tailChunkCount (const HitFile& f)
+    {
+        if (f.tailFirstChunk < 0 || f.chunkFrames <= 0 || f.frames <= f.headFrames)
+            return 0;
+        return (int) (((int64_t) f.frames - f.headFrames + f.chunkFrames - 1) / f.chunkFrames);
+    }
+
+    bool checkTailFields (const HitFile& f, int chunkCount, juce::String& error)
+    {
+        if (f.tailFirstChunk < 0)
+        {
+            if (f.headFrames != 0 || f.chunkFrames != 0)
+            {
+                error = "headFrames/chunkFrames заданы без tailFirstChunk"_s;
+                return false;
+            }
+            return true;
+        }
+        if (f.chunk < 0)
+            error = "tailFirstChunk задан без chunk (головы)"_s;
+        else if (f.start != 0 || f.end != 0)
+            error = "tailFirstChunk несовместим с start/end (обрезка применяется при сборке)"_s;
+        else if (f.headFrames <= 0 || f.chunkFrames <= 0)
+            error = "tailFirstChunk требует положительных headFrames и chunkFrames"_s;
+        else if (f.frames <= f.headFrames)
+            error = "tailFirstChunk: frames должно быть больше headFrames"_s;
+        else if (f.tailFirstChunk == f.chunk)
+            error = "tailFirstChunk совпадает с блоком головы"_s;
+        else if (chunkCount >= 0 && (int64_t) f.tailFirstChunk + tailChunkCount (f) > chunkCount)
+            error = "tailFirstChunk: куски хвоста выходят за таблицу блоков"_s;
+        else if (chunkCount >= 0 && f.chunk >= chunkCount)
+            error = "chunk вне таблицы блоков"_s;
+        else
+            return true;
+        return false;
     }
 
     // ---------------------------------------------------------------- запись
@@ -344,8 +388,12 @@ namespace samplit::pack
                         e->setProperty ("path", f.path);
                     if (f.chunk >= 0)
                         e->setProperty ("chunk", num (f.chunk));
-                    if (f.tailChunk >= 0)
-                        e->setProperty ("tailChunk", num (f.tailChunk));
+                    if (f.tailFirstChunk >= 0)
+                    {
+                        e->setProperty ("tailFirstChunk", num (f.tailFirstChunk));
+                        e->setProperty ("headFrames", num (f.headFrames));
+                        e->setProperty ("chunkFrames", num (f.chunkFrames));
+                    }
                     e->setProperty ("gainDb", (double) f.gainDb);
                     e->setProperty ("start", num (f.start));
                     e->setProperty ("end", num (f.end));
@@ -489,6 +537,8 @@ namespace samplit::pack
                         err (h + "файл для неизвестного микрофона "_s + micId);
                     if (f.path.isEmpty() && f.chunk < 0)
                         err (h + "микрофон "_s + micId + ": не задан ни path, ни chunk"_s);
+                    if (juce::String tailError; ! checkTailFields (f, -1, tailError))
+                        err (h + "микрофон "_s + micId + ": " + tailError);
                 }
             }
 
