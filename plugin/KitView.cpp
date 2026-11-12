@@ -61,7 +61,7 @@ namespace samplit
                            juce::dontSendNotification);
         addChildComponent (emptyText);
 
-        setTooltip (utf8 ("Клик по барабану: сыграть его и открыть меню места (включить, выбрать звук, режим ударов)"));
+        setTooltip (utf8 ("Левый клик: сыграть барабан. Правый клик: настройки места (включить, выбрать звук, режим ударов)"));
 
         processor.addChangeListener (this);
         rebuild();
@@ -337,9 +337,14 @@ namespace samplit
 
     void KitView::mouseDown (const juce::MouseEvent& e)
     {
-        // Клик только открывает меню места; послушать барабан можно клавиатурой внизу
-        if (const int index = spotAt (e.position); index >= 0)
+        // Левая кнопка играет барабан, правая открывает меню места
+        const int index = spotAt (e.position);
+        if (index < 0)
+            return;
+        if (e.mods.isPopupMenu())
             showPlaceMenu (index);
+        else if (const auto* def = findPlace (spots[(size_t) index].placeId))
+            processor.triggerNote (def->keyLo, 100);
     }
 
     void KitView::mouseMove (const juce::MouseEvent& e)
@@ -461,7 +466,7 @@ namespace samplit
 
         g.setColour (brand::textMuted);
         g.setFont (juce::FontOptions (11.5f));
-        g.drawText (utf8 ("Клик по барабану: включить или выключить, выбрать звук и режим выбора удара. Сила удара выбирает слой, записи внутри слоя чередуются по режиму."), hintArea.reduced (14, 0),
+        g.drawText (utf8 ("Левый клик играет барабан, правый открывает настройки: включить или выключить, выбрать звук и режим выбора удара. Сила удара выбирает слой, записи внутри слоя чередуются по режиму."), hintArea.reduced (14, 0),
                     juce::Justification::centredLeft, true);
     }
 }

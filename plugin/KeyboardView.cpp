@@ -8,6 +8,7 @@ namespace samplit
     namespace
     {
         constexpr int kHintHeight = 24;
+        constexpr int kZoneHeight = 16;     // полоса зон: какое место Studio600 на каких клавишах
         constexpr float kBlackWidth = 0.62f;
         constexpr float kBlackHeight = 0.62f;
 
@@ -43,6 +44,7 @@ namespace samplit
     {
         auto area = getLocalBounds();
         hintArea = area.removeFromTop (kHintHeight);
+        zoneArea = area.removeFromTop (kZoneHeight + 2);
         const auto keys = area.toFloat();
 
         int whites = 0;
@@ -198,6 +200,30 @@ namespace samplit
         g.setColour (brand::textMuted);
         g.setFont (juce::FontOptions (12.0f));
         g.drawText (hintText(), hintArea, juce::Justification::centredLeft);
+
+        // Полоса зон над клавишами: бочка, малый, тарелки, хэт, райд, томы
+        for (const auto& place : kStudio600Places)
+        {
+            const int lo = juce::jmax (place.keyLo, kFirstKey), hi = juce::jmin (place.keyHi, kLastKey);
+            if (lo > hi)
+                continue;
+            // Подсказка зависит от маппинга: зона видна, только если в загруженном ките на её клавишах есть звук
+            bool mapped = false;
+            for (int k = lo; k <= hi && ! mapped; ++k)
+                mapped = pieceAt[(size_t) k] >= 0;
+            if (! mapped)
+                continue;
+            const float x0 = keyRect[(size_t) lo].getX(), x1 = keyRect[(size_t) hi].getRight();
+            const auto zone = juce::Rectangle<float> (x0, (float) zoneArea.getY(), x1 - x0, (float) kZoneHeight).reduced (0.5f, 0.0f);
+            g.setColour (brand::groupColour (place.slot).withAlpha (0.85f));
+            g.fillRoundedRectangle (zone, 3.0f);
+            if (zone.getWidth() >= 56.0f)
+            {
+                g.setColour (brand::onAccent);
+                g.setFont (juce::FontOptions (11.0f));
+                g.drawText (utf8 (place.label), zone.reduced (3.0f, 0.0f), juce::Justification::centred, true);
+            }
+        }
 
         const auto isLit = [&] (int key)
         {

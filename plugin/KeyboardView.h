@@ -44,7 +44,7 @@ namespace samplit
         SamplitProcessor& processor;
 
         std::array<juce::Rectangle<float>, 128> keyRect {};
-        juce::Rectangle<int> hintArea;
+        juce::Rectangle<int> hintArea, zoneArea;
 
         // Что стоит на клавишах. Пересчитывается при смене кита, не в paint
         std::shared_ptr<const Kit> kit;             // не nullptr: играет кит, клавиатура показывает барабаны

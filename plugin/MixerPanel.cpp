@@ -215,7 +215,7 @@ namespace samplit
         hint.setJustificationType (juce::Justification::centredRight);
         hint.setMinimumHorizontalScale (0.8f);
 
-        emptyText.setText (utf8 ("Выберите пресет в шапке окна, и здесь появятся микрофоны установки."), juce::dontSendNotification);
+        emptyText.setText (utf8 ("Когда установка загрузится, здесь появятся микрофоны. Если звука нет, выберите папку библиотеки в шапке окна."), juce::dontSendNotification);
         emptyText.setColour (juce::Label::textColourId, brand::textMuted);
         emptyText.setFont (juce::FontOptions (13.0f));
         emptyText.setJustificationType (juce::Justification::centred);

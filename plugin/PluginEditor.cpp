@@ -48,7 +48,7 @@ namespace samplit
         scrim.onClick = [this] { showOverlay (Overlay::None); };
 
         kitTab.setButtonText (utf8 ("Установка"));
-        kitTab.setTooltip (utf8 ("Схема барабанов: клик по барабану играет его и открывает его настройки"));
+        kitTab.setTooltip (utf8 ("Схема барабанов: левый клик играет барабан, правый открывает его настройки"));
         instrumentsTab.setButtonText (utf8 ("Инструменты"));
         instrumentsTab.setTooltip (utf8 ("Для каждого барабана: включить, выбрать звук, громкость и как выбирается удар"));
         mixerTab.setButtonText (utf8 ("Микшер"));
