@@ -71,7 +71,7 @@ namespace samplit
         // Message thread: режим слоёв переключателя Kit::choices[choice]. -1: как в ките
         void setPickChoice (int choice, int pick) noexcept;
 
-        // Message thread: уровень (дБ) и панорама микрофона. Панорама действует, когда микрофон идёт в Main
+        // Message thread: уровень (дБ) и панорама микрофона. Панорама действует и на стерео-шинах (Toms, Over, Room), и в Main
         void setMicMix (int mic, float levelDb, float pan) noexcept;
 
         // Message thread: выход микрофона поверх выхода из кита. -1: как в ките

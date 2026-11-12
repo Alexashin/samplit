@@ -48,8 +48,8 @@ namespace samplit
         const juce::String getProgramName (int) override { return {}; }
         void changeProgramName (int, const juce::String&) override {}
 
-        // Состояние в проекте DAW (version 3): установка (Setup, JSON в свойстве setup) и микшер микрофонов (узлы MIC).
-        // Проекты version 2 мигрируют: factory-установка, малый по id пресета, MIC переносятся, PICK и микс отбрасываются
+        // Состояние в проекте DAW (version 4): установка (Setup, JSON в свойстве setup), микшер микрофонов (узлы MIC) и режим multiOut (Стерео / Мульти-аут).
+        // Проекты version 2 и 3 мигрируют (v3 без multiOut: режим «Стерео»); для v2: factory-установка, малый по id пресета, MIC переносятся, PICK и микс отбрасываются
         void getStateInformation (juce::MemoryBlock&) override;
         void setStateInformation (const void*, int) override;
 
