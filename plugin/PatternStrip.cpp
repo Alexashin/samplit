@@ -22,10 +22,10 @@ namespace samplit
             addAndMakeVisible (c);
 
         drag.makeFile = [this] { return processor.getPattern().toMidiFile(); };
-        drag.ready = [this] { return ! processor.getPattern().steps.empty(); };
+        drag.ready = [this] { return ! processor.getPatternSummary().empty; };
         drag.fileName = [this]
         {
-            const auto pat = processor.getPattern();
+            const auto pat = processor.getPatternSummary();
             return "Samplit-" + juce::String (pat.bars) + "t-" + juce::String (juce::roundToInt (pat.bpm)) + "bpm.mid";
         };
         refreshState();
@@ -50,9 +50,9 @@ namespace samplit
         playButton.setToggleState (playing, juce::dontSendNotification);
         loopButton.setToggleState (processor.getPatternPlayer().isLooping(), juce::dontSendNotification);
 
-        const auto pat = processor.getPattern();
+        const auto pat = processor.getPatternSummary();
         const int n = pat.bars;
-        const auto text = pat.steps.empty() ? utf8 ("Партия пуста")
+        const auto text = pat.empty ? utf8 ("Партия пуста")
                                             : juce::String (n) + (n == 1 ? utf8 (" такт") : n < 5 ? utf8 (" такта") : utf8 (" тактов"))
                                                   + ", " + juce::String (juce::roundToInt (pat.bpm)) + " BPM";
         if (text != barsText)

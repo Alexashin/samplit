@@ -981,6 +981,12 @@ namespace samplit
         return pattern;
     }
 
+    SamplitProcessor::PatternSummary SamplitProcessor::getPatternSummary() const
+    {
+        const juce::ScopedLock sl (stateLock);
+        return { pattern.bars, pattern.bpm, pattern.steps.empty() };
+    }
+
     void SamplitProcessor::setPattern (const Pattern& p)
     {
         Pattern copy = p;

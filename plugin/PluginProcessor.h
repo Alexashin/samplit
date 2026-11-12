@@ -156,6 +156,8 @@ namespace samplit
 
         // ---- Партия (редактор «Партия»). Только message thread (setPattern пересобирает события). Хранится в проекте ----
         Pattern getPattern() const;                 // копия
+        struct PatternSummary { int bars = 0; double bpm = 0; bool empty = true; };
+        PatternSummary getPatternSummary() const;   // без копии шагов: для подписей, обновляемых таймером
         void setPattern (const Pattern&);           // сохраняет, отдаёт плееру на текущей частоте, шлёт change message
         void playPattern() { patternPlayer.play(); sendChangeMessage(); }
         void stopPattern() { patternPlayer.stop(); sendChangeMessage(); }
