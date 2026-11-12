@@ -47,7 +47,8 @@ namespace
     };
 
     TestPack writePack (const juce::File& dir, const juce::String& id, const juce::String& pieceId, int key,
-                        bool withUnverified = false, const juce::String& layerPick = {})
+                        bool withUnverified = false, const juce::String& layerPick = {},
+                        bool swapMics = false, const std::vector<juce::String>& extraMics = {})
     {
         TestPack t;
         juce::String error;
@@ -62,6 +63,10 @@ namespace
         auto& m = t.manifest;
         m.id = id;
         m.mics = { { "kick_in", "Kick In", "close", 1 }, { "oh", "OH", "overhead", 2 } };
+        if (swapMics)
+            std::swap (m.mics[0], m.mics[1]);
+        for (const auto& x : extraMics)
+            m.mics.push_back ({ x, x, "close", 0 });
 
         pack::Piece p;
         p.id = pieceId;
@@ -192,14 +197,15 @@ TEST_CASE ("loadKit builds a playable kit from a pack", "[loader]")
     CHECK (lastProgress == 1.0f);
 
     const auto& kit = *res.kit;
-    REQUIRE (kit.mics.size() == 2);
+    REQUIRE (kit.mics.size() == 16);        // kick_in: слот 0; "oh" не из Studio600: первый свободный слот 15
     CHECK (kit.mics[0].out == 1);
-    CHECK (kit.mics[1].out == 2);
+    CHECK (kit.mics[15].out == 2);
+    CHECK (kit.mics[1].id.empty());
 
     REQUIRE (kit.pieces.size() == 1);
     REQUIRE (kit.pieces[0].hits.size() == 2);
     const auto& h0 = kit.pieces[0].hits[0];
-    REQUIRE (h0.files.size() == 2);
+    REQUIRE (h0.files.size() == 16);
     REQUIRE (h0.files[0].clip != nullptr);
     CHECK (h0.files[0].gainDb == -3.0f);
     CHECK (h0.files[0].clip->frames() == 1000);
@@ -207,7 +213,7 @@ TEST_CASE ("loadKit builds a playable kit from a pack", "[loader]")
     CHECK (res.memoryBytes == 3 * 1000 * 4);
 
     // Блок 1 (oh) общий у двух ударов: декодируется один раз
-    CHECK (kit.pieces[0].hits[0].files[1].clip == kit.pieces[0].hits[1].files[1].clip);
+    CHECK (kit.pieces[0].hits[0].files[15].clip == kit.pieces[0].hits[1].files[15].clip);
 
     // Кит играет: удар на двух микрофонах
     KitEngine engine;
@@ -254,7 +260,7 @@ TEST_CASE ("loadKit leaves unlicensed packs silent", "[loader]")
     res = loadKit (spec, optionsFor (dir, { { "pk-a", a.key }, { "pk-b", b.key } }));
     REQUIRE (res.ok());
     CHECK (res.kit->pieces.size() == 2);
-    CHECK (res.kit->mics.size() == 2);
+    CHECK (res.kit->mics.size() == 16);
     CHECK (res.kit->notes[36].piece == 0);
     CHECK (res.kit->notes[38].piece == 1);
 }
@@ -782,4 +788,48 @@ TEST_CASE ("makeKitSpec builds the spec from Setup and the catalog", "[loader][s
     // Пака нет в каталоге: место осталось, выбор не стёрт, клавиш нет
     CHECK (find ("crash_a").packId == "studio600-crash18");
     CHECK (find ("crash_a").keyMap.empty());
+}
+
+TEST_CASE ("loadKit: mic index is a fixed slot, independent of pack order and of disabled places", "[loader][mics]")
+{
+    const auto dir = loaderDir();
+    // Паки перечисляют микрофоны в разном порядке и добавляют незнакомые id
+    const auto a = writePack (dir, "pk-a", "kick", 36, false, {}, false, { "x1" });
+    const auto b = writePack (dir, "pk-b", "snare", 38, false, {}, true, { "x2" });
+    const auto keys = std::map<juce::String, pack::PackKey> { { "pk-a", a.key }, { "pk-b", b.key } };
+
+    const auto both = loadKit (specOf ({ { "pk-a", "kick", 36 }, { "pk-b", "snare", 38 } }), optionsFor (dir, keys));
+    const auto onlyB = loadKit (specOf ({ { "pk-b", "snare", 38 } }), optionsFor (dir, keys));
+    const auto onlyA = loadKit (specOf ({ { "pk-a", "kick", 36 } }), optionsFor (dir, keys));
+    REQUIRE (both.ok());
+    REQUIRE (onlyB.ok());
+    REQUIRE (onlyA.ok());
+
+    // Известный id (Studio600) всегда в своём слоте
+    for (const auto* r : { &both, &onlyB, &onlyA })
+    {
+        REQUIRE (r->kit->mics.size() >= 16);
+        CHECK (r->kit->mics[0].id == "kick_in");
+        CHECK (r->kit->mics[1].id.empty());     // слот без микрофона: заглушка
+    }
+
+    // Незнакомый id получает свободный слот после 15 и в этом ките не пересекается с другими
+    const auto& m = both.kit->mics;
+    REQUIRE (m.size() == 18);
+    CHECK (m[15].id == "oh");
+    CHECK (m[16].id == "x1");
+    CHECK (m[17].id == "x2");
+    CHECK (both.kit->pieces[0].hits[0].files.size() == m.size());
+    CHECK (both.kit->pieces[0].hits[0].files[0].clip != nullptr);
+}
+
+TEST_CASE ("loadKit: more unknown mics than spare slots is an error", "[loader][mics]")
+{
+    const auto dir = loaderDir();
+    std::vector<juce::String> extra;
+    for (int i = 0; i < Kit::kMaxMics; ++i)
+        extra.push_back ("u" + juce::String (i));
+    const auto a = writePack (dir, "pk-a", "kick", 36, false, {}, false, extra);
+    const auto res = loadKit (specOf ({ { "pk-a", "kick", 36 } }), optionsFor (dir, { { "pk-a", a.key } }));
+    CHECK_FALSE (res.ok());
 }

@@ -259,6 +259,8 @@ namespace samplit
         if (kit != nullptr)
             for (int i = 0; i < (int) kit->mics.size(); ++i)
             {
+                if (kit->mics[(size_t) i].id.empty())
+                    continue;       // слот без микрофона в этом ките
                 strips.push_back (std::make_unique<Strip> (processor, i, kit->mics[(size_t) i]));
                 content.addAndMakeVisible (*strips.back());
             }

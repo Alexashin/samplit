@@ -5,6 +5,31 @@
 
 namespace samplit
 {
+    // Фиксированные слоты микрофонов Studio600: индекс микрофона в ките, микшере и параметрах хоста не зависит от состава
+    // установки. Порядок менять нельзя (идентификаторы параметров и автоматизация в проектах привязаны к id, но индексы
+    // микшера и движка к слотам). Незнакомые id (будущие паки) занимают слоты после этих
+    struct Studio600MicSlot
+    {
+        std::string_view id;
+        int defaultOut;     // выход по умолчанию в режиме «Мульти-аут» (1..10, как в манифестах)
+    };
+
+    inline constexpr int kStudio600MicCount = 15;
+    inline constexpr Studio600MicSlot kStudio600Mics[kStudio600MicCount] = {
+        { "kick_in", 1 }, { "kick_out", 2 }, { "sn_top", 3 }, { "sn_bot", 4 }, { "hat", 5 }, { "ride", 6 },
+        { "tom_a1", 8 }, { "tom_a2", 8 }, { "tom_a3", 8 }, { "tom_a4", 8 },
+        { "oh_1", 9 }, { "oh_2", 9 }, { "room_mid", 7 }, { "room_1", 10 }, { "room_2", 10 }
+    };
+
+    // Слот микрофона по id, -1: id не из Studio600
+    inline int studio600MicSlot (std::string_view id) noexcept
+    {
+        for (int i = 0; i < kStudio600MicCount; ++i)
+            if (kStudio600Mics[i].id == id)
+                return i;
+        return -1;
+    }
+
     // Публичные подписи Studio600. Внутренние id и номера шин остаются прежними.
     inline const char* studio600MicName (std::string_view id) noexcept
     {

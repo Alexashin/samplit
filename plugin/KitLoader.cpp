@@ -302,7 +302,9 @@ namespace samplit
                 return -1;
             }
 
-            // Микрофоны всех пакетов, слитые по id; выходы из манифестов
+            // Микрофоны всех пакетов, слитые по id. Индекс микрофона фиксирован: известные id Studio600 лежат в своих слотах
+            // (kStudio600Mics) независимо от состава установки, незнакомые занимают свободные слоты после них.
+            // Слоты без микрофона остаются заглушками с пустым id
             bool collectMics()
             {
                 for (const auto& pk : packs)
@@ -310,17 +312,27 @@ namespace samplit
                     {
                         if (micIndex.count (m.id) > 0)
                             continue;
-                        if ((int) kit->mics.size() >= Kit::kMaxMics)
+
+                        int slot = studio600MicSlot (m.id.toStdString());
+                        if (slot < 0)
                         {
-                            res.error = "Микрофонов больше "_s + juce::String (Kit::kMaxMics);
+                            slot = kStudio600MicCount;
+                            while (slot < (int) kit->mics.size() && ! kit->mics[(size_t) slot].id.empty())
+                                ++slot;
+                        }
+                        if (slot >= Kit::kMaxMics)
+                        {
+                            res.error = "Микрофонов больше "_s + juce::String (Kit::kMaxMics - kStudio600MicCount) + " незнакомых"_s;
                             return false;
                         }
+                        if ((int) kit->mics.size() <= slot)
+                            kit->mics.resize ((size_t) slot + 1);
 
-                        micIndex[m.id] = (int) kit->mics.size();
+                        micIndex[m.id] = slot;
                         const bool studio = pk.id.startsWith ("studio600-");
                         const auto name = studio ? studio600MicName (m.id.toStdString()) : nullptr;
-                        kit->mics.push_back ({ m.id.toStdString(), name != nullptr ? name : m.name.toStdString(), m.role.toStdString(),
-                                               juce::jlimit (0, kNumOutputs, m.out), studio ? studio600MicPan (m.id.toStdString()) : 0.0f });
+                        kit->mics[(size_t) slot] = { m.id.toStdString(), name != nullptr ? name : m.name.toStdString(), m.role.toStdString(),
+                                                     juce::jlimit (0, kNumOutputs, m.out), studio ? studio600MicPan (m.id.toStdString()) : 0.0f };
                     }
                 return true;
             }

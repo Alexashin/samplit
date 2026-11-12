@@ -207,11 +207,11 @@ namespace samplit
     struct Kit
     {
         KitSerial serial;               // идентичность кита для движка (lastKit), см. KitSerial
-        static constexpr int kMaxMics = 16;
+        static constexpr int kMaxMics = 24;     // 15 слотов Studio600 (kStudio600Mics) + запас для незнакомых id
         static constexpr int kMaxChoices = 128;
 
         std::string id, title;
-        std::vector<Mic> mics;          // не больше kMaxMics
+        std::vector<Mic> mics;          // по слотам (см. kStudio600Mics), не больше kMaxMics; слот без микрофона: Mic с пустым id
         std::vector<Piece> pieces;
         VelocityGain velocityGain = VelocityGain::None;
         HitSelect mode = HitSelect::Live;

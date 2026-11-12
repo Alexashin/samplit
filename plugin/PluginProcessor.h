@@ -104,7 +104,7 @@ namespace samplit
         // Итог последней загрузки (без самого кита): ошибка, недоступные пакеты, предупреждения
         const KitLoadResult& getLastKitLoad() const noexcept { return lastLoad; }
 
-        // ---- Микшер микрофонов кита (message thread). Индекс как в Kit::mics ----
+        // ---- Микшер микрофонов кита (message thread). Индекс = слот микрофона (Kit::mics, kStudio600Mics), не зависит от состава кита; размер Kit::kMaxMics ----
         struct MicState
         {
             float levelDb = 0.0f;
@@ -114,6 +114,8 @@ namespace samplit
             int out = 0;            // 0 = Main, 1..kNumOutputs = выход плагина (в режиме «Мульти-аут»)
         };
 
+        static MicState defaultMicState (int slot);     // умолчание слота Studio600
+        juce::String micIdForSlot (int slot) const;
         MicState getMicState (int mic) const;
         void setMicState (int mic, const MicState&);
 
@@ -122,9 +124,9 @@ namespace samplit
         bool isMultiOut() const noexcept { return multiOut.load(); }
         void setMultiOut (bool multi);
 
-        // ---- Автоматизация в DAW: уровень и панорама первых kAutomatedMics микрофонов кита (параметры "micNN_level", "micNN_pan").
+        // ---- Автоматизация в DAW: уровень и панорама 15 слотов Studio600 (параметры "mic_<id>_level", "mic_<id>_pan", например "mic_kick_in_level").
         // Хост двигает параметр, микшер следует за ним, и наоборот. Mute, Solo и выход не автоматизируются ----
-        static constexpr int kAutomatedMics = Kit::kMaxMics;
+        static constexpr int kAutomatedMics = 15;     // = kStudio600MicCount
 
         // ---- Выбор удара (message thread): переключатели Kit::choices, сохраняются в проекте по id ----
         Pick getPickChoice (int choice) const;

@@ -7,6 +7,7 @@
 
 #include <juce_audio_formats/juce_audio_formats.h>
 
+#include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
 #include <atomic>
@@ -279,26 +280,26 @@ TEST_CASE ("mixer: solo and mute are saved with the project", "[licmgr]")
 
         // Значения микрофонов из манифеста пака
         CHECK (a.getMicState (0).out == 1);
-        CHECK (a.getMicState (1).out == 2);
-        CHECK (a.getMicState (1).levelDb == 0.0f);
+        CHECK (a.getMicState (15).out == 2);
+        CHECK (a.getMicState (15).levelDb == 0.0f);
 
         auto m = a.getMicState (0);
         m.solo = true;
         m.out = 3;
         a.setMicState (0, m);
-        m = a.getMicState (1);
+        m = a.getMicState (15);
         m.levelDb = -10.0f;
         m.mute = true;
-        a.setMicState (1, m);
+        a.setMicState (15, m);
 
         // Пределы
-        auto wild = a.getMicState (1);
+        auto wild = a.getMicState (15);
         wild.levelDb = 100.0f;
         wild.out = 99;
-        a.setMicState (1, wild);
-        CHECK (a.getMicState (1).levelDb == 12.0f);
-        CHECK (a.getMicState (1).out == kNumOutputs);
-        a.setMicState (1, m);
+        a.setMicState (15, wild);
+        CHECK (a.getMicState (15).levelDb == 12.0f);
+        CHECK (a.getMicState (15).out == kNumOutputs);
+        a.setMicState (15, m);
 
         a.getStateInformation (saved);
     }
@@ -311,8 +312,8 @@ TEST_CASE ("mixer: solo and mute are saved with the project", "[licmgr]")
     REQUIRE (pumpUntil ([&] { return b.getKit() != nullptr && ! b.isKitLoading(); }));
     CHECK (b.getMicState (0).solo);
     CHECK (b.getMicState (0).out == 3);
-    CHECK (b.getMicState (1).mute);
-    CHECK (b.getMicState (1).levelDb == -10.0f);
+    CHECK (b.getMicState (15).mute);
+    CHECK (b.getMicState (15).levelDb == -10.0f);
     CHECK (b.getSetup().find ("kick")->packId == "kick");
 }
 
@@ -331,31 +332,31 @@ TEST_CASE ("host parameters follow the mixer and the mixer follows the host", "[
     p.setSetup (kickSetup());
     REQUIRE (pumpUntil ([&] { return p.getKit() != nullptr && ! p.isKitLoading(); }));
 
-    auto* level1 = dynamic_cast<juce::AudioParameterFloat*> (p.getParameters()[2]);   // mic 2, уровень
-    auto* pan1 = dynamic_cast<juce::AudioParameterFloat*> (p.getParameters()[3]);
+    auto* level1 = dynamic_cast<juce::AudioParameterFloat*> (p.getParameters()[0]);   // kick_in, уровень
+    auto* pan1 = dynamic_cast<juce::AudioParameterFloat*> (p.getParameters()[1]);
     REQUIRE (level1 != nullptr);
     REQUIRE (pan1 != nullptr);
-    CHECK (level1->paramID == "mic02_level");
+    CHECK (level1->paramID == "mic_kick_in_level");
 
     // Микшер → параметр (oh: −4 дБ, панорама 0,5, выход 6)
-    auto m = p.getMicState (1);
+    auto m = p.getMicState (0);
     m.levelDb = -4.0f;
     m.pan = 0.5f;
     m.out = 6;
-    p.setMicState (1, m);
+    p.setMicState (0, m);
     CHECK (std::abs (level1->get() - (-4.0f)) < 0.06f);
     CHECK (std::abs (pan1->get() - 0.5f) < 0.006f);
 
     m.levelDb = -9.0f;
-    p.setMicState (1, m);
+    p.setMicState (0, m);
     CHECK (std::abs (level1->get() - (-9.0f)) < 0.06f);
 
     // Хост → микшер (через очередь message thread)
     level1->setValueNotifyingHost (level1->convertTo0to1 (-20.0f));
     pan1->setValueNotifyingHost (pan1->convertTo0to1 (-0.4f));
-    REQUIRE (pumpUntil ([&] { return std::abs (p.getMicState (1).levelDb - (-20.0f)) < 0.06f; }));
-    CHECK (std::abs (p.getMicState (1).pan - (-0.4f)) < 0.006f);
-    CHECK (p.getMicState (1).out == 6);   // выход и mute автоматизацией не трогаются
+    REQUIRE (pumpUntil ([&] { return std::abs (p.getMicState (0).levelDb - (-20.0f)) < 0.06f; }));
+    CHECK (std::abs (p.getMicState (0).pan - (-0.4f)) < 0.006f);
+    CHECK (p.getMicState (0).out == 6);   // выход и mute автоматизацией не трогаются
 }
 
 TEST_CASE ("switching kits while the audio thread keeps playing stays finite and frees the old kits", "[licmgr][stress]")
@@ -725,16 +726,16 @@ TEST_CASE ("setup state v3 round trip keeps setup and mixer", "[licmgr][setup]")
     s.places[9].picks["g"] = Pick::Cycle;            // tom_16m
     e.processor.setSetup (s);
     REQUIRE (e.loaded());
-    auto m = e.processor.getMicState (1);
+    auto m = e.processor.getMicState (0);
     m.levelDb = -7.0f;
     m.mute = true;
-    e.processor.setMicState (1, m);
+    e.processor.setMicState (0, m);
 
     juce::MemoryBlock saved;
     e.processor.getStateInformation (saved);
     const auto xml = SamplitProcessor::getXmlFromBinary (saved.getData(), (int) saved.getSize());
     REQUIRE (xml != nullptr);
-    CHECK (xml->getIntAttribute ("version") == 4);
+    CHECK (xml->getIntAttribute ("version") == 5);
     CHECK (xml->hasAttribute ("setup"));
     CHECK_FALSE (xml->hasAttribute ("preset"));
     CHECK (xml->getChildByName ("PICK") == nullptr);
@@ -747,8 +748,85 @@ TEST_CASE ("setup state v3 round trip keeps setup and mixer", "[licmgr][setup]")
     CHECK (got.find ("tom_16l")->packId == "pa");
     CHECK (got.find ("tom_16m")->picks.at ("g") == Pick::Cycle);
     CHECK_FALSE (got.find ("kick")->enabled);
-    CHECK (f.processor.getMicState (1).levelDb == -7.0f);
-    CHECK (f.processor.getMicState (1).mute);
+    CHECK (f.processor.getMicState (0).levelDb == -7.0f);
+    CHECK (f.processor.getMicState (0).mute);
+}
+
+namespace
+{
+    juce::RangedAudioParameter* findParam (SamplitProcessor& p, const juce::String& id)
+    {
+        for (auto* prm : p.getParameters())
+            if (auto* r = dynamic_cast<juce::RangedAudioParameter*> (prm); r != nullptr && r->paramID == id)
+                return r;
+        return nullptr;
+    }
+}
+
+TEST_CASE ("host params are named by mic slot; changing the kit keeps params and mixer", "[licmgr][setup][mics]")
+{
+    SetupEnv e;
+    auto* level = findParam (e.processor, "mic_kick_in_level");
+    auto* pan = findParam (e.processor, "mic_oh_1_pan");
+    REQUIRE (level != nullptr);
+    REQUIRE (pan != nullptr);
+    CHECK (level->getName (64) == "Kick In level");
+    CHECK (findParam (e.processor, "mic_room_2_level") != nullptr);
+
+    e.processor.setSetup (twoTomSetup());
+    REQUIRE (e.loaded());
+    auto m = e.processor.getMicState (0);
+    m.levelDb = -9.0f;
+    e.processor.setMicState (0, m);
+    const float paramBefore = level->convertFrom0to1 (level->getValue());
+    CHECK (paramBefore == Catch::Approx (-9.0f).margin (0.1f));
+
+    // Другой состав установки: кит перезагружается, микшер и параметры хоста те же
+    const auto mixBefore = e.processor.getMicState (4);
+    auto s = twoTomSetup();
+    for (auto& pl : s.places)
+        if (pl.placeId == "tom_16l")
+            pl.enabled = false;
+    const auto kitBefore = e.processor.getKit();
+    e.processor.setSetup (s);
+    REQUIRE (pumpUntil ([&] { return e.processor.getKit() != kitBefore && ! e.processor.isKitLoading(); }));
+    CHECK (level->convertFrom0to1 (level->getValue()) == Catch::Approx (paramBefore).margin (0.001f));
+    CHECK (e.processor.getMicState (0).levelDb == -9.0f);
+    CHECK (e.processor.getMicState (4).out == mixBefore.out);
+}
+
+TEST_CASE ("setup state v4 migrates: mixer by mic id lands in fixed slots", "[licmgr][setup][mics]")
+{
+    juce::ValueTree t ("SAMPLIT");
+    t.setProperty ("version", 4, nullptr);
+    t.setProperty ("multiOut", true, nullptr);
+    t.setProperty ("setup", twoTomSetup().toJson(), nullptr);
+    auto addMic = [&] (const char* id, float level, int out)
+    {
+        juce::ValueTree mic ("MIC");
+        mic.setProperty ("id", id, nullptr);
+        mic.setProperty ("level", level, nullptr);
+        mic.setProperty ("out", out, nullptr);
+        t.appendChild (mic, nullptr);
+    };
+    addMic ("kick_in", -5.0f, 2);
+    addMic ("room_2", -3.0f, 10);          // микрофон, которого в ките нет: значение хранится по слоту
+    const auto v4 = stateOf (t);
+
+    SetupEnv e;
+    e.processor.setStateInformation (v4.getData(), (int) v4.getSize());
+    REQUIRE (e.loaded());
+    CHECK (e.processor.getMicState (0).levelDb == -5.0f);
+    CHECK (e.processor.getMicState (0).out == 2);
+    CHECK (e.processor.getMicState (14).levelDb == -3.0f);      // room_2: слот 14
+    CHECK (findParam (e.processor, "mic_kick_in_level")->convertFrom0to1 (findParam (e.processor, "mic_kick_in_level")->getValue())
+           == Catch::Approx (-5.0f).margin (0.1f));
+
+    juce::MemoryBlock again;
+    e.processor.getStateInformation (again);
+    const auto xml = SamplitProcessor::getXmlFromBinary (again.getData(), (int) again.getSize());
+    REQUIRE (xml != nullptr);
+    CHECK (xml->getIntAttribute ("version") == 5);
 }
 
 TEST_CASE ("setup state v2 migrates: snare by preset id, MIC kept, PICK dropped", "[licmgr][setup]")
@@ -789,7 +867,7 @@ TEST_CASE ("setup state v2 migrates: snare by preset id, MIC kept, PICK dropped"
         e.processor.getStateInformation (again);
         const auto xml = SamplitProcessor::getXmlFromBinary (again.getData(), (int) again.getSize());
         REQUIRE (xml != nullptr);
-        CHECK (xml->getIntAttribute ("version") == 4);
+        CHECK (xml->getIntAttribute ("version") == 5);
         CHECK (xml->getChildByName ("PICK") == nullptr);
         CHECK_FALSE (xml->hasAttribute ("mix"));
         const auto* mic = xml->getChildByName ("MIC");

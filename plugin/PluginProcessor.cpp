@@ -6,6 +6,7 @@
 
 namespace samplit
 {
+    static_assert (SamplitProcessor::kAutomatedMics == kStudio600MicCount, "параметры хоста по слотам Studio600");
     namespace
     {
         juce::File& dataDirOverrideRef() { static juce::File f; return f; }
@@ -34,18 +35,26 @@ namespace samplit
         setup = loadDefaultSetup();
         pushPlaceLevels (setup);
 
-        // Параметры автоматизации: имена общие, потому что микрофоны зависят от кита (Mic 1 = первый микрофон кита)
+        // Параметры автоматизации: по слоту микрофона Studio600 (kStudio600Mics), не по порядку паков. Идентификатор
+        // "mic_<id>_level" / "mic_<id>_pan" остаётся за микрофоном при любом составе установки
         for (int i = 0; i < kAutomatedMics; ++i)
         {
-            const auto n = juce::String (i + 1).paddedLeft ('0', 2);
-            levelParams[(size_t) i] = new juce::AudioParameterFloat (juce::ParameterID { "mic" + n + "_level", 1 }, "Mic " + n + " level",
+            const juce::String id (std::string (kStudio600Mics[i].id));
+            const juce::String name (studio600MicName (kStudio600Mics[i].id));
+            levelParams[(size_t) i] = new juce::AudioParameterFloat (juce::ParameterID { "mic_" + id + "_level", 1 }, name + " level",
                                                                      juce::NormalisableRange<float> (-60.0f, 12.0f, 0.1f), 0.0f);
-            panParams[(size_t) i] = new juce::AudioParameterFloat (juce::ParameterID { "mic" + n + "_pan", 1 }, "Mic " + n + " pan",
-                                                                   juce::NormalisableRange<float> (-1.0f, 1.0f, 0.01f), 0.0f);
+            panParams[(size_t) i] = new juce::AudioParameterFloat (juce::ParameterID { "mic_" + id + "_pan", 1 }, name + " pan",
+                                                                   juce::NormalisableRange<float> (-1.0f, 1.0f, 0.01f), defaultMicState (i).pan);
             addParameter (levelParams[(size_t) i]);
             addParameter (panParams[(size_t) i]);
             levelParams[(size_t) i]->addListener (this);
             panParams[(size_t) i]->addListener (this);
+        }
+        mixer.assign ((size_t) Kit::kMaxMics, MicState {});
+        for (int i = 0; i < kAutomatedMics; ++i)
+        {
+            mixer[(size_t) i] = defaultMicState (i);
+            mixer[(size_t) i].out = -1;      // до загрузки кита выход берётся из манифеста (как в движке по умолчанию)
         }
         startTimer (50);
 
@@ -339,26 +348,50 @@ namespace samplit
                     catalog = *catalogOut;
                 if (result->ok())
                 {
-                    // Микшер: сохранённые значения по id микрофона, иначе выходы из манифеста пака. Прежние записи
-                    // не стираются: микрофоны ушедшего пака вернутся с прежними значениями
-                    std::vector<MicState> fresh;
+                    // Микшер по слотам микрофонов, не зависит от состава кита: сохранённое значение по id микрофона, иначе
+                    // умолчание (для микрофона кита: выход и панорама из манифеста, для отсутствующего: таблица Studio600).
+                    // Прежние записи не стираются: микрофоны ушедшего пака вернутся с прежними значениями
+                    std::vector<MicState> fresh ((size_t) Kit::kMaxMics);
                     {
                         const juce::ScopedLock sl (stateLock);
-                        for (size_t i = 0; i < result->kit->mics.size(); ++i)
+                        for (int i = 0; i < Kit::kMaxMics; ++i)
                         {
-                            const auto& mic = result->kit->mics[i];
+                            auto& f = fresh[(size_t) i];
+                            f = i < kAutomatedMics ? defaultMicState (i) : MicState {};
+                            if (i >= (int) result->kit->mics.size() || result->kit->mics[(size_t) i].id.empty())
+                            {
+                                // Микрофона нет в ките: значение берём по id слота (известные слоты Studio600)
+                                if (i < kAutomatedMics)
+                                    if (const auto saved = savedMix.find (juce::String (std::string (kStudio600Mics[i].id))); saved != savedMix.end())
+                                    {
+                                        f = saved->second;
+                                        if (f.out < 0)
+                                            f.out = defaultMicState (i).out;
+                                    }
+                                continue;
+                            }
+                            const auto& mic = result->kit->mics[(size_t) i];
                             const auto saved = savedMix.find (juce::String (mic.id));
-                            fresh.push_back (saved != savedMix.end() ? saved->second : MicState { 0.0f, mic.pan, false, false, mic.out });
-                            if (fresh.back().out < 0)
-                                fresh.back().out = mic.out;
+                            f = saved != savedMix.end() ? saved->second : MicState { 0.0f, mic.pan, false, false, mic.out };
+                            if (f.out < 0)
+                                f.out = mic.out;
+                            savedMix[juce::String (mic.id)] = f;
                         }
-                        for (size_t i = 0; i < fresh.size(); ++i)
-                            savedMix[juce::String (result->kit->mics[i].id)] = fresh[i];
                     }
+                    const auto sameMix = [] (const MicState& a, const MicState& b)
+                    {
+                        return a.levelDb == b.levelDb && a.pan == b.pan && a.mute == b.mute && a.solo == b.solo && a.out == b.out;
+                    };
+                    bool mixChanged = fresh.size() != mixer.size();
+                    for (size_t i = 0; ! mixChanged && i < fresh.size(); ++i)
+                        mixChanged = ! sameMix (fresh[i], mixer[i]);
                     mixer = std::move (fresh);
+                    applyMixer();           // до публикации: движок уже получил микшер, звучащие хвосты не меняют шину и панораму
                     setKit (result->kit);
-                    applyMixer();           // после публикации: микшер и индексы микрофонов относятся к новому киту
-                    pushAllParams();
+                    // Параметры хоста перезаписываются только если микшер действительно изменился (загрузка проекта),
+                    // а не при каждой смене кита
+                    if (mixChanged)
+                        pushAllParams();
 
                     const auto current = getSetup();
                     pushPlaceLevels (current);
@@ -583,6 +616,29 @@ namespace samplit
         applySetup();
     }
 
+    // Умолчание слота Studio600: уровень 0 дБ, панорама и выход из таблицы
+    SamplitProcessor::MicState SamplitProcessor::defaultMicState (int slot)
+    {
+        MicState m;
+        if (juce::isPositiveAndBelow (slot, kStudio600MicCount))
+        {
+            m.pan = studio600MicPan (kStudio600Mics[slot].id);
+            m.out = kStudio600Mics[slot].defaultOut;
+        }
+        return m;
+    }
+
+    // id микрофона слота: для известных слотов Studio600 из таблицы, для остальных из текущего кита (пусто, если слот свободен)
+    juce::String SamplitProcessor::micIdForSlot (int slot) const
+    {
+        if (juce::isPositiveAndBelow (slot, kStudio600MicCount))
+            return juce::String (std::string (kStudio600Mics[slot].id));
+        const auto current = getKit();
+        if (current != nullptr && slot < (int) current->mics.size())
+            return juce::String (current->mics[(size_t) slot].id);
+        return {};
+    }
+
     SamplitProcessor::MicState SamplitProcessor::getMicState (int mic) const
     {
         return juce::isPositiveAndBelow (mic, (int) mixer.size()) ? mixer[(size_t) mic] : MicState {};
@@ -590,8 +646,7 @@ namespace samplit
 
     void SamplitProcessor::setMicState (int mic, const MicState& state)
     {
-        const auto current = getKit();
-        if (current == nullptr || ! juce::isPositiveAndBelow (mic, (int) mixer.size()) || mic >= (int) current->mics.size())
+        if (! juce::isPositiveAndBelow (mic, (int) mixer.size()))
             return;
 
         auto s = state;
@@ -601,7 +656,8 @@ namespace samplit
         mixer[(size_t) mic] = s;
         {
             const juce::ScopedLock sl (stateLock);
-            savedMix[juce::String (current->mics[(size_t) mic].id)] = s;
+            if (const auto id = micIdForSlot (mic); id.isNotEmpty())
+                savedMix[id] = s;
         }
         applyMixer();
         pushParam (mic);
@@ -628,12 +684,8 @@ namespace samplit
     // Параметр → микшер (message thread). Допуск в полшага параметра: значение микшера, не попавшее на шаг, не затирается
     void SamplitProcessor::applyHostParams()
     {
-        const auto current = getKit();
-        if (current == nullptr)
-            return;
-
         bool changed = false;
-        const int n = juce::jmin (kAutomatedMics, (int) mixer.size(), (int) current->mics.size());
+        const int n = juce::jmin (kAutomatedMics, (int) mixer.size());
         for (int i = 0; i < n; ++i)
         {
             auto s = mixer[(size_t) i];
@@ -718,7 +770,7 @@ namespace samplit
     void SamplitProcessor::getStateInformation (juce::MemoryBlock& dest)
     {
         juce::ValueTree state ("SAMPLIT");
-        state.setProperty ("version", 4, nullptr);
+        state.setProperty ("version", 5, nullptr);
         state.setProperty ("multiOut", multiOut.load(), nullptr);
 
         Setup copy;
