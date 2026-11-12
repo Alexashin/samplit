@@ -3,6 +3,7 @@
 #include "HeaderBar.h"
 #include "InstrumentsPanel.h"
 #include "KeyboardView.h"
+#include "MidiDragSource.h"
 #include "KitView.h"
 #include "LicensePanel.h"
 #include "LookAndFeel.h"
@@ -69,6 +70,7 @@ namespace samplit
         InstrumentsPanel instruments;
         KitView kitView;
         juce::TextButton kitTab, instrumentsTab, mixerTab;
+        MidiDragSource phraseSource;
         juce::TextButton licenseButton;
         Scrim scrim;
         Overlay overlay = Overlay::None;

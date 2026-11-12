@@ -54,6 +54,7 @@ target_sources(Samplit PRIVATE
     ${SAMPLIT_ENGINE_SOURCES}
     KeyboardView.h
     KeyboardView.cpp
+    MidiDragSource.cpp
     HeaderBar.h
     HeaderBar.cpp
     LicensePanel.h

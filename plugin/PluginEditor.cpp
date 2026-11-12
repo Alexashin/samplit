@@ -72,12 +72,12 @@ namespace samplit
         };
 
         // Порядок добавления = порядок наложения: подложка и выпадающие панели поверх всего
-        for (auto* c : std::initializer_list<juce::Component*> { &mixer, &instruments, &kitView, &kitTab, &instrumentsTab, &mixerTab, &keyboard, &headerBar,
+        for (auto* c : std::initializer_list<juce::Component*> { &mixer, &instruments, &kitView, &kitTab, &instrumentsTab, &mixerTab, &phraseSource, &keyboard, &headerBar,
                                                                   &licenseButton, &scrim })
             addChildComponent (c);
         if (license != nullptr)
             addChildComponent (license.get());
-        for (auto* c : std::initializer_list<juce::Component*> { &kitTab, &instrumentsTab, &mixerTab, &keyboard, &headerBar, &licenseButton })
+        for (auto* c : std::initializer_list<juce::Component*> { &kitTab, &instrumentsTab, &mixerTab, &phraseSource, &keyboard, &headerBar, &licenseButton })
             c->setVisible (true);
         showMainTab (MainTab::Kit);
         updateHeader();
@@ -207,6 +207,7 @@ namespace samplit
         instrumentsTab.setBounds (tabs.removeFromLeft (130));
         tabs.removeFromLeft (6);
         mixerTab.setBounds (tabs.removeFromLeft (130));
+        phraseSource.setBounds (tabs.removeFromRight (230));
         area.removeFromTop (8);
         mixer.setBounds (area);
         instruments.setBounds (area);

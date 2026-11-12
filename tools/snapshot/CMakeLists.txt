@@ -11,7 +11,8 @@ target_sources(samplit-snapshot PRIVATE
     ${SAMPLIT_PLUGIN_DIR}/MixerPanel.cpp
     ${SAMPLIT_PLUGIN_DIR}/KitView.cpp
     ${SAMPLIT_PLUGIN_DIR}/InstrumentsPanel.cpp
-    ${SAMPLIT_PLUGIN_DIR}/KeyboardView.cpp)
+    ${SAMPLIT_PLUGIN_DIR}/KeyboardView.cpp
+    ${SAMPLIT_PLUGIN_DIR}/MidiDragSource.cpp)
 
 target_include_directories(samplit-snapshot PRIVATE ${SAMPLIT_PLUGIN_DIR})
 target_compile_options(samplit-snapshot PRIVATE $<$<CXX_COMPILER_ID:MSVC>:/utf-8>)
