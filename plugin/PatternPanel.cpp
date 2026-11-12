@@ -548,7 +548,7 @@ namespace samplit
             r.label = utf8 (def.label);
             if (kit != nullptr)
             {
-                // Роли и пары групп: из описания барабана в каталоге (как во вкладке «Инструменты»)
+                // Роли и пары групп: из описания барабана в каталоге (как в панели барабана)
                 pack::Piece meta;
                 const bool haveMeta = findPieceMeta (catalog, def, *ps, meta);
                 r.options = buildPalette (*kit, def.slot, haveMeta ? &meta : nullptr);
@@ -597,7 +597,7 @@ namespace samplit
             return utf8 ("Вместе: удар «") + group + utf8 ("» ставится и снимается сразу и здесь, и на месте «") + partner->label
                  + utf8 ("» с той же силой. Партнёра можно сменить в меню строки");
         return utf8 ("Пары нет: включите ") + typeName (o.pairType) + utf8 (" с группой «") + group
-             + utf8 ("» на вкладке «Инструменты»");
+             + utf8 ("» в панели барабана");
     }
 
     void PatternPanel::updateControls()

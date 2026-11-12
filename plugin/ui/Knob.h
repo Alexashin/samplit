@@ -100,7 +100,7 @@ namespace samplit
                     juce::PopupMenu m;
                     m.addItem (1, utf8 ("Сбросить"));
                     m.showMenuAsync (juce::PopupMenu::Options().withTargetScreenArea ({ e.getScreenX(), e.getScreenY(), 1, 1 }),
-                                     [this] (int r) { if (r == 1 && onResetRequest) onResetRequest(); });
+                                     [safe = juce::Component::SafePointer<KnobSlider> (this)] (int r) { if (safe != nullptr && r == 1 && safe->onResetRequest) safe->onResetRequest(); });
                     return;
                 }
                 juce::Slider::mouseDown (e);

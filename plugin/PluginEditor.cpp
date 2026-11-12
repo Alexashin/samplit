@@ -126,7 +126,7 @@ namespace samplit
 
         // Размер: сохранённый в проекте или стандартный, но не больше рабочей области экрана (с запасом на рамку DAW)
         setResizable (true, true);
-        setResizeLimits (880, 520, 2200, 1400);
+        setResizeLimits (880, 560, 2200, 1400);
         const auto ui = processor.getUiState();
         int w = ui.width > 0 ? ui.width : 1120, h = ui.height > 0 ? ui.height : 640;
         if (const auto* display = juce::Desktop::getInstance().getDisplays().getPrimaryDisplay())
@@ -134,7 +134,7 @@ namespace samplit
             w = juce::jmin (w, display->userArea.getWidth() - 48);
             h = juce::jmin (h, display->userArea.getHeight() - 96);
         }
-        setSize (juce::jmax (880, w), juce::jmax (520, h));
+        setSize (juce::jmax (880, w), juce::jmax (560, h));
         trackSize = true;
 
         licenseButton.setVisible (license != nullptr);
@@ -264,7 +264,7 @@ namespace samplit
             w = juce::jmin (w, display->userArea.getWidth() - 48);
             h = juce::jmin (h, display->userArea.getHeight() - 96);
         }
-        setSize (juce::jmax (880, w), juce::jmax (520, h));
+        setSize (juce::jmax (880, w), juce::jmax (560, h));
     }
 
     void SamplitEditor::showHelp()
