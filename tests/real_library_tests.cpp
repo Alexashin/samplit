@@ -381,3 +381,171 @@ TEST_CASE ("real library: whole plugin, realtime and offline export", "[.reallib
     CHECK (a.underruns == 0);
     CHECK (b.underruns == 0);
 }
+
+// ---------------------------------------------------------------- пакеты v2 (.splpack со стримингом хвоста)
+// SAMPLIT_PACKS_V2=<папка с *.splpack и keys\<id>.key> (сборка: tools\install_packs.ps1 -NoRegister -OutDir <папка>).
+// Запускать Release: ctest не включает скрытые тесты, поэтому
+//   $env:SAMPLIT_PACKS_V2='Z:\repo\samplit\build\packs-v2'; .\SamplitTests.exe "[.reallib-packs]"
+//   ... "[.reallib-packs-stress]"   (SAMPLIT_CHORD_NOTES, SAMPLIT_CHORD_SECONDS, SAMPLIT_STRESS_BLOCK)
+namespace
+{
+    bool packKeyFor (const juce::File& dir, const juce::String& packId, pack::PackKey& key)
+    {
+        const auto f = dir.getChildFile ("keys").getChildFile (packId + ".key");
+        return f.existsAsFile() && pack::keyFromHex (f.loadFileAsString().trim(), key);
+    }
+}
+
+TEST_CASE ("real packs v2: decodeTailChunk time and head RAM", "[.reallib-packs]")
+{
+    const char* dirPath = std::getenv ("SAMPLIT_PACKS_V2");
+    if (dirPath == nullptr)
+        SKIP ("SAMPLIT_PACKS_V2 не задана");
+    const juce::File dir (dirPath);
+
+    std::vector<double> firstMs, otherMs;
+    double totalWhole = 0, totalHead = 0;
+    int files = 0, streamed = 0;
+    for (const auto& f : dir.findChildFiles (juce::File::findFiles, false, "*.splpack"))
+    {
+        juce::String err;
+        auto reader = pack::PackReader::open (f, err);
+        REQUIRE (reader != nullptr);
+        pack::PackKey key {};
+        REQUIRE (packKeyFor (dir, f.getFileNameWithoutExtension(), key));
+        pack::Manifest m;
+        REQUIRE (reader->readManifest (key, m, err));
+
+        double whole = 0, head = 0;
+        int n = 0, nStreamed = 0, step = 0;
+        std::vector<float> buf (200000);
+        for (const auto& piece : m.pieces)
+            for (const auto& hit : piece.hits)
+                for (const auto& [micId, file] : hit.files)
+                {
+                    ++n;
+                    whole += (double) file.frames * 4.0;
+                    if (file.tailFirstChunk < 0)
+                    {
+                        head += (double) file.frames * 4.0;
+                        continue;
+                    }
+                    ++nStreamed;
+                    head += (double) file.headFrames * 4.0;
+                    if (++step % 4 != 0)        // замер на каждом 4-м файле: достаточно, чтобы не читать весь пак
+                        continue;
+                    for (int c = 0; c < std::min (2, pack::tailChunkCount (file)); ++c)
+                    {
+                        int frames = 0;
+                        const auto t0 = std::chrono::steady_clock::now();
+                        REQUIRE (reader->decodeTailChunk (key, file, c, buf.data(), (int) buf.size(), frames, err));
+                        const double ms = std::chrono::duration<double, std::milli> (std::chrono::steady_clock::now() - t0).count();
+                        (c == 0 ? firstMs : otherMs).push_back (ms);
+                    }
+                }
+        std::cout << "[packs] " << f.getFileNameWithoutExtension() << ": файлов " << n << " (с хвостом " << nStreamed << "), целиком "
+                  << whole / 1048576.0 << " МБ, голова " << head / 1048576.0 << " МБ\n";
+        totalWhole += whole;
+        totalHead += head;
+        files += n;
+        streamed += nStreamed;
+    }
+    REQUIRE (files > 0);
+    auto stat = [] (std::vector<double> v, const char* name)
+    {
+        if (v.empty())
+            return;
+        std::sort (v.begin(), v.end());
+        std::cout << "[packs] " << name << " (n=" << v.size() << "), мс: медиана " << v[v.size() / 2] << ", p95 "
+                  << v[std::min (v.size() - 1, (size_t) (0.95 * (double) v.size()))] << ", максимум " << v.back() << "\n";
+    };
+    stat (firstMs, "decodeTailChunk, 1-й кусок");
+    stat (otherMs, "decodeTailChunk, 2-й кусок");
+    std::cout << "[packs] ИТОГО: файлов " << files << " (с хвостом " << streamed << "), RAM целиком " << totalWhole / 1048576.0
+              << " МБ, только головы " << totalHead / 1048576.0 << " МБ, экономия " << 100.0 * (1.0 - totalHead / totalWhole) << " %" << std::endl;
+}
+
+TEST_CASE ("real packs v2: chords of many cells, one streamer thread", "[.reallib-packs-stress]")
+{
+    const char* dirPath = std::getenv ("SAMPLIT_PACKS_V2");
+    if (dirPath == nullptr)
+        SKIP ("SAMPLIT_PACKS_V2 не задана");
+    auto env = [] (const char* name, double fallback)
+    {
+        const char* v = std::getenv (name);
+        return v != nullptr ? std::atof (v) : fallback;
+    };
+    const int chordNotes = (int) env ("SAMPLIT_CHORD_NOTES", 8);
+    const double seconds = env ("SAMPLIT_CHORD_SECONDS", 20);
+    const int block = (int) env ("SAMPLIT_STRESS_BLOCK", 256);
+    constexpr double rate = 44100.0;
+    const juce::File dir (dirPath);
+
+    KitLoadOptions opts;
+    opts.packDir = dir;
+    opts.keyFor = [dir] (const juce::String& id, pack::PackKey& key) { return packKeyFor (dir, id, key); };
+    const auto catalog = scanPackCatalog (opts, false);
+    std::vector<juce::String> warnings;
+    const auto spec = makeKitSpec (Setup::factory(), catalog, false, warnings);
+    const auto t0 = std::chrono::steady_clock::now();
+    const auto res = loadKit (spec, opts);
+    REQUIRE (res.ok());
+    std::cout << "[chord] загрузка " << std::chrono::duration<double> (std::chrono::steady_clock::now() - t0).count() << " с, голов в RAM "
+              << (double) res.memoryBytes / 1048576.0 << " МБ" << std::endl;
+
+    std::vector<int> all;
+    for (int n = 0; n < 128; ++n)
+        if (res.kit->notes[(size_t) n].piece >= 0)
+            all.push_back (n);
+    REQUIRE (! all.empty());
+
+    DiskStreamer streamer (true);
+    KitEngine engine;
+    engine.setStreamer (&streamer);
+    engine.prepare (rate);
+    engine.setKit (res.kit.get());
+    // setKit просит 256 ячеек, выделяет их поток стримера: ждём, как плагин успевает за время загрузки пресета
+    for (int i = 0; i < 1000 && streamer.getAllocatedSlots() < 256; ++i)
+        std::this_thread::sleep_for (std::chrono::milliseconds (2));
+
+    std::vector<float> L ((size_t) block), R ((size_t) block);
+    std::array<float*, kNumOutputs + 1> pl {}, pr {};
+    for (size_t i = 0; i < pl.size(); ++i)
+    {
+        pl[i] = L.data();
+        pr[i] = i == 0 ? R.data() : nullptr;
+    }
+    const int blocks = (int) (seconds * rate / block);
+    const double blockSeconds = block / rate;
+    const int waveEvery = (int) (0.4 / blockSeconds);       // аккорд каждые 0,4 с
+    uint32_t rng = 777;
+    auto next = [&] { rng = rng * 1664525u + 1013904223u; return rng >> 8; };
+    int maxCells = 0, chords = 0;
+    std::vector<double> times;
+    const auto begin = std::chrono::steady_clock::now();
+    for (int b = 0; b < blocks; ++b)
+    {
+        if (b % waveEvery == 0)
+        {
+            ++chords;
+            for (int i = 0; i < chordNotes; ++i)
+                engine.noteOn (all[next() % all.size()], 1 + (int) (next() % 127));
+        }
+        const auto r0 = std::chrono::steady_clock::now();
+        std::fill (L.begin(), L.end(), 0.0f);
+        std::fill (R.begin(), R.end(), 0.0f);
+        engine.render (pl, pr, 0, block);
+        times.push_back (std::chrono::duration<double, std::micro> (std::chrono::steady_clock::now() - r0).count());
+        maxCells = std::max (maxCells, streamer.numActive());
+        std::this_thread::sleep_until (begin + std::chrono::duration_cast<std::chrono::steady_clock::duration> (
+                                           std::chrono::duration<double> ((b + 1) * blockSeconds)));
+    }
+    std::sort (times.begin(), times.end());
+    std::cout << "[chord] " << seconds << " с, аккордов " << chords << " по " << chordNotes << " ударов, ячеек макс. " << maxCells
+              << ", блок мкс: p99 " << times[(size_t) (0.99 * (double) times.size())] << ", макс " << times.back() << "\n"
+              << "[chord] недогрузок " << streamer.underruns.load() << ", нет ячейки " << streamer.noSlot.load()
+              << ", ошибок чтения " << streamer.readErrors.load() << std::endl;
+    CHECK (streamer.readErrors.load() == 0);
+    CHECK (streamer.underruns.load() == 0);
+    streamer.shutdown();
+}

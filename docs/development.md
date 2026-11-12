@@ -101,7 +101,7 @@ ctest --test-dir build\Debug --output-on-failure
 - `kit_loader_tests.cpp` проверяют загрузчик кита: разбор пресета, сборку `Kit` из пакетов, пакеты без лицензии, отмену, фоновую загрузку в процессоре.
 - `license_manager_tests.cpp` проверяют лицензию в плагине и экран кита без графики: ключи из токена, просрочку, откат часов, список пресетов со статусом пакетов, микшер (Solo, Mute, выход), сохранение пресета и микшера в проекте, служебный режим.
 - `streaming_tests.cpp` проверяют `DiskStreamer` и стриминг в движке: ленивые блоки колец, нехватку ячеек, мягкое вытеснение, последний отсчёт, здоровье и ошибки чтения, офлайн-ожидание.
-- `real_library_tests.cpp` — скрытые тесты на настоящей библиотеке (`[.reallib]`, `[.reallib-stress]`, `[.reallib-host]`); запускаются только с переменной `SAMPLIT_REAL_LIB=<папка>`, в CI не участвуют.
+- `real_library_tests.cpp` — скрытые тесты на настоящей библиотеке (`[.reallib]`, `[.reallib-stress]`, `[.reallib-host]`, для паков v2 `[.reallib-packs]` и `[.reallib-packs-stress]`); запускаются только с переменной `SAMPLIT_REAL_LIB=<папка>` (паки v2: `SAMPLIT_PACKS_V2=<папка с .splpack и keys\>`), в CI не участвуют.
 - `core_tests.cpp` проверяют индекс папок в SQLite.
 - По умолчанию `ctest` даёт 140 тестов (в коде 143 `TEST_CASE`, 3 скрытых).
 - Python: `python tests/test_mark_kit.py` (разметка), `cd tools/license_server; .venv\Scripts\python.exe -m pytest tests` (сервер).

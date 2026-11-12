@@ -1050,3 +1050,115 @@ TEST_CASE ("cancelling a load of a pack with tails returns no kit", "[stream][pa
     CHECK_FALSE (res.ok());
     CHECK (res.cancelled);
 }
+
+// ---------------------------------------------------------------- аккорд: десятки ячеек, одна живая нить стримера
+
+// Пак v2: 8 барабанов-ударов (клавиши 36..43) по 6 микрофонов, у каждого файла свой шум, голова 0,35 с, куски по 48000 кадров.
+// Играем все 8 ударов разом (48 ячеек) и ещё раз через 0,4 с (96): первый кусок хвоста каждой ячейки должен успеть
+// до конца головы. Реальное время (блок 256, sleep), поток стримера настоящий. Каждая ячейка декодирует свой кусок
+// (расшифровка + FLAC), поэтому тест держит заметный запас: настоящий замер на живых паках в [.reallib-packs]
+TEST_CASE ("pack v2 chord of many cells stays clean with one streamer thread", "[stream][pack][loader]")
+{
+    constexpr int kHits = 8, kMics = 6, kHead = 15435, kLen = 132300;
+    const auto dir = juce::File::getSpecialLocation (juce::File::tempDirectory).getChildFile ("samplit-tests").getChildFile ("streaming-chord");
+    dir.deleteRecursively();
+    dir.createDirectory();
+    const juce::String id = "chord";
+    const auto key = pack::generateKey();
+    juce::String error;
+    auto w = pack::PackWriter::create (dir.getChildFile (id + ".splpack"), id, key, error, pack::kFormatVersionTail);
+    REQUIRE (w != nullptr);
+
+    pack::Manifest m;
+    m.id = id;
+    pack::Piece p;
+    p.id = "kick";
+    p.name = "kick";
+    p.layers = { { "all", "center", 1, 127 } };
+    for (int mic = 0; mic < kMics; ++mic)
+        m.mics.push_back ({ "m" + juce::String (mic), "m", "close", 0 });
+    for (int hit = 0; hit < kHits; ++hit)
+    {
+        p.keys.push_back (36 + hit);
+        pack::Hit h;
+        h.id = "h" + juce::String (hit);
+        h.layer = "all";
+        h.key = 36 + hit;
+        for (int mic = 0; mic < kMics; ++mic)
+        {
+            pack::DecodedAudio a;
+            a.sampleRate = 44100.0;
+            a.frames = kLen;
+            a.samples.resize ((size_t) kLen);
+            uint32_t s = (uint32_t) (hit * 31 + mic + 1) * 2654435761u;
+            for (int i = 0; i < kLen; ++i)
+            {
+                // «звук»: шум с затуханием, чтобы FLAC сжимал как реальный материал
+                s = s * 1664525u + 1013904223u;
+                const float env = std::exp (-(float) i / 20000.0f);
+                a.samples[(size_t) i] = (int32_t) ((float) ((int32_t) (s >> 12) - 524288) * 8.0f * env);
+            }
+            REQUIRE (w->addClip (a, kHead, 48000, h.files["m" + juce::String (mic)], error));
+        }
+        p.hits.push_back (h);
+    }
+    m.pieces.push_back (p);
+    REQUIRE (w->finish (m, error));
+    w.reset();
+
+    KitLoadOptions o;
+    o.packDir = dir;
+    o.threads = 2;
+    o.keyFor = [key] (const juce::String&, pack::PackKey& out) { out = key; return true; };
+    KitSpec spec;
+    {
+        std::vector<int> keys;
+        for (int hit = 0; hit < kHits; ++hit)
+            keys.push_back (36 + hit);
+        spec.places.push_back (testspec::placeFor ("kick", 0, id, "kick", keys));
+    }
+    const auto res = loadKit (spec, o);
+    REQUIRE (res.ok());
+
+    DiskStreamer streamer (true);
+    KitEngine engine;
+    engine.setStreamer (&streamer);
+    engine.prepare (44100.0);
+    engine.setKit (res.kit.get());
+    // setKit просит 256 ячеек, выделяет их поток стримера: ждём, как плагин успевает за время загрузки пресета
+    for (int i = 0; i < 1000 && streamer.getAllocatedSlots() < 256; ++i)
+        std::this_thread::sleep_for (std::chrono::milliseconds (2));
+
+    constexpr int block = 256;
+    std::vector<float> L (block), R (block);
+    std::array<float*, kNumOutputs + 1> pl {}, pr {};
+    for (size_t i = 0; i < pl.size(); ++i)
+    {
+        pl[i] = L.data();
+        pr[i] = i == 0 ? R.data() : nullptr;
+    }
+    const int blocks = (int) (3.0 * 44100 / block);
+    const double blockSeconds = block / 44100.0;
+    const auto begin = std::chrono::steady_clock::now();
+    int maxCells = 0;
+    for (int b = 0; b < blocks; ++b)
+    {
+        if (b == 0 || b == (int) (0.4 / blockSeconds))
+            for (int hit = 0; hit < kHits; ++hit)
+                engine.noteOn (36 + hit, 100);
+        std::fill (L.begin(), L.end(), 0.0f);
+        std::fill (R.begin(), R.end(), 0.0f);
+        engine.render (pl, pr, 0, block);
+        maxCells = std::max (maxCells, streamer.numActive());
+        for (float v : L)
+            REQUIRE (std::isfinite (v));
+        std::this_thread::sleep_until (begin + std::chrono::duration_cast<std::chrono::steady_clock::duration> (
+                                           std::chrono::duration<double> ((b + 1) * blockSeconds)));
+    }
+    INFO ("ячеек одновременно " << maxCells);
+    CHECK (maxCells >= kHits * kMics);
+    CHECK (streamer.readErrors.load() == 0);
+    CHECK (streamer.noSlot.load() == 0);
+    CHECK (streamer.underruns.load() == 0);
+    streamer.shutdown();
+}
