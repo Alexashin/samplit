@@ -144,7 +144,7 @@ namespace samplit
                     for (const auto& f : h.files)
                         streamed = streamed || (f.clip != nullptr && f.clip->isStreamed());
             if (streamed)
-                streamer->reserve (1);
+                streamer->reserve (256);      // 256 ячеек по 128 КБ = 32 МБ: запас на плотную игру, чтобы не вытеснять хвосты
         }
         if (kit != nullptr)
         {
@@ -550,7 +550,9 @@ namespace samplit
             }
             ++started;
         }
-        if (missing > 0)
+        // Не вытесняем, пока поток чтения может вырасти (отложенный захват сам получит ячейку через миллисекунды),
+        // (в офлайне рендер ждёт ячейку, но если предел достигнут, ждать бесполезно: освободить ячейку некому)
+        if (missing > 0 && ! streamer->canGrow())
             stealStreams (missing, slot);
         for (int m = (int) hit.files.size(); m < Kit::kMaxMics; ++m)
             dropVoice (s.voices[(size_t) m]);
@@ -620,7 +622,7 @@ namespace samplit
                         v.stream = streamer->acquire (*v.clip, kit, false);
                         if (v.stream >= 0)
                             v.wantStream = false;
-                        else if ((v.stealWait -= end - start) <= 0)
+                        else if ((v.stealWait -= end - start) <= 0 && ! offline.load (std::memory_order_relaxed))
                         {
                             stealStreams (1, si);       // раз в 30 мс, пока ячейки нет
                             v.stealWait = std::max (1, (int) (0.03 * sr));

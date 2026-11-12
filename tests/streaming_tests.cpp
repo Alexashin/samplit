@@ -342,6 +342,57 @@ TEST_CASE ("streamer slots run out gracefully", "[stream]")
     CHECK (streamer.acquire (*clip, nullptr) >= 0);
 }
 
+TEST_CASE ("a chord does not steal while the streamer can still grow", "[stream]")
+{
+    const auto wav = writeWav24 (streamDir().getChildFile ("chord.wav"), noise24 (kTotal));
+    const auto clip = streamedClip (wav, 4000);
+
+    // 4 удара по 7 микрофонов = 28 ячеек; выделено 64 из 128, занято 40: свободных 24, а блок появится через миллисекунды
+    auto kit = std::make_shared<Kit>();
+    for (int m = 0; m < 7; ++m)
+        kit->mics.push_back ({ "m" + std::to_string (m), "m", "close", 0 });
+    Piece p;
+    p.id = "p";
+    p.name = "p";
+    p.choke = -1;
+    p.layers.push_back ({ "l0", "", 1, 127 });
+    for (int k = 0; k < 4; ++k)
+    {
+        Hit h;
+        h.id = "h" + std::to_string (k);
+        h.layer = 0;
+        h.key = 60 + k;
+        h.velLo = 1;
+        h.velHi = 127;
+        for (int m = 0; m < 7; ++m)
+            h.files.push_back ({ clip, 0.0f });
+        p.hits.push_back (h);
+    }
+    kit->pieces.push_back (p);
+    kit->mode = HitSelect::Live;
+    REQUIRE (kit->buildIndex());
+
+    DiskStreamer streamer (false, 128, 64);
+    KitEngine engine;
+    engine.prepare (44100.0);
+    engine.setKit (kit.get());              // стример ещё не подключён: reserve движок не вызывает
+    streamer.reserve (64);
+    engine.setStreamer (&streamer);
+    REQUIRE (streamer.getAllocatedSlots() == 64);
+    REQUIRE (streamer.canGrow());
+    for (int i = 0; i < 40; ++i)
+        REQUIRE (streamer.acquire (*clip, nullptr) >= 0);
+
+    for (int k = 0; k < 4; ++k)
+        engine.noteOn (60 + k, 100);
+    CHECK (engine.getHealth().steals == 0);
+
+    playBlocks (engine, 2, &streamer);              // pump выделяет второй блок, отложенный захват получает ячейки
+    CHECK (streamer.getAllocatedSlots() == 128);
+    CHECK (engine.getHealth().steals == 0);
+    CHECK (engine.getHealth().underruns == 0);
+}
+
 TEST_CASE ("ring memory is allocated lazily by blocks up to the maximum", "[stream]")
 {
     const auto wav = writeWav24 (streamDir().getChildFile ("lazy.wav"), noise24 (kTotal));

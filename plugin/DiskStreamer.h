@@ -77,6 +77,8 @@ namespace samplit
         int getAllocatedSlots() const noexcept { return allocatedSlots.load (std::memory_order_acquire); }
         int getAllocatedBlocks() const noexcept { return (getAllocatedSlots() + blockSlots - 1) / blockSlots; }
         int getMaxSlots() const noexcept { return maxSlots; }
+        // Audio thread: поток чтения ещё может выделить ячейки (не достигнут максимум и выделение не отказывало)
+        bool canGrow() const noexcept { return allocatedSlots.load (std::memory_order_acquire) < maxSlots && ! allocFailed.load (std::memory_order_relaxed); }
 
         // Message thread: последняя ошибка чтения («имя.wav (причина)»). Пусто, если ошибок не было
         juce::String getLastError() const;
@@ -121,7 +123,7 @@ namespace samplit
         std::atomic<int> allocatedSlots { 0 };
         std::atomic<int> reserveTarget { 0 };
         std::atomic<bool> needBlock { false };                      // acquire отказал: поток чтения должен срочно выделить блок
-        bool allocFailed = false;                                   // только поток чтения (или reserve без потока)
+        std::atomic<bool> allocFailed { false };                    // пишет только поток чтения (или reserve без потока), читает кто угодно
         std::vector<float> chunk;
         std::vector<uint8_t> scratch;
         int nextFree = 0;                       // подсказка для acquire, только audio thread

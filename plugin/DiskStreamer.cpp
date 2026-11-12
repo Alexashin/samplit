@@ -76,14 +76,14 @@ namespace samplit
     bool DiskStreamer::allocateBlock()
     {
         const int n = allocatedSlots.load (std::memory_order_relaxed);
-        if (n >= maxSlots || allocFailed)
+        if (n >= maxSlots || allocFailed.load (std::memory_order_relaxed))
             return false;
 
         // Без инициализации: страницы памяти занимаются при первой записи
         float* p = new (std::nothrow) float[(size_t) blockSlots * kRingFrames];
         if (p == nullptr)
         {
-            allocFailed = true;
+            allocFailed.store (true, std::memory_order_relaxed);
             readErrors.fetch_add (1, std::memory_order_relaxed);
             const std::lock_guard<std::mutex> lock (errorMutex);
             lastError = juce::String::fromUTF8 ("не хватило памяти под буферы чтения с диска");
@@ -103,7 +103,7 @@ namespace samplit
         for (;;)
         {
             const int n = allocatedSlots.load (std::memory_order_relaxed);
-            if (n >= maxSlots || allocFailed)
+            if (n >= maxSlots || allocFailed.load (std::memory_order_relaxed))
                 break;
             int busy = 0;
             for (int i = 0; i < n; ++i)
@@ -113,9 +113,7 @@ namespace samplit
                               || (n > 0 && busy * 4 >= n * 3);
             if (! need || ! allocateBlock())
                 break;
-            did = true;
-            if (urgent && n > 0)
-                break;
+            did = true;     // при срочной нехватке цикл выделяет блоки, пока занято не меньше 3/4
         }
         return did;
     }
