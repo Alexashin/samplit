@@ -177,6 +177,11 @@ namespace samplit
         std::atomic<uint32_t> enabledOutputs { 0 };
         std::atomic<bool> multiOut { false };
         void applyMixer();
+        // Audio thread, начало блока: цели уровня/панорамы микрофонов для движка. Слоты 0..14: значения параметров хоста
+        // (атомики, автоматизация без таймера); остальные: из mixLevelDb/mixPan. Mute/solo из масок
+        void pushMicTargets() noexcept;
+        std::array<std::atomic<float>, Kit::kMaxMics> mixLevelDb {}, mixPan {};   // пишет message thread (applyMixer)
+        std::atomic<uint32_t> muteMask { 0 }, soloMask { 0 };                     // бит = слот микрофона; пишет message thread
         void pushParam (int mic);
         void pushAllParams();
         // Может вызываться из audio thread хоста: только флаг (triggerAsyncUpdate берёт мьютекс и аллоцирует).

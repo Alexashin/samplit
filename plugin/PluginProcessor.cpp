@@ -121,13 +121,17 @@ namespace samplit
         juce::ScopedNoDenormals noDenormals;
         buffer.clear();
 
-        // Кит защищён от удаления на весь блок (hazard pointer), все выходы из функции снимают защиту
+        // Параметры хоста читаются здесь, в начале блока: автоматизация привязана к блоку, а не к таймеру (офлайн повторяема)
+        pushMicTargets();
+
+        // Кит защищён от удаления на весь блок (hazard pointer), все выходы из функции снимают защиту.
+        // Уровень и панорама микрофонов идут линейной рампой на длину блока
         struct BlockScope
         {
             KitEngine& e;
-            explicit BlockScope (KitEngine& engine) noexcept : e (engine) { e.beginBlock(); }
+            BlockScope (KitEngine& engine, int ramp) noexcept : e (engine) { e.beginBlock (ramp); }
             ~BlockScope() { e.endBlock(); }
-        } blockScope (kitEngine);
+        } blockScope (kitEngine, buffer.getNumSamples());
 
         auto main = getBusBuffer (buffer, false, 0);
         if (main.getNumChannels() < 2)
@@ -194,6 +198,19 @@ namespace samplit
         const auto kitKeys = kitEngine.getActiveKeys();
         activeLo.store (kitKeys[0]);
         activeHi.store (kitKeys[1]);
+    }
+
+    void SamplitProcessor::pushMicTargets() noexcept
+    {
+        const auto mute = muteMask.load (std::memory_order_relaxed);
+        const auto solo = soloMask.load (std::memory_order_relaxed);
+        for (int i = 0; i < Kit::kMaxMics; ++i)
+        {
+            const bool silent = ((mute >> i) & 1u) != 0 || (solo != 0 && ((solo >> i) & 1u) == 0);
+            const float level = i < kAutomatedMics ? levelParams[(size_t) i]->get() : mixLevelDb[(size_t) i].load (std::memory_order_relaxed);
+            const float pan = i < kAutomatedMics ? panParams[(size_t) i]->get() : mixPan[(size_t) i].load (std::memory_order_relaxed);
+            kitEngine.setMicMix (i, silent ? -100.0f : level, pan);
+        }
     }
 
     void SamplitProcessor::collectGarbage()
@@ -730,25 +747,31 @@ namespace samplit
             kitEngine.setPickChoice (i, i < (int) picks.size() ? (int) picks[(size_t) i] : -1);
     }
 
-    // Solo: если хоть один микрофон в соло, остальные молчат. Mute сильнее соло
+    // Solo: если хоть один микрофон в соло, остальные молчат. Mute сильнее соло. Маски и значения читает audio thread
+    // (pushMicTargets), здесь только выходы микрофонов и публикация состояния микшера
     void SamplitProcessor::applyMixer()
     {
-        const bool anySolo = std::any_of (mixer.begin(), mixer.end(), [] (const MicState& m) { return m.solo; });
+        uint32_t mute = 0, solo = 0;
         for (int i = 0; i < Kit::kMaxMics; ++i)
         {
             if (i < (int) mixer.size())
             {
                 const auto& m = mixer[(size_t) i];
-                const bool silent = m.mute || (anySolo && ! m.solo);
-                kitEngine.setMicMix (i, silent ? -100.0f : m.levelDb, m.pan);
+                mute |= m.mute ? 1u << i : 0u;
+                solo |= m.solo ? 1u << i : 0u;
+                mixLevelDb[(size_t) i].store (m.levelDb);
+                mixPan[(size_t) i].store (m.pan);
                 kitEngine.setMicOutput (i, multiOut.load() ? m.out : 0);
             }
             else
             {
-                kitEngine.setMicMix (i, 0.0f, 0.0f);
+                mixLevelDb[(size_t) i].store (0.0f);
+                mixPan[(size_t) i].store (0.0f);
                 kitEngine.setMicOutput (i, multiOut.load() ? -1 : 0);
             }
         }
+        muteMask.store (mute);
+        soloMask.store (solo);
     }
 
     void SamplitProcessor::setMultiOut (bool multi)
@@ -825,7 +848,7 @@ namespace samplit
             m.mute = (bool) v.getProperty ("mute", false);
             m.solo = (bool) v.getProperty ("solo", false);
             m.out = version < 4 ? -1        // -1: выход по умолчанию из манифеста пака
-                                : juce::jlimit (0, kNumOutputs, (int) v.getProperty ("out", 0));
+                                : juce::jlimit (-1, kNumOutputs, (int) v.getProperty ("out", 0));
             mix[v.getProperty ("id").toString()] = m;
         }
 
@@ -867,6 +890,16 @@ namespace samplit
             savedMix = std::move (mix);
         }
         initialApplyPending = false;
+        {
+            // multiOut мог измениться: выходы движка обновляются сразу (mixer принадлежит message thread), не дожидаясь загрузки кита
+            std::weak_ptr<int> alive = lifeToken;
+            auto apply = [this, alive] { if (! alive.expired()) applyMixer(); };
+            auto* mm = juce::MessageManager::getInstanceWithoutCreating();
+            if (mm == nullptr || mm->isThisTheMessageThread())
+                apply();
+            else
+                juce::MessageManager::callAsync (apply);
+        }
         applySetupSoon();
     }
 }

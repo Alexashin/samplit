@@ -97,7 +97,9 @@ namespace samplit
         bool isUsing (const Kit* kit) const noexcept;
 
         // Audio thread: границы блока (см. протокол выше). Без пары noteOn читает current напрямую (только тесты)
-        void beginBlock() noexcept;
+        // rampSamples > 0: уровень и панорама микрофонов в этом блоке линейно идут от значения прошлого блока к целевому
+        // (setMicMix) за rampSamples отсчётов (длина блока); 0: целевое значение действует сразу
+        void beginBlock (int rampSamples = 0) noexcept;
         void endBlock() noexcept;
         // Для тестов: кит сейчас защищён hazard pointer
         bool isProtected (const Kit* kit) const noexcept { return kit != nullptr && hazard.load() == kit; }
@@ -173,6 +175,10 @@ namespace samplit
         std::array<std::atomic<float>, Kit::kMaxMics> micLevel;
         std::array<std::atomic<float>, Kit::kMaxMics> micPan;
         std::array<std::atomic<int>, Kit::kMaxMics> micOut;
+        // Только audio thread: гейн и панорама микрофона на данный момент (рампа к micLevel/micPan), общие для всех голосов
+        std::array<float, Kit::kMaxMics> curLevel {}, curPan {}, stepLevel {}, stepPan {};
+        int rampLen = 0;
+        bool mixPrimed = false;
         std::array<std::atomic<int>, Kit::kMaxChoices> choicePick;
         std::array<std::atomic<float>, kMaxPlaces> placeGain;     // линейный гейн мест, по Piece::slot
         std::array<std::atomic<const Kit*>, kMaxStrikes> strikeKit {};   // != nullptr, пока удар звучит

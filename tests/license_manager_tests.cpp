@@ -1072,3 +1072,71 @@ TEST_CASE ("broken default setup falls back to factory; a new instance takes the
         CHECK (p.getSetup().toJson() == Setup::factory().toJson());
     }
 }
+
+TEST_CASE ("automation: offline render does not depend on the pause between blocks", "[licmgr][setup][mics]")
+{
+    auto run = [] (int pauseMs)
+    {
+        SetupEnv e (20000);
+        e.processor.setSetup (twoTomSetup());
+        REQUIRE (e.loaded());
+        auto* level = findParam (e.processor, "mic_kick_in_level");
+        REQUIRE (level != nullptr);
+        std::vector<float> out;
+        for (int b = 0; b < 6; ++b)
+        {
+            if (b == 2)
+                level->setValueNotifyingHost (level->convertTo0to1 (-30.0f));
+            if (pauseMs > 0)
+                juce::MessageManager::getInstance()->runDispatchLoopUntil (pauseMs);   // таймер 50 мс и UI-синхронизация успевают
+            const auto buf = e.block (b == 0 ? 96 : -1);
+            for (int ch = 0; ch < buf.getNumChannels(); ++ch)
+                for (int i = 0; i < buf.getNumSamples(); ++i)
+                    out.push_back (buf.getSample (ch, i));
+        }
+        return out;
+    };
+    const auto fast = run (0);
+    const auto slow = run (120);
+    REQUIRE (fast.size() == slow.size());
+    CHECK (fast == slow);
+
+    // Параметр действительно подействовал: уровень в блоке 5 заметно ниже, чем в блоке 1
+    auto energy = [&] (int b)
+    {
+        const size_t blockSize = fast.size() / 6;
+        float s = 0.0f;
+        for (size_t i = (size_t) b * blockSize; i < (size_t) (b + 1) * blockSize; ++i)
+            s += std::abs (fast[i]);
+        return s;
+    };
+    CHECK (energy (5) < 0.8f * energy (1));
+    CHECK (energy (5) > 0.0f);
+}
+
+TEST_CASE ("setup state v3: mic missing from the kit keeps its default output after a resave", "[licmgr][setup][mics]")
+{
+    juce::ValueTree t ("SAMPLIT");
+    t.setProperty ("version", 3, nullptr);
+    t.setProperty ("setup", twoTomSetup().toJson(), nullptr);
+    juce::ValueTree mic ("MIC");
+    mic.setProperty ("id", "room_2", nullptr);      // слот 14, в ките нет
+    mic.setProperty ("level", -3.0f, nullptr);
+    mic.setProperty ("out", 5, nullptr);
+    t.appendChild (mic, nullptr);
+    const auto v3 = stateOf (t);
+
+    SetupEnv e;
+    e.processor.setStateInformation (v3.getData(), (int) v3.getSize());
+    REQUIRE (e.loaded());
+    const int expected = SamplitProcessor::defaultMicState (14).out;
+    REQUIRE (expected > 0);
+    CHECK (e.processor.getMicState (14).out == expected);
+
+    juce::MemoryBlock saved;
+    e.processor.getStateInformation (saved);
+    SetupEnv f;
+    f.processor.setStateInformation (saved.getData(), (int) saved.getSize());
+    REQUIRE (f.loaded());
+    CHECK (f.processor.getMicState (14).out == expected);       // раньше -1 после повторного чтения становился 0 (Main)
+}

@@ -27,7 +27,7 @@ namespace samplit
 
         template <bool Mono>
         bool renderVoice (const ClipView& clip, double& position, double step, int& fadeLeft, int fadeLength,
-                          float* left, float* right, float gainL, float gainR, int start, int end) noexcept
+                          float* left, float* right, float gainL, float gainR, float dL, float dR, int start, int end) noexcept
         {
             const int frames = clip.frames;
             // Данные кончаются раньше конца клипа: дальше читать нельзя (запас на Эрмит и затухание проверен раньше)
@@ -72,8 +72,12 @@ namespace samplit
 
                 const float s = value * fade;
                 left[i] += s * gainL;
+                gainL += dL;
                 if constexpr (! Mono)
+                {
                     right[i] += s * gainR;
+                    gainR += dR;
+                }
                 position += step;
             }
             return true;
@@ -106,6 +110,7 @@ namespace samplit
         for (auto& c : cyclePos)
             c.fill (0);
         lastKitSerial = 0;
+        mixPrimed = false;
     }
 
     StreamHealth KitEngine::getHealth() const
@@ -194,8 +199,22 @@ namespace samplit
         return streamer != nullptr && streamer->isUsing (kit);
     }
 
-    void KitEngine::beginBlock() noexcept
+    void KitEngine::beginBlock (int rampSamples) noexcept
     {
+        // Рампа микрофонов: шаг на отсчёт постоянен на весь блок, куски (между MIDI-событиями) продолжают его
+        rampLen = std::max (0, rampSamples);
+        for (int m = 0; m < Kit::kMaxMics; ++m)
+        {
+            const float tl = micLevel[(size_t) m].load(), tp = micPan[(size_t) m].load();
+            if (! mixPrimed || rampLen == 0)
+            {
+                curLevel[(size_t) m] = tl;
+                curPan[(size_t) m] = tp;
+            }
+            stepLevel[(size_t) m] = rampLen > 0 ? (tl - curLevel[(size_t) m]) / (float) rampLen : 0.0f;
+            stepPan[(size_t) m] = rampLen > 0 ? (tp - curPan[(size_t) m]) / (float) rampLen : 0.0f;
+        }
+        mixPrimed = true;
         const Kit* k = current.load();
         for (int attempt = 0; attempt < 8; ++attempt)
         {
@@ -217,6 +236,13 @@ namespace samplit
 
     void KitEngine::endBlock() noexcept
     {
+        if (rampLen > 0)        // рампа дошла до цели: гасим накопленную погрешность float
+            for (int m = 0; m < Kit::kMaxMics; ++m)
+            {
+                curLevel[(size_t) m] = micLevel[(size_t) m].load();
+                curPan[(size_t) m] = micPan[(size_t) m].load();
+            }
+        rampLen = 0;
         inBlock = false;
         blockKit = nullptr;
         hazard.store (nullptr, std::memory_order_release);
@@ -584,6 +610,22 @@ namespace samplit
     void KitEngine::renderChunk (const std::array<float*, kNumOutputs + 1>& outL, const std::array<float*, kNumOutputs + 1>& outR,
                                  int start, int end) noexcept
     {
+        // Вне блока (тесты, прямой render) рампы нет: берём целевые значения. В блоке: линейно с постоянным шагом на отсчёт
+        const float len = (float) (end - start);
+        std::array<float, Kit::kMaxMics> lvl0, lvl1, pan0, pan1;
+        for (int m = 0; m < Kit::kMaxMics; ++m)
+        {
+            if (rampLen == 0)
+            {
+                curLevel[(size_t) m] = micLevel[(size_t) m].load();
+                curPan[(size_t) m] = micPan[(size_t) m].load();
+            }
+            lvl0[(size_t) m] = curLevel[(size_t) m];
+            pan0[(size_t) m] = curPan[(size_t) m];
+            lvl1[(size_t) m] = lvl0[(size_t) m] + stepLevel[(size_t) m] * len;
+            pan1[(size_t) m] = pan0[(size_t) m] + stepPan[(size_t) m] * len;
+        }
+
         for (int si = 0; si < kMaxStrikes; ++si)
         {
             const Kit* kit = strikeKit[(size_t) si].load();
@@ -600,14 +642,18 @@ namespace samplit
                 const int bus = std::clamp (over >= 0 ? over : kit->mics[(size_t) v.mic].out, 0, kNumOutputs);
                 float* left = outL[(size_t) bus];
                 float* right = outR[(size_t) bus];
-                const float level = micLevel[(size_t) v.mic].load();
-                const float gain = v.gain * level;
                 const bool mono = right == nullptr;
 
-                // Панорама как баланс: центр не меняет уровень, крайнее положение глушит противоположный канал
-                const float pan = micPan[(size_t) v.mic].load();
-                const float gainL = mono ? gain : gain * std::min (1.0f, 1.0f - pan);
-                const float gainR = mono ? 0.0f : gain * std::min (1.0f, 1.0f + pan);
+                // Панорама как баланс: центр не меняет уровень, крайнее положение глушит противоположный канал.
+                // Гейн каждого канала линейно идёт от значения в начале куска к значению в конце (делений в цикле по отсчётам нет)
+                const size_t mi = (size_t) v.mic;
+                const float g0 = v.gain * lvl0[mi], g1 = v.gain * lvl1[mi];
+                const float gainL = mono ? g0 : g0 * std::min (1.0f, 1.0f - pan0[mi]);
+                const float gainR = mono ? 0.0f : g0 * std::min (1.0f, 1.0f + pan0[mi]);
+                const float endL = mono ? g1 : g1 * std::min (1.0f, 1.0f - pan1[mi]);
+                const float endR = mono ? 0.0f : g1 * std::min (1.0f, 1.0f + pan1[mi]);
+                const float dL = (endL - gainL) / std::max (1.0f, len);
+                const float dR = (endR - gainR) / std::max (1.0f, len);
 
                 ClipView view;
                 view.head = v.clip->f32.data();
@@ -673,8 +719,8 @@ namespace samplit
                 }
 
                 bool alive;
-                alive = mono ? renderVoice<true> (view, v.position, v.step, v.fadeLeft, v.fadeTotal, left, right, gainL, gainR, start, end)
-                             : renderVoice<false> (view, v.position, v.step, v.fadeLeft, v.fadeTotal, left, right, gainL, gainR, start, end);
+                alive = mono ? renderVoice<true> (view, v.position, v.step, v.fadeLeft, v.fadeTotal, left, right, gainL, gainR, dL, dR, start, end)
+                             : renderVoice<false> (view, v.position, v.step, v.fadeLeft, v.fadeTotal, left, right, gainL, gainR, dL, dR, start, end);
 
                 if (alive && v.stream >= 0)
                     streamer->setConsumed (v.stream, std::max<int64_t> (0, (int64_t) v.position - 2));
@@ -688,6 +734,12 @@ namespace samplit
 
             if (s.numActive <= 0)
                 release (si);
+        }
+
+        for (int m = 0; m < Kit::kMaxMics; ++m)
+        {
+            curLevel[(size_t) m] = lvl1[(size_t) m];
+            curPan[(size_t) m] = pan1[(size_t) m];
         }
     }
 

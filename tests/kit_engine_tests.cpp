@@ -887,3 +887,43 @@ TEST_CASE ("processor with a kit: 200 kit swaps while the audio thread plays do 
     f.processor.collectGarbage();
     REQUIRE (f.processor.getRetiredCount() == 0);
 }
+
+TEST_CASE ("kit: mic level steps are ramped over the block without a jump", "[kit][ramp]")
+{
+    KitBuilder b;
+    b.mic ("a", 1);
+    const int p = b.piece ("p");
+    b.hit (p, b.layer (p, 1, 127), 60, { 1.0f });
+    const auto kit = b.done();
+
+    Rig r;
+    r.engine.setKit (kit.get());
+    constexpr int n = 256;
+    r.engine.setMicMix (0, -100.0f, 0.0f);          // выключен
+    r.engine.beginBlock (n);
+    r.engine.noteOn (60, 100);
+    r.engine.render (r.pl, r.pr, 0, n);
+    r.engine.endBlock();
+    REQUIRE (r.L[1][n - 1] == 0.0f);
+
+    r.clear();
+    r.engine.setMicMix (0, 0.0f, 0.0f);             // ступень 0 -> 1
+    r.engine.beginBlock (n);
+    r.engine.render (r.pl, r.pr, 0, 100);           // два куска, как между MIDI-событиями: рампа сквозная
+    r.engine.render (r.pl, r.pr, 100, n);
+    r.engine.endBlock();
+    float prev = 0.0f, maxStep = 0.0f;
+    for (int i = 0; i < n; ++i)
+    {
+        maxStep = std::max (maxStep, r.L[1][(size_t) i] - prev);
+        prev = r.L[1][(size_t) i];
+    }
+    REQUIRE (maxStep <= 1.0f / n + 1e-4f);
+    REQUIRE (prev > 0.98f);
+
+    r.clear();
+    r.engine.beginBlock (n);                        // следующий блок: уже на цели
+    r.engine.render (r.pl, r.pr, 0, n);
+    r.engine.endBlock();
+    REQUIRE (std::abs (r.L[1][0] - 1.0f) < 1e-4f);
+}
