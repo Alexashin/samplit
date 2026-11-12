@@ -7,6 +7,9 @@
 
 #include "PatternPalette.h"
 #include "PluginEditor.h"
+#include "ui/Controls.h"
+#include "ui/Fader.h"
+#include "ui/Knob.h"
 #include "samplit/core/LicenseSigning.h"
 
 #include <juce_gui_basics/juce_gui_basics.h>
@@ -211,6 +214,92 @@ namespace
         return ok;
     }
 
+
+    // Галерея компонентов новой визуальной системы (00-components.png): крутилки, фейдер, кнопки, сегменты, раскрывашка
+    struct Gallery final : juce::Component
+    {
+        Gallery()
+        {
+            setLookAndFeel (&laf);
+            for (auto* k : { &k1, &k2, &k3, &k4 })
+                addAndMakeVisible (*k);
+            k1.setRange (-60, 6, 0.1, 0);  k1.setValue (-3.5);
+            k1.format = [] (double v) { return juce::String (v, 1) + utf8 (" дБ"); };
+            k2.setRange (-1, 1, 0.01, 0);  k2.setValue (0.4);
+            k2.format = [] (double v) { return v == 0 ? utf8 ("центр") : juce::String (juce::roundToInt (std::abs (v) * 100)) + (v < 0 ? " L" : " R"); };
+            k3.setRange (0, 40, 1, 8);     k3.setValue (14);
+            k3.format = [] (double v) { return juce::String ((int) v) + utf8 (" мс"); };
+            k4.setRange (0, 100, 1, 50);   k4.setValue (0);
+            k4.format = [] (double v) { return juce::String ((int) v) + " %"; };
+            for (auto* k : { &k1, &k2, &k3, &k4 })
+                k->refresh();
+            addAndMakeVisible (fader);   fader.setRange (-60, 6, 0);  fader.setValue (-6.0);
+            addAndMakeVisible (fader2);  fader2.setRange (-60, 6, 0); fader2.setValue (0.0);
+            addAndMakeVisible (led1);    led1.setToggleState (true, juce::dontSendNotification);
+            addAndMakeVisible (led2);    addAndMakeVisible (led3);  led3.setEnabled (false);
+            addAndMakeVisible (primary); primary.setColour (juce::TextButton::buttonColourId, brand::accent);
+            addAndMakeVisible (normal);  addAndMakeVisible (quiet);
+            quiet.setColour (juce::TextButton::buttonColourId, juce::Colours::transparentBlack);
+            quiet.setColour (juce::TextButton::textColourOffId, brand::textMuted);
+            addAndMakeVisible (seg);     addAndMakeVisible (seg2); seg2.setSelected (1);
+            addAndMakeVisible (disc);    disc.setToggleState (true, juce::dontSendNotification);
+            addAndMakeVisible (combo);   combo.addItem (utf8 ("Studio600, живой"), 1); combo.setSelectedId (1);
+            setSize (760, 360);
+        }
+        ~Gallery() override { setLookAndFeel (nullptr); }
+
+        void paint (juce::Graphics& g) override
+        {
+            g.fillAll (brand::surface);
+            drawSectionCaption (g, utf8 ("Крутилки"), { 16, 12, 340, 18 });
+            drawSectionCaption (g, utf8 ("Фейдеры"), { 372, 12, 130, 18 });
+            drawSectionCaption (g, utf8 ("Кнопки"), { 516, 12, 230, 18 });
+            drawSectionCaption (g, utf8 ("Сегменты и списки"), { 16, 160, 340, 18 });
+            drawSectionCaption (g, utf8 ("Раскрывашка"), { 16, 262, 340, 18 });
+        }
+        void resized() override
+        {
+            int x = 16;
+            for (auto* k : { &k1, &k2, &k3, &k4 })
+            {
+                k->setBounds (x, 36, k->preferredWidth(), k->preferredHeight());
+                x += k->preferredWidth() + 4;
+            }
+            k4.setBounds (x + 8, 36, Knob::widthFor (Knob::Size::Small), Knob::heightFor (Knob::Size::Small));
+            fader.setBounds (372, 32, 64, 190);
+            fader2.setBounds (440, 32, 64, 190);
+            led1.setBounds (516, 36, 110, 30); led2.setBounds (632, 36, 110, 30); led3.setBounds (516, 74, 110, 30);
+            primary.setBounds (516, 118, 130, 32); normal.setBounds (652, 118, 90, 32); quiet.setBounds (516, 158, 130, 32);
+            seg.setBounds (16, 186, seg.preferredWidth(), 30);
+            seg2.setBounds (16 + seg.preferredWidth() + 16, 186, seg2.preferredWidth(), 30);
+            combo.setBounds (16, 224, 230, 28);
+            disc.setBounds (16, 284, 160, 24);
+        }
+
+        SamplitLookAndFeel laf;
+        Knob k1 { utf8 ("Громкость"), Knob::Size::Large }, k2 { utf8 ("Панорама"), Knob::Size::Large },
+             k3 { utf8 ("Время ±"), Knob::Size::Large }, k4 { utf8 ("Сила ±"), Knob::Size::Small };
+        Fader fader, fader2;
+        LedButton led1 { utf8 ("Цикл") }, led2 { utf8 ("Соло") }, led3 { utf8 ("Недоступно") };
+        juce::TextButton primary { utf8 ("Перетащить в Cubase") }, normal { utf8 ("Играть") }, quiet { utf8 ("Сбросить") };
+        SegmentedControl seg { { "1", "2", "3", "4" } }, seg2 { { utf8 ("Стерео"), utf8 ("Мульти-аут") } };
+        DisclosureHeader disc { utf8 ("Подробнее") };
+        juce::ComboBox combo;
+    };
+
+    bool shootGallery (const juce::File& out)
+    {
+        Gallery gallery;
+        pumpUntil ([] { return false; }, 100);
+        const auto image = gallery.createComponentSnapshot (gallery.getLocalBounds(), true, 1.0f);
+        out.deleteFile();
+        juce::FileOutputStream stream (out);
+        juce::PNGImageFormat png;
+        const bool ok = stream.openedOk() && png.writeImageToStream (image, stream);
+        std::cout << (ok ? "saved " : "FAILED ") << out.getFullPathName() << std::endl;
+        return ok;
+    }
+
     std::unique_ptr<LicenseManager> manager (const juce::File& dataDir, const juce::String& fingerprint)
     {
         LicenseManager::Config c;
@@ -235,6 +324,9 @@ int main (int argc, char** argv)
     }
     const juce::File outDir (juce::File::getCurrentWorkingDirectory().getChildFile (juce::String::fromUTF8 (argv[1])));
     outDir.createDirectory();
+
+    if (argc > 2 && juce::String (argv[2]) == "--components")
+        return shootGallery (outDir.getChildFile ("00-components.png")) ? 0 : 1;
 
     if (argc > 2 && juce::String (argv[2]) == "--installed")
     {

@@ -10,7 +10,11 @@ if(WIN32)
 endif()
 
 juce_add_binary_data(SamplitAssets
-    SOURCES ${CMAKE_SOURCE_DIR}/brand/logo/lockup-h-on-dark.svg)
+    SOURCES ${CMAKE_SOURCE_DIR}/brand/logo/lockup-h-on-dark.svg
+            ${CMAKE_CURRENT_SOURCE_DIR}/assets/fonts/PlexSans-Regular.ttf
+            ${CMAKE_CURRENT_SOURCE_DIR}/assets/fonts/PlexSans-Medium.ttf
+            ${CMAKE_CURRENT_SOURCE_DIR}/assets/fonts/JetBrainsMono-Regular.ttf
+            ${CMAKE_CURRENT_SOURCE_DIR}/assets/fonts/JetBrainsMono-Medium.ttf)
 set_target_properties(SamplitAssets PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
 juce_add_plugin(Samplit
@@ -57,6 +61,10 @@ set(SAMPLIT_ENGINE_SOURCES ${SAMPLIT_ENGINE_SOURCES} PARENT_SCOPE)
 target_sources(Samplit PRIVATE
     Brand.h
     LookAndFeel.h
+    ui/Fonts.h
+    ui/Knob.h
+    ui/Fader.h
+    ui/Controls.h
     ${SAMPLIT_ENGINE_SOURCES}
     KeyboardView.h
     KeyboardView.cpp
