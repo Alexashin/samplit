@@ -685,6 +685,27 @@ TEST_CASE ("KitSpec: reuse takes clips from the current kit and decodes only wha
     CHECK (third.kit->pieces[1].hits[0].files[0].clip != second.kit->pieces[1].hits[0].files[0].clip);
 }
 
+TEST_CASE ("KitSpec: two kits of one process share decoded clips (second plugin instance)", "[loader][spec]")
+{
+    const auto dir = loaderDir();
+    const auto k1 = writeSpecPack (dir, "tsh1", { specPiece ("a", { 96 }, threeLayers (96)) });
+    const auto opts = optionsFor (dir, { { "tsh1", k1 } });
+
+    KitSpec spec;
+    spec.places.push_back (placeOf ("tom_16l", 8, "tsh1", "a", { 96 }));
+
+    const auto first = loadKit (spec, opts);
+    REQUIRE (first.ok());
+    CHECK (first.decodedClips == 3);
+
+    // Без reuse (другой экземпляр плагина): клипы берутся из общего реестра процесса, копий в памяти нет
+    const auto second = loadKit (spec, opts);
+    REQUIRE (second.ok());
+    CHECK (second.decodedClips == 0);
+    CHECK (second.reusedClips == 3);
+    CHECK (second.kit->pieces[0].hits[0].files[0].clip == first.kit->pieces[0].hits[0].files[0].clip);
+}
+
 TEST_CASE ("KitSpec: pick priority is user, group, layer, random; a pick outside picks is ignored", "[loader][spec]")
 {
     const auto dir = loaderDir();

@@ -9,6 +9,8 @@
 #include <juce_audio_formats/juce_audio_formats.h>
 
 #include <algorithm>
+#include <map>
+#include <mutex>
 #include <optional>
 #include <thread>
 #include <tuple>
@@ -67,6 +69,45 @@ namespace samplit
             float gainDb;
         };
 
+        // Клипы всего процесса (все экземпляры плагина в одном DAW): второй экземпляр с теми же паками берёт уже
+        // декодированные головы, а не держит вторую копию в памяти. Реестр хранит только weak_ptr: клип живёт,
+        // пока его держит хоть один кит. DecodedClip после публикации не меняется, поэтому делить его безопасно.
+        class SharedClips
+        {
+        public:
+            ClipPtr find (const std::string& key)
+            {
+                const std::lock_guard<std::mutex> lock (m);
+                const auto it = map.find (key);
+                if (it == map.end())
+                    return nullptr;
+                if (auto c = it->second.lock())
+                    return c;
+                map.erase (it);
+                return nullptr;
+            }
+
+            void add (const std::string& key, const ClipPtr& clip)
+            {
+                const std::lock_guard<std::mutex> lock (m);
+                if (++adds % 4096 == 0)     // изредка убираем записи умерших клипов
+                    for (auto it = map.begin(); it != map.end();)
+                        it = it->second.expired() ? map.erase (it) : std::next (it);
+                map[key] = clip;
+            }
+
+        private:
+            std::mutex m;
+            std::map<std::string, std::weak_ptr<const DecodedClip>> map;
+            uint64_t adds = 0;
+        };
+
+        SharedClips& sharedClips()
+        {
+            static SharedClips instance;
+            return instance;
+        }
+
         bool isCancelled (const KitLoadOptions& o) { return o.cancel != nullptr && o.cancel->load(); }
 
         // Откуда клип: по этой строке загрузчик узнаёт тот же клип в текущем ките (KitLoadOptions::reuse)
@@ -77,7 +118,7 @@ namespace samplit
                 s = "w|"_s + pk.libraryRoot.getChildFile (pk.paths[(size_t) std::get<1> (key)]).getFullPathName()
                     + "|"_s + juce::String (headSeconds);
             else
-                s = "p|"_s + pk.id + "|v"_s + juce::String (pk.manifest.version) + "|c"_s + juce::String (std::get<1> (key));
+                s = "p|"_s + pk.id + "|v"_s + juce::String (pk.manifest.version) + "|f"_s + juce::String ((juce::int64) pk.reader->getHeader().fileSize) + "|c"_s + juce::String (std::get<1> (key));
             s << "|" << std::get<2> (key) << "|" << std::get<3> (key) << "|t" << std::get<4> (key) << "|n" << std::get<5> (key) << "|k" << std::get<6> (key) << "|h" << std::get<7> (key);
             return s.toStdString();
         }
@@ -384,6 +425,11 @@ namespace samplit
                         job.clip = it->second;
                         ++res.reusedClips;
                     }
+                    else if (auto shared = sharedClips().find (job.sourceKey))
+                    {
+                        job.clip = std::move (shared);
+                        ++res.reusedClips;
+                    }
                     else
                         pending.push_back (i);
                 }
@@ -412,6 +458,8 @@ namespace samplit
                         }
                         if (job.clip == nullptr)
                             failed.store (true);
+                        else
+                            sharedClips().add (job.sourceKey, job.clip);
                         if (options.progress)
                             options.progress ((float) (done.fetch_add (1) + 1) / (float) juce::jmax (1, total));
                     }
