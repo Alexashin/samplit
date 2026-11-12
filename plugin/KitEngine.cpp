@@ -408,7 +408,7 @@ namespace samplit
     int KitEngine::fitVelocity (const Kit& kit, const NoteMap& map, int velocity, float& quietGain) const noexcept
     {
         quietGain = 1.0f;
-        if (selectMode.load() == (int) HitSelect::Kontakt)
+        if (isKontakt())
             return velocity;
 
         const auto& piece = kit.pieces[(size_t) map.piece];
@@ -455,7 +455,7 @@ namespace samplit
     {
         const auto& piece = kit.pieces[(size_t) map.piece];
 
-        if (selectMode.load() == (int) HitSelect::Kontakt)
+        if (isKontakt())
         {
             // Точное окно velocity; пересечения окон разрешаются первым подходящим ударом
             for (const auto& l : map.layers)
@@ -497,6 +497,16 @@ namespace samplit
         if (layer.choice >= 0 && layer.choice < Kit::kMaxChoices)
             if (const int p = choicePick[(size_t) layer.choice].load(); p >= 0)
                 pick = (Pick) p;
+
+        // Повторяемый выбор: запись зависит только от позиции в песне, клавиши и слоя (без состояния)
+        if (pick != Pick::Exact && strikePosValid && repeatable.load() && ! layer.hits.empty())
+        {
+            uint64_t x = (uint64_t) strikePos * 0x9e3779b97f4a7c15ull ^ ((uint64_t) note << 32) ^ ((uint64_t) chosen << 48);
+            x ^= x >> 30; x *= 0xbf58476d1ce4e5b9ull;
+            x ^= x >> 27; x *= 0x94d049bb133111ebull;
+            x ^= x >> 31;
+            return layer.hits[(size_t) (x % (uint64_t) layer.hits.size())];
+        }
 
         if (pick == Pick::Cycle)
         {

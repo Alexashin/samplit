@@ -58,6 +58,15 @@ namespace samplit
         // Message thread
         void setSelectMode (HitSelect mode) noexcept { selectMode.store ((int) mode); }
 
+        // «Удар выбирает»: партия (число velocity = конкретная запись, как в Kontakt) или плагин (velocity = сила, запись
+        // выбирает плагин). partMode перекрывает режим кита
+        void setPartMode (bool on) noexcept { partMode.store (on); }
+        // Плагин выбирает повторяемо: запись зависит от позиции в песне (сэмпл транспорта), клавиши и слоя, поэтому
+        // прослушивание, экспорт и заморозка звучат одинаково. false: «живой» выбор по кругу/случайно
+        void setRepeatable (bool on) noexcept { repeatable.store (on); }
+        // Audio thread: позиция следующего noteOn в сэмплах транспорта; valid=false (нет транспорта, ноты с экрана): живой выбор
+        void setStrikePosition (int64_t samples, bool valid) noexcept { strikePos = samples; strikePosValid = valid; }
+
         // Message thread, до первой игры: стример хвостов с диска. nullptr: потоковые клипы играют только голову
         void setStreamer (DiskStreamer* s) noexcept { streamer = s; }
 
@@ -193,6 +202,11 @@ namespace samplit
         DiskStreamer* streamer = nullptr;
         std::atomic<bool> offline { false };
         std::atomic<int> selectMode { (int) HitSelect::Live };
+        std::atomic<bool> partMode { false };
+        std::atomic<bool> repeatable { true };
+        int64_t strikePos = 0;              // только audio thread
+        bool strikePosValid = false;
+        bool isKontakt() const noexcept { return partMode.load() || selectMode.load() == (int) HitSelect::Kontakt; }
         std::array<std::atomic<float>, Kit::kMaxMics> micLevel;
         std::array<std::atomic<float>, Kit::kMaxMics> micPan;
         std::array<std::atomic<int>, Kit::kMaxMics> micOut;

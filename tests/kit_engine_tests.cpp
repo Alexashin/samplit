@@ -1,3 +1,4 @@
+#include <set>
 #include "KitEngine.h"
 #include "PluginProcessor.h"
 #include "kit_fixture.h"
@@ -114,6 +115,61 @@ TEST_CASE ("kit: mics without a file in this hit stay silent", "[kit]")
     REQUIRE (r.hitOnce (60, 100).voices == 1);
     REQUIRE (r.level (1) > 0.0f);
     REQUIRE (r.level (2) == 0.0f);
+}
+
+TEST_CASE ("kit: repeatable pick depends only on song position, key and layer", "[kit][velocity]")
+{
+    KitBuilder b;
+    b.mic ("m", 1);
+    const int p = b.piece ("snare");
+    const int l = b.layer (p, 1, 127);
+    for (int i = 0; i < 6; ++i)
+        b.hit (p, l, 26, { 0.1f * (float) (i + 1) });
+    const auto kit = b.done();
+
+    Rig r;
+    r.engine.setKit (kit.get());
+    r.engine.setRepeatable (true);
+
+    std::set<int> seen;
+    for (int pos = 0; pos < 60; ++pos)
+    {
+        r.engine.setStrikePosition (pos * 11025, true);
+        const int first = r.hitOnce (26, 100).hit;
+        r.engine.setStrikePosition (pos * 11025, true);
+        REQUIRE (r.hitOnce (26, 100).hit == first);   // то же место песни: та же запись
+        seen.insert (first);
+    }
+    REQUIRE (seen.size() >= 3);                        // а разные места дают разные записи
+
+    // Живой выбор не привязан к позиции: подряд не повторяется одна и та же запись
+    r.engine.setRepeatable (false);
+    r.engine.setStrikePosition (0, true);
+    std::set<int> live;
+    for (int i = 0; i < 40; ++i)
+        live.insert (r.hitOnce (26, 100).hit);
+    REQUIRE (live.size() >= 3);
+}
+
+TEST_CASE ("kit: part mode plays the exact take for a velocity number", "[kit][velocity]")
+{
+    KitBuilder b;
+    b.mic ("m", 1);
+    const int p = b.piece ("snare");
+    const int l = b.layer (p, 1, 127);
+    b.hit (p, l, 26, { 0.1f }, 1, 60);
+    b.hit (p, l, 26, { 0.2f }, 61, 127);
+    const auto kit = b.done();
+
+    Rig r;
+    r.engine.setKit (kit.get());
+    r.engine.setPartMode (true);
+    for (int i = 0; i < 10; ++i)
+    {
+        r.engine.setStrikePosition (i * 777, true);
+        REQUIRE (r.hitOnce (26, 30).hit == 0);
+        REQUIRE (r.hitOnce (26, 100).hit == 1);
+    }
 }
 
 TEST_CASE ("kit: an output switched off in the host falls back to Main", "[kit]")

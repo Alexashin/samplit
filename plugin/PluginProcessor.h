@@ -132,6 +132,14 @@ namespace samplit
         // ---- Режим выходов: false = «Стерео» (все микрофоны в Main с панорамой), true = «Мульти-аут» (каждый микрофон на
         // свой выход, как выбрано в микшере; выключенный в DAW выход играет в Main). Хранится в проекте ----
         bool isMultiOut() const noexcept { return multiOut.load(); }
+
+        // «Удар выбирает»: false = плагин (velocity = сила, запись выбирает плагин), true = партия (число = запись, как Kontakt).
+        // «Повторяемо»: выбор плагина зависит от позиции в песне, поэтому прослушивание = экспорт; false = живой выбор.
+        // Хранятся в проекте (необязательные свойства состояния), не являются параметрами хоста
+        bool isPartMode() const noexcept { return partMode.load(); }
+        bool isRepeatable() const noexcept { return repeatable.load(); }
+        void setPartMode (bool on);
+        void setRepeatable (bool on);
         void setMultiOut (bool multi);
 
         // ---- Автоматизация в DAW: уровень и панорама 15 слотов Studio600 (параметры "mic_<id>_level", "mic_<id>_pan", например "mic_kick_in_level").
@@ -186,6 +194,8 @@ namespace samplit
         std::atomic<uint64_t> activeLo { 0 }, activeHi { 0 };
         std::atomic<uint32_t> enabledOutputs { 0 };
         std::atomic<bool> multiOut { false };
+        std::atomic<bool> partMode { false };
+        std::atomic<bool> repeatable { true };
         void applyMixer();
         // Audio thread, начало блока: цели уровня/панорамы микрофонов для движка. Слоты 0..14: значения параметров хоста
         // (атомики, автоматизация без таймера); остальные: из mixLevelDb/mixPan. Mute/solo из масок

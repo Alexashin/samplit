@@ -179,6 +179,16 @@ namespace samplit
         enabledOutputs.store (enabled);
 
         // Без кита KitEngine::noteOn выходит сразу, а render ничего не пишет: блок остаётся тишиной
+        // Позиция транспорта в сэмплах: нужна повторяемому выбору удара. Без транспорта (ноты с экрана) выбор живой
+        int64_t transportStart = 0;
+        bool transportValid = false;
+        if (auto* head = getPlayHead())
+            if (const auto info = head->getPosition(); info && info->getIsPlaying())
+                if (const auto t = info->getTimeInSamples())
+                {
+                    transportStart = *t;
+                    transportValid = true;
+                }
         auto noteOn = [&] (int note, int velocity) { kitEngine.noteOn (note, velocity); };
         auto renderRange = [&] (int from, int to) { kitEngine.render (outL, outR, from, to); };
 
@@ -187,6 +197,7 @@ namespace samplit
 
         // Ноты с экранной клавиатуры
         // Если audio thread стоял и пользователь нажал больше kQueue клавиш, устаревшие ноты отбрасываются (не играть залпом)
+        kitEngine.setStrikePosition (0, false);
         auto r = queueRead.load();
         const auto w = queueWrite.load();
         if (w - r > (uint32_t) kQueue)
@@ -220,6 +231,7 @@ namespace samplit
             if (at > pos)
                 renderRange (pos, at);
             pos = at;
+            kitEngine.setStrikePosition (transportStart + meta.samplePosition, transportValid);
             noteOn (msg.getNoteNumber(), msg.getVelocity());
         }
         if (numSamples > pos)
@@ -869,11 +881,25 @@ namespace samplit
 
     // ---------------------------------------------------------------- состояние проекта
 
+    void SamplitProcessor::setPartMode (bool on)
+    {
+        partMode.store (on);
+        kitEngine.setPartMode (on);
+    }
+
+    void SamplitProcessor::setRepeatable (bool on)
+    {
+        repeatable.store (on);
+        kitEngine.setRepeatable (on);
+    }
+
     void SamplitProcessor::getStateInformation (juce::MemoryBlock& dest)
     {
         juce::ValueTree state ("SAMPLIT");
         state.setProperty ("version", 5, nullptr);
         state.setProperty ("multiOut", multiOut.load(), nullptr);
+        state.setProperty ("partMode", partMode.load(), nullptr);
+        state.setProperty ("repeatable", repeatable.load(), nullptr);
 
         Setup copy;
         {
@@ -915,6 +941,8 @@ namespace samplit
             if (v.hasType ("MIC") && (int) v.getProperty ("out", 0) > 0)
                 oldRouted = true;
         multiOut.store (version >= 4 ? (bool) state.getProperty ("multiOut", false) : oldRouted);
+        setPartMode ((bool) state.getProperty ("partMode", false));
+        setRepeatable ((bool) state.getProperty ("repeatable", true));
 
         std::map<juce::String, MicState> mix;
         for (const auto& v : state)

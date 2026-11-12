@@ -71,6 +71,8 @@ namespace samplit
         KitView kitView;
         juce::TextButton kitTab, instrumentsTab, mixerTab;
         MidiDragSource phraseSource;
+        juce::TextButton hitSourceButton, repeatButton;
+        void updateModeButtons();
         juce::TextButton licenseButton;
         Scrim scrim;
         Overlay overlay = Overlay::None;

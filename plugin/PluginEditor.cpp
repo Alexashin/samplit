@@ -53,6 +53,13 @@ namespace samplit
         instrumentsTab.setTooltip (utf8 ("Для каждого барабана: включить, выбрать звук, громкость и как выбирается удар"));
         mixerTab.setButtonText (utf8 ("Микшер"));
         mixerTab.setTooltip (utf8 ("Уровень, панорама, выход, Mute и Solo каждого микрофона"));
+        hitSourceButton.setTooltip (utf8 ("Кто выбирает запись удара. Плагин: velocity это сила, конкретную запись выбирает плагин. "
+                                          "Партия: число velocity это конкретная запись, как в Kontakt (нужно для партий под Kontakt и точных пар)"));
+        hitSourceButton.onClick = [this] { processor.setPartMode (! processor.isPartMode()); updateModeButtons(); };
+        repeatButton.setTooltip (utf8 ("Повторяемо: одна и та же нота в одном месте песни всегда играет одну запись, поэтому прослушивание, "
+                                       "экспорт и заморозка звучат одинаково. Живой выбор: каждый раз по-новому, как живой барабанщик"));
+        repeatButton.onClick = [this] { processor.setRepeatable (! processor.isRepeatable()); updateModeButtons(); };
+        updateModeButtons();
         for (auto* t : { &kitTab, &instrumentsTab, &mixerTab })
         {
             // Состояние вкладок задаёт только showMainTab: радио-группа и автопереключение оставляли подсвеченными две
@@ -72,12 +79,12 @@ namespace samplit
         };
 
         // Порядок добавления = порядок наложения: подложка и выпадающие панели поверх всего
-        for (auto* c : std::initializer_list<juce::Component*> { &mixer, &instruments, &kitView, &kitTab, &instrumentsTab, &mixerTab, &phraseSource, &keyboard, &headerBar,
+        for (auto* c : std::initializer_list<juce::Component*> { &mixer, &instruments, &kitView, &kitTab, &instrumentsTab, &mixerTab, &phraseSource, &hitSourceButton, &repeatButton, &keyboard, &headerBar,
                                                                   &licenseButton, &scrim })
             addChildComponent (c);
         if (license != nullptr)
             addChildComponent (license.get());
-        for (auto* c : std::initializer_list<juce::Component*> { &kitTab, &instrumentsTab, &mixerTab, &phraseSource, &keyboard, &headerBar, &licenseButton })
+        for (auto* c : std::initializer_list<juce::Component*> { &kitTab, &instrumentsTab, &mixerTab, &phraseSource, &hitSourceButton, &repeatButton, &keyboard, &headerBar, &licenseButton })
             c->setVisible (true);
         showMainTab (MainTab::Kit);
         updateHeader();
@@ -113,9 +120,18 @@ namespace samplit
             lastFocused->repaint();
     }
 
+    void SamplitEditor::updateModeButtons()
+    {
+        const bool part = processor.isPartMode();
+        hitSourceButton.setButtonText (part ? utf8 ("Удар: партия") : utf8 ("Удар: плагин"));
+        repeatButton.setButtonText (processor.isRepeatable() ? utf8 ("Повторяемо") : utf8 ("Живой выбор"));
+        repeatButton.setEnabled (! part);
+    }
+
     void SamplitEditor::timerCallback()
     {
         updateHeader();
+        updateModeButtons();
     }
 
     // Подпись кнопки лицензии и ход загрузки
@@ -207,7 +223,11 @@ namespace samplit
         instrumentsTab.setBounds (tabs.removeFromLeft (130));
         tabs.removeFromLeft (6);
         mixerTab.setBounds (tabs.removeFromLeft (130));
-        phraseSource.setBounds (tabs.removeFromRight (230));
+        phraseSource.setBounds (tabs.removeFromRight (200));
+        tabs.removeFromRight (8);
+        repeatButton.setBounds (tabs.removeFromRight (120));
+        tabs.removeFromRight (6);
+        hitSourceButton.setBounds (tabs.removeFromRight (120));
         area.removeFromTop (8);
         mixer.setBounds (area);
         instruments.setBounds (area);
