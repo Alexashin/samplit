@@ -375,10 +375,11 @@ namespace samplit
         kitCancel = cancel;
         const auto generation = kitGeneration;
         kitLoading.store (true);
-        kitProgress.store (0.0f);
+        kitProgress->store (0.0f);
 
         options.cancel = cancel.get();
-        options.progress = [this] (float f) { kitProgress.store (f); };
+        // Задача может пережить процессор (таймаут в деструкторе): прогресс пишется в общий атомик, а не в член класса
+        options.progress = [sink = kitProgress] (float f) { sink->store (f); };
         std::weak_ptr<int> alive = lifeToken;
 
         kitLoaderPool.addJob ([this, alive, work = std::move (work), options = std::move (options), catalogOut, cancel,
@@ -403,7 +404,7 @@ namespace samplit
                 }
 
                 kitLoading.store (false);
-                kitProgress.store (1.0f);
+                kitProgress->store (1.0f);
                 if (catalogOut != nullptr)
                     catalog = *catalogOut;
                 if (result->ok())

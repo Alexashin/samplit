@@ -102,7 +102,7 @@ namespace samplit
         // Для тестов: подмена менеджера лицензий (другая папка данных, ключ, часы)
         void setLicenseManager (std::unique_ptr<LicenseManager>);
         bool isKitLoading() const noexcept { return kitLoading.load(); }
-        float getKitLoadProgress() const noexcept { return kitProgress.load(); }
+        float getKitLoadProgress() const noexcept { return kitProgress->load(); }
 
         // Итог последней загрузки (без самого кита): ошибка, недоступные пакеты, предупреждения
         const KitLoadResult& getLastKitLoad() const noexcept { return lastLoad; }
@@ -241,7 +241,7 @@ namespace samplit
         std::atomic<uint32_t> catalogEpoch { 1 };
         std::array<juce::AudioParameterFloat*, kAutomatedMics> levelParams {}, panParams {};
         std::atomic<bool> kitLoading { false };
-        std::atomic<float> kitProgress { 0.0f };
+        std::shared_ptr<std::atomic<float>> kitProgress = std::make_shared<std::atomic<float>> (0.0f);
         std::shared_ptr<std::atomic<bool>> kitCancel;       // только message thread
         uint32_t kitGeneration = 0;                         // только message thread
 

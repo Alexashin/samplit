@@ -440,6 +440,49 @@ TEST_CASE ("kit: choke fades other pieces of the group within 5 ms", "[kit]")
     REQUIRE (r.engine.getNumActiveStrikes() == 2);
 }
 
+TEST_CASE ("kit: a voice keeps its output when the mic output changes mid-sound", "[kit]")
+{
+    KitBuilder b;
+    b.mic ("a", 1);
+    const int p = b.piece ("p");
+    b.hit (p, b.layer (p, 1, 127), 60, { 1.0f });
+    const auto kit = b.done();
+
+    Rig r;
+    r.engine.setKit (kit.get());
+    r.engine.noteOn (60, 100);
+    r.engine.setMicOutput (0, 5);      // переключение «Стерео / Мульти-аут» после начала удара
+    r.clear();
+    r.render (0, kBlock);
+    REQUIRE (std::abs (r.level (1) - 1.0f) < 1e-4f);
+    REQUIRE (r.level (5) == 0.0f);
+}
+
+TEST_CASE ("kit: choke works across a kit change", "[kit]")
+{
+    KitBuilder ba;
+    ba.mic ("m", 1);
+    const int open = ba.piece ("open", 1);
+    ba.hit (open, ba.layer (open, 1, 127), 46, { 0.5f });
+    const auto kitA = ba.done();
+
+    KitBuilder bb;
+    bb.mic ("m", 1);
+    const int closed = bb.piece ("closed", 1);
+    bb.hit (closed, bb.layer (closed, 1, 127), 42, { 0.25f });
+    const auto kitB = bb.done();
+
+    Rig r;
+    r.engine.setKit (kitA.get());
+    r.engine.noteOn (46, 100);
+    r.render (0, 256);
+    r.engine.setKit (kitB.get());
+    r.engine.noteOn (42, 100);         // закрытый хэт нового кита глушит открытый из старого
+    r.clear();
+    r.render (0, kBlock);
+    REQUIRE (std::abs (r.L[1][kBlock - 1] - 0.25f) < 1e-4f);
+}
+
 TEST_CASE ("kit: a piece does not choke itself", "[kit]")
 {
     KitBuilder b;

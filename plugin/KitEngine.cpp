@@ -532,9 +532,16 @@ namespace samplit
         // Choke: барабан этой группы заглушает остальные барабаны группы
         if (piece.choke >= 0)
             for (int i = 0; i < kMaxStrikes; ++i)
-                if (strikeKit[(size_t) i].load() == kit && strikes[(size_t) i].piece != map.piece
-                    && kit->pieces[(size_t) strikes[(size_t) i].piece].choke == piece.choke)
+            {
+                // Звучащий удар мог начаться в прежнем ките (после замены): группа сверяется по его собственным барабанам
+                const Kit* other = strikeKit[(size_t) i].load();
+                if (other == nullptr)
+                    continue;
+                const bool sameKit = other == kit;
+                if ((! sameKit || strikes[(size_t) i].piece != map.piece)
+                    && other->pieces[(size_t) strikes[(size_t) i].piece].choke == piece.choke)
                     fadeStrike (strikes[(size_t) i], stealFade);
+            }
 
         // Мест под удары почти не осталось: старейший удар мягко затухает заранее
         softEvictStrike();
@@ -576,6 +583,10 @@ namespace samplit
             v.step = file.clip->sampleRate / sr;
             v.gain = velGain * juce::Decibels::decibelsToGain (file.gainDb, -100.0f);
             v.mic = m;
+            {
+                const int over = micOut[(size_t) m].load();
+                v.bus = std::clamp (over >= 0 ? over : kit->mics[(size_t) m].out, 0, kNumOutputs);
+            }
             v.fadeLeft = -1;
             v.fadeTotal = fadeLength;
             v.wantStream = false;
@@ -665,8 +676,7 @@ namespace samplit
                 if (v.clip == nullptr)
                     continue;
 
-                const int over = micOut[(size_t) v.mic].load();
-                const int bus = std::clamp (over >= 0 ? over : kit->mics[(size_t) v.mic].out, 0, kNumOutputs);
+                const int bus = v.bus;
                 float* left = outL[(size_t) bus];
                 float* right = outR[(size_t) bus];
                 const bool mono = right == nullptr;
