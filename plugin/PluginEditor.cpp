@@ -101,6 +101,13 @@ namespace samplit
         licenseButton.setVisible (license != nullptr);
         if (license != nullptr && ! license->isOk())
             showOverlay (Overlay::License);
+        phraseSource.makeFile = [this] { return processor.getPattern().toMidiFile(); };
+        phraseSource.ready = [this] { return ! processor.getPattern().steps.empty(); };
+        phraseSource.fileName = [this]
+        {
+            const auto pat = processor.getPattern();
+            return "Samplit-" + juce::String (pat.bars) + "t-" + juce::String (juce::roundToInt (pat.bpm)) + "bpm.mid";
+        };
         startTimerHz (10);
     }
 
@@ -135,6 +142,7 @@ namespace samplit
     {
         updateHeader();
         updateModeButtons();
+        phraseSource.refreshState();
     }
 
     // Подпись кнопки лицензии и ход загрузки

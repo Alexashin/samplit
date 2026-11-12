@@ -3,15 +3,10 @@
 
 namespace samplit
 {
-    namespace
-    {
-        constexpr int kPpq = 480;
-    }
-
     MidiDragSource::MidiDragSource()
     {
         setMouseCursor (juce::MouseCursor::DraggingHandCursor);
-        setTooltip (utf8 ("Пробная фраза: перетащите на MIDI-дорожку Cubase. Ноты придут с заданной силой удара"));
+        setTooltip (utf8 ("Партия: перетащите на MIDI-дорожку Cubase. Ноты придут с силой и сдвигами, как их играет плагин"));
     }
 
     void MidiDragSource::paint (juce::Graphics& g)
@@ -19,30 +14,19 @@ namespace samplit
         const auto r = getLocalBounds().toFloat().reduced (0.5f);
         g.setColour (brand::line);
         g.drawRoundedRectangle (r, 6.0f, 1.0f);
-        g.setColour (brand::textMuted);
+        g.setColour (lastReady ? brand::textMuted : brand::textMuted.withAlpha (0.4f));
         g.setFont (juce::FontOptions (12.0f));
-        g.drawText (utf8 ("Фраза → в Cubase (перетащить)"), getLocalBounds(), juce::Justification::centred);
+        g.drawText (utf8 ("Партия → Cubase"), getLocalBounds(), juce::Justification::centred);
     }
 
-    juce::MidiFile MidiDragSource::makeTestPhrase()
+    void MidiDragSource::refreshState()
     {
-        juce::MidiMessageSequence seq;
-        const auto add = [&] (int note, int beat16, int vel)
-        {
-            const double t = (double) beat16 * kPpq / 4.0;
-            seq.addEvent (juce::MidiMessage::noteOn (10, note, (juce::uint8) vel), t);
-            seq.addEvent (juce::MidiMessage::noteOff (10, note), t + kPpq / 8.0);
-        };
-        for (int i = 0; i < 8; ++i)                  // хэт восьмыми, сила чередуется
-            add (48, i * 2, i % 2 == 0 ? 120 : 112);
-        add (24, 0, 120); add (24, 8, 111);          // бочка на 1 и 3
-        add (26, 4, 120); add (26, 12, 118);         // малый на 2 и 4
-
-        seq.updateMatchedPairs();
-        juce::MidiFile file;
-        file.setTicksPerQuarterNote (kPpq);
-        file.addTrack (seq);
-        return file;
+        const bool r = ready && ready();
+        if (r == lastReady)
+            return;
+        lastReady = r;
+        setMouseCursor (r ? juce::MouseCursor::DraggingHandCursor : juce::MouseCursor::NormalCursor);
+        repaint();
     }
 
     juce::File MidiDragSource::writeTempFile (const juce::MidiFile& midi, const juce::String& name)
@@ -58,10 +42,10 @@ namespace samplit
 
     void MidiDragSource::mouseDrag (const juce::MouseEvent& e)
     {
-        if (dragging || e.getDistanceFromDragStart() < 6)
+        if (dragging || ! lastReady || ! makeFile || e.getDistanceFromDragStart() < 6)
             return;
         dragging = true;
-        const auto file = writeTempFile (makeTestPhrase(), "Samplit-phrase.mid");
+        const auto file = writeTempFile (makeFile(), fileName ? fileName() : juce::String ("Samplit-pattern.mid"));
         if (file.existsAsFile())
             juce::DragAndDropContainer::performExternalDragDropOfFiles ({ file.getFullPathName() }, false, this,
                                                                          [this] { dragging = false; });

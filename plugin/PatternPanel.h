@@ -64,10 +64,10 @@ namespace samplit
         juce::String rowsSignature;
         int shownPlayStep = -1;
 
-        juce::Label barsLabel, tempoLabel, hint, emptyState;
+        juce::Label barsLabel, tempoLabel, timingLabel, velLabel, hint, emptyState;
         juce::TextButton barButtons[Pattern::kMaxBars];
-        juce::Slider tempo;
-        juce::TextButton playButton, loopButton, clearButton;
+        juce::Slider tempo, humanTiming, humanVel;
+        juce::TextButton playButton, loopButton, clearButton, variantButton;
         juce::Component labelsClip;                     // обрезает подписи строк при вертикальной прокрутке
         std::unique_ptr<Labels> labels;
         std::unique_ptr<Grid> grid;

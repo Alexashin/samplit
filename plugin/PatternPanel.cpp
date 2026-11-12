@@ -401,6 +401,44 @@ namespace samplit
         };
         addAndMakeVisible (tempo);
 
+        timingLabel.setText (utf8 ("Время ± мс"), juce::dontSendNotification);
+        velLabel.setText (utf8 ("Сила ±"), juce::dontSendNotification);
+        for (auto* l : { &timingLabel, &velLabel })
+        {
+            l->setFont (plainFont (13.0f));
+            l->setColour (juce::Label::textColourId, brand::textMuted);
+            l->setJustificationType (juce::Justification::centredRight);
+            addAndMakeVisible (l);
+        }
+        const auto setupHuman = [this] (juce::Slider& sl, double maxV, const juce::String& tip, std::function<void (Pattern&, int)> apply)
+        {
+            sl.setSliderStyle (juce::Slider::LinearHorizontal);
+            sl.setTextBoxStyle (juce::Slider::TextBoxRight, false, 40, kControlsHeight);
+            sl.setRange (0.0, maxV, 1.0);
+            sl.setTooltip (tip);
+            sl.setColour (juce::Slider::textBoxTextColourId, brand::text);
+            sl.setColour (juce::Slider::textBoxBackgroundColourId, brand::pad);
+            sl.setColour (juce::Slider::textBoxOutlineColourId, brand::line);
+            sl.onValueChange = [this, &sl, apply]
+            {
+                const int v = (int) sl.getValue();
+                edit ([&] (Pattern& p) { apply (p, v); });
+            };
+            addAndMakeVisible (sl);
+        };
+        setupHuman (humanTiming, 40.0, utf8 ("Случайный сдвиг каждого удара по времени, до ± этого числа мс. Результат запоминается и попадает в MIDI"),
+                    [] (Pattern& p, int v) { p.humanTimingMs = v; });
+        setupHuman (humanVel, 20.0, utf8 ("Случайный сдвиг силы каждого удара, до ± этого числа. Результат запоминается и попадает в MIDI"),
+                    [] (Pattern& p, int v) { p.humanVelocity = v; });
+        variantButton.setButtonText (utf8 ("Другой вариант"));
+        variantButton.setTooltip (utf8 ("Бросить случайность заново. Выбранный вариант запоминается в проекте и совпадает с MIDI при перетаскивании"));
+        variantButton.setWantsKeyboardFocus (false);
+        variantButton.onClick = [this]
+        {
+            edit ([] (Pattern& p) { p.humanSeed = p.humanSeed * 1664525u + 1013904223u; });
+        };
+        addAndMakeVisible (variantButton);
+
         playButton.setTooltip (utf8 ("Сыграть партию с начала или остановить"));
         playButton.onClick = [this]
         {
@@ -587,6 +625,9 @@ namespace samplit
         for (int i = 0; i < Pattern::kMaxBars; ++i)
             barButtons[i].setToggleState (pattern.bars == i + 1, juce::dontSendNotification);
         tempo.setValue (pattern.bpm, juce::dontSendNotification);
+        humanTiming.setValue (pattern.humanTimingMs, juce::dontSendNotification);
+        humanVel.setValue (pattern.humanVelocity, juce::dontSendNotification);
+        variantButton.setEnabled (pattern.humanTimingMs > 0 || pattern.humanVelocity > 0);
 
         const bool playing = processor.isPatternPlaying();
         const auto playText = playing ? utf8 ("Стоп") : utf8 ("Играть");
@@ -850,6 +891,17 @@ namespace samplit
         auto area = getLocalBounds();
         auto bar = area.removeFromTop (kControlsHeight);
         area.removeFromTop (kGap);
+        auto bar2 = area.removeFromTop (kControlsHeight);
+        area.removeFromTop (kGap);
+        timingLabel.setBounds (bar2.removeFromLeft (90));
+        bar2.removeFromLeft (6);
+        humanTiming.setBounds (bar2.removeFromLeft (200));
+        bar2.removeFromLeft (14);
+        velLabel.setBounds (bar2.removeFromLeft (60));
+        bar2.removeFromLeft (6);
+        humanVel.setBounds (bar2.removeFromLeft (200));
+        bar2.removeFromLeft (14);
+        variantButton.setBounds (bar2.removeFromLeft (130));
 
         barsLabel.setBounds (bar.removeFromLeft (52));
         bar.removeFromLeft (6);
