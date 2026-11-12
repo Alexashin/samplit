@@ -68,6 +68,7 @@ namespace samplit
     public:
         explicit SegmentedControl (std::vector<juce::String> labels) : items (std::move (labels)) { setWantsKeyboardFocus (true); }
 
+        void setItems (std::vector<juce::String> labels) { items = std::move (labels); selected = 0; repaint(); }
         int getSelected() const { return selected; }
         void setSelected (int i, bool notify = false)
         {
@@ -80,12 +81,13 @@ namespace samplit
         }
         std::function<void (int)> onChange;
 
+        // Ячейки одной ширины: самая длинная подпись плюс поля
         int preferredWidth() const
         {
-            int w = 4;
+            int widest = 36;
             for (const auto& s : items)
-                w += juce::jmax (36, juce::GlyphArrangement::getStringWidthInt (fonts::strong (13.0f), s) + 20);
-            return w;
+                widest = juce::jmax (widest, juce::GlyphArrangement::getStringWidthInt (fonts::strong (13.0f), s) + 28);
+            return 4 + widest * juce::jmax (1, (int) items.size());
         }
 
         void paint (juce::Graphics& g) override
@@ -172,5 +174,54 @@ namespace samplit
                 g.drawRoundedRectangle (getLocalBounds().toFloat().reduced (1.0f), brand::radiusS, 2.0f);
             }
         }
+    };
+
+    // Значок-кнопка в шапке (настройки, справка): рисуется векторно, без внешних иконок. 32×32, подсказка обязательна
+    class IconButton final : public juce::Button
+    {
+    public:
+        enum class Icon { Gear, Help };
+
+        IconButton (Icon i, const juce::String& tooltip) : juce::Button (tooltip), icon (i)
+        {
+            setTooltip (tooltip);
+            setWantsKeyboardFocus (true);
+        }
+
+        void paintButton (juce::Graphics& g, bool highlighted, bool down) override
+        {
+            const auto r = getLocalBounds().toFloat();
+            if (highlighted || down)
+            {
+                g.setColour (down ? brand::raised2 : brand::pad);
+                g.fillRoundedRectangle (r, brand::radiusM);
+            }
+            const auto c = r.getCentre();
+            g.setColour (highlighted ? brand::text : brand::textMuted);
+            if (icon == Icon::Gear)
+            {
+                g.drawEllipse (juce::Rectangle<float> (11.0f, 11.0f).withCentre (c), 1.7f);
+                for (int i = 0; i < 8; ++i)
+                {
+                    const float a = juce::MathConstants<float>::twoPi * (float) i / 8.0f;
+                    g.drawLine (c.x + 6.6f * std::sin (a), c.y - 6.6f * std::cos (a),
+                                c.x + 9.0f * std::sin (a), c.y - 9.0f * std::cos (a), 2.0f);
+                }
+            }
+            else
+            {
+                g.drawEllipse (juce::Rectangle<float> (18.0f, 18.0f).withCentre (c), 1.5f);
+                g.setFont (fonts::strong (13.0f));
+                g.drawText ("?", getLocalBounds(), juce::Justification::centred, false);
+            }
+            if (hasKeyboardFocus (false))
+            {
+                g.setColour (brand::accentHover);
+                g.drawRoundedRectangle (r.reduced (1.0f), brand::radiusM, 2.0f);
+            }
+        }
+
+    private:
+        Icon icon;
     };
 }

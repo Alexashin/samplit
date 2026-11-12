@@ -638,3 +638,27 @@ TEST_CASE ("processor: a missing or unusable transport still plays the note", "[
     negative.info->setTimeInSamples (-48000);
     CHECK (takeAt (kit, negative, 0) > 0.0f);
 }
+
+TEST_CASE ("processor: window size and keyboard state survive a round trip, old state opens by default", "[processor][ui]")
+{
+    // В куче: объект процессора (движок с 256 ударами) не помещается в стек 1 МБ в Debug
+    juce::MemoryBlock saved, plain;
+    {
+        auto a = std::make_unique<SamplitProcessor>();
+        a->setUiState ({ 1100, 640, false });
+        a->getStateInformation (saved);
+        auto c = std::make_unique<SamplitProcessor>();
+        c->getStateInformation (plain);
+    }
+    auto b = std::make_unique<SamplitProcessor>();
+    b->setStateInformation (saved.getData(), (int) saved.getSize());
+    CHECK (b->getUiState().width == 1100);
+    CHECK (b->getUiState().height == 640);
+    CHECK_FALSE (b->getUiState().keyboardOpen);
+
+    // Состояние без размера окна (сохранено старой версией): окно стандартное, клавиатура открыта
+    auto d = std::make_unique<SamplitProcessor>();
+    d->setStateInformation (plain.getData(), (int) plain.getSize());
+    CHECK (d->getUiState().width == 0);
+    CHECK (d->getUiState().keyboardOpen);
+}

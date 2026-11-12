@@ -1,6 +1,8 @@
 #pragma once
 
 #include "PluginProcessor.h"
+#include "Brand.h"
+#include "ui/Fonts.h"
 
 #include <juce_gui_basics/juce_gui_basics.h>
 
@@ -8,8 +10,9 @@
 
 namespace samplit
 {
-    // Узкая полоса сверху: папка библиотеки, состояние загрузки и звука, стандартная установка пользователя.
-    // Кнопки: «Моя библиотека…», «Сделать стандартной», «Сброс» и меню «…» (заводская установка, обновить список паков)
+    // Строка статуса внизу окна: одна строка про загрузку, звук и последнее действие, плюс меню «Установка ▾»
+    // (папка звука, стандартная и заводская установка, файлы установки). Очередь сообщений: новые фоновые задачи
+    // (сканирование, установщик) показываются здесь же
     class HeaderBar final : public juce::Component,
                             public juce::TooltipClient,
                             private juce::ChangeListener,
@@ -29,13 +32,13 @@ namespace samplit
         void resized() override;
 
         void chooseLibrary();
+        void showSetupMenu (juce::Component& target);
 
         // Над строкой статуса: её полный текст (в узком окне он обрезается)
         juce::String getTooltip() override;
 
     private:
         void addPack();
-        void showMoreMenu();
         void say (const juce::String& text, bool warns);
         void updateStatus();
         void changeListenerCallback (juce::ChangeBroadcaster*) override { updateStatus(); }
@@ -43,7 +46,6 @@ namespace samplit
         static juce::String healthWarning (const StreamHealth&);
 
         SamplitProcessor& processor;
-        juce::TextButton libraryButton, defaultButton, resetButton, moreButton;
         std::unique_ptr<juce::FileChooser> chooser;
         juce::Rectangle<int> statusArea;
         juce::String statusText;

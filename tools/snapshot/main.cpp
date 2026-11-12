@@ -364,7 +364,7 @@ int main (int argc, char** argv)
                 hits += (int) piece.hits.size();
             std::cout << kit->pieces.size() << " pieces, " << hits << " hits, " << kit->mics.size() << " mics" << std::endl;
         }
-        return ok && shoot (processor, outDir.getChildFile ("06-installed.png"), 1180, 780) ? 0 : 1;
+        return ok && shoot (processor, outDir.getChildFile ("06-installed.png"), 1120, 640) ? 0 : 1;
     }
 
     const auto root = juce::File::getSpecialLocation (juce::File::tempDirectory).getChildFile ("samplit-snapshot");
@@ -395,7 +395,7 @@ int main (int argc, char** argv)
         auto& processor = *processorHeap;
         processor.prepareToPlay (44100.0, 512);
         processor.setLicenseManager (manager (noLicense, fingerprint));
-        failures += shoot (processor, outDir.getChildFile ("01-no-license.png"), 1180, 780) ? 0 : 1;
+        failures += shoot (processor, outDir.getChildFile ("01-no-license.png"), 1120, 640) ? 0 : 1;
     }
 
     // 2-4. С лицензией: до применения установки, с загруженным китом, в узком окне
@@ -405,7 +405,7 @@ int main (int argc, char** argv)
         auto& processor = *processorHeap;
         processor.prepareToPlay (44100.0, 512);
         processor.setLicenseManager (manager (withLicense, fingerprint));
-        failures += shoot (processor, outDir.getChildFile ("02-licensed-empty.png"), 1180, 780) ? 0 : 1;
+        failures += shoot (processor, outDir.getChildFile ("02-licensed-empty.png"), 1120, 640) ? 0 : 1;
 
         bool loaded = false;
         processor.applySetup ([&] (const KitLoadResult& r)
@@ -419,21 +419,21 @@ int main (int argc, char** argv)
         auto m = processor.getMicState (3);
         m.mute = true;
         processor.setMicState (3, m);
-        failures += shoot (processor, outDir.getChildFile ("03-kit.png"), 1180, 780) ? 0 : 1;
-        failures += shoot (processor, outDir.getChildFile ("04-kit-narrow.png"), 900, 620) ? 0 : 1;
-        failures += shoot (processor, outDir.getChildFile ("05-kit-wide.png"), 1600, 900) ? 0 : 1;
-        failures += shoot (processor, outDir.getChildFile ("04-instruments.png"), 1180, 780, Tab::Instruments, Over::None, "snare") ? 0 : 1;
-        failures += shoot (processor, outDir.getChildFile ("04-instruments-hat.png"), 1180, 780, Tab::Instruments, Over::None, "hat") ? 0 : 1;
+        failures += shoot (processor, outDir.getChildFile ("03-kit.png"), 1120, 640) ? 0 : 1;
+        failures += shoot (processor, outDir.getChildFile ("04-kit-narrow.png"), 920, 560) ? 0 : 1;
+        failures += shoot (processor, outDir.getChildFile ("05-kit-wide.png"), 1400, 800) ? 0 : 1;
+        failures += shoot (processor, outDir.getChildFile ("04-instruments.png"), 1120, 640, Tab::Instruments, Over::None, "snare") ? 0 : 1;
+        failures += shoot (processor, outDir.getChildFile ("04-instruments-hat.png"), 1120, 640, Tab::Instruments, Over::None, "hat") ? 0 : 1;
         drawDemoPattern (processor, 1);
-        failures += shoot (processor, outDir.getChildFile ("06-pattern.png"), 1180, 780, Tab::Pattern) ? 0 : 1;
+        failures += shoot (processor, outDir.getChildFile ("06-pattern.png"), 1120, 640, Tab::Pattern) ? 0 : 1;
         drawDemoPattern (processor, 4);
-        failures += shoot (processor, outDir.getChildFile ("06-pattern-narrow.png"), 900, 620, Tab::Pattern) ? 0 : 1;
+        failures += shoot (processor, outDir.getChildFile ("06-pattern-narrow.png"), 920, 560, Tab::Pattern) ? 0 : 1;
         drawDemoPattern (processor, 2);
-        failures += shoot (processor, outDir.getChildFile ("06-pattern-wide.png"), 1600, 900, Tab::Pattern) ? 0 : 1;
+        failures += shoot (processor, outDir.getChildFile ("06-pattern-wide.png"), 1400, 800, Tab::Pattern) ? 0 : 1;
         processor.setPattern (Pattern {});
-        failures += shoot (processor, outDir.getChildFile ("07-mixer.png"), 1180, 780, Tab::Mixer) ? 0 : 1;
-        failures += shoot (processor, outDir.getChildFile ("08-mixer-narrow.png"), 900, 620, Tab::Mixer) ? 0 : 1;
-        failures += shoot (processor, outDir.getChildFile ("10-license.png"), 1180, 780, Tab::Kit, Over::License) ? 0 : 1;
+        failures += shoot (processor, outDir.getChildFile ("07-mixer.png"), 1120, 640, Tab::Mixer) ? 0 : 1;
+        failures += shoot (processor, outDir.getChildFile ("08-mixer-narrow.png"), 920, 560, Tab::Mixer) ? 0 : 1;
+        failures += shoot (processor, outDir.getChildFile ("10-license.png"), 1120, 640, Tab::Kit, Over::License) ? 0 : 1;
     }
 
     root.deleteRecursively();

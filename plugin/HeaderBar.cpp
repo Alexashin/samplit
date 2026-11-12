@@ -5,8 +5,7 @@ namespace samplit
 {
     namespace
     {
-        const juce::Colour kWarning { 0xffffb454 };
-
+        
         juce::String sizeText (int64_t bytes)
         {
             const double gb = (double) bytes / (1024.0 * 1024.0 * 1024.0);
@@ -19,36 +18,6 @@ namespace samplit
 
     HeaderBar::HeaderBar (SamplitProcessor& p) : processor (p)
     {
-        libraryButton.setButtonText (utf8 ("Моя библиотека…"));
-        libraryButton.setTooltip (utf8 ("Выберите папку со своими WAV (00-Studio600ru-Drum-LIB): звук берётся из неё целиком, без обрезки хвостов. "
-                                        "Отмена выбора сбрасывает папку"));
-        libraryButton.onClick = [this] { chooseLibrary(); };
-
-        defaultButton.setButtonText (utf8 ("Сделать стандартной"));
-        defaultButton.setTooltip (utf8 ("Запомнить текущие места, паки, громкости и режимы как вашу стандартную установку"));
-        defaultButton.onClick = [this]
-        {
-            if (processor.saveAsDefaultSetup())
-                say (utf8 ("Текущая установка сохранена как стандартная"), false);
-            else
-                say (utf8 ("Не удалось сохранить стандартную установку: нет доступа к папке данных"), true);
-        };
-
-        resetButton.setButtonText (utf8 ("Сброс"));
-        resetButton.setTooltip (utf8 ("Вернуться к вашей стандартной установке, а если её нет, к заводской"));
-        resetButton.onClick = [this]
-        {
-            processor.resetToDefaultSetup();
-            say (utf8 ("Установка сброшена к стандартной"), false);
-        };
-
-        moreButton.setButtonText (utf8 ("…"));
-        moreButton.setTooltip (utf8 ("Ещё: вернуть заводскую установку, обновить список паков"));
-        moreButton.onClick = [this] { showMoreMenu(); };
-
-        for (auto* c : std::initializer_list<juce::Component*> { &libraryButton, &defaultButton, &resetButton, &moreButton })
-            addAndMakeVisible (c);
-
         processor.addChangeListener (this);
         updateStatus();
         startTimerHz (10);
@@ -66,26 +35,49 @@ namespace samplit
         updateStatus();
     }
 
-    void HeaderBar::showMoreMenu()
+    // Меню «Установка ▾»: всё про набор барабанов и звук. Редкое лежит здесь, на виду его нет
+    void HeaderBar::showSetupMenu (juce::Component& target)
     {
         juce::PopupMenu menu;
-        menu.addItem (1, utf8 ("Вернуть заводскую"));
-        menu.addItem (2, utf8 ("Обновить список паков"));
+        menu.addItem (1, utf8 ("Папка со звуком…"));
+        menu.addSeparator();
+        menu.addItem (2, utf8 ("Сделать стандартной"));
+        menu.addItem (3, utf8 ("Вернуться к стандартной"));
+        menu.addItem (4, utf8 ("Вернуть заводскую…"));
+        menu.addSeparator();
         menu.addItem (5, utf8 ("Сохранить установку в файл…"));
         menu.addItem (6, utf8 ("Открыть установку из файла…"));
         if (processor.getLicense().isEnforced())
         {
             menu.addSeparator();
-            menu.addItem (3, utf8 ("Добавить пакет…"));
-            menu.addItem (4, utf8 ("Открыть папку пакетов"));
+            menu.addItem (7, utf8 ("Добавить пакет…"));
+            menu.addItem (8, utf8 ("Открыть папку пакетов"));
         }
-        menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&moreButton),
+        menu.addSeparator();
+        menu.addItem (9, utf8 ("Обновить список звуков"));
+        menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&target),
                             [safe = juce::Component::SafePointer<HeaderBar> (this)] (int result)
         {
             if (safe == nullptr || result == 0)
                 return;
             auto& p = safe->processor;
             if (result == 1)
+            {
+                safe->chooseLibrary();
+            }
+            else if (result == 2)
+            {
+                if (p.saveAsDefaultSetup())
+                    safe->say (utf8 ("Текущая установка сохранена как стандартная"), false);
+                else
+                    safe->say (utf8 ("Не удалось сохранить стандартную установку: нет доступа к папке данных"), true);
+            }
+            else if (result == 3)
+            {
+                p.resetToDefaultSetup();
+                safe->say (utf8 ("Установка сброшена к стандартной"), false);
+            }
+            else if (result == 4)
             {
                 juce::AlertWindow::showOkCancelBox (juce::MessageBoxIconType::QuestionIcon,
                     utf8 ("Заводская установка"),
@@ -98,11 +90,6 @@ namespace samplit
                         safe->processor.restoreFactorySetup();
                         safe->say (utf8 ("Возвращена заводская установка"), false);
                     }));
-            }
-            else if (result == 2)
-            {
-                p.rescanCatalog();
-                safe->say (utf8 ("Список паков обновлён"), false);
             }
             else if (result == 5 || result == 6)
             {
@@ -132,13 +119,18 @@ namespace samplit
                     }
                 });
             }
-            else if (result == 3)
+            else if (result == 7)
                 safe->addPack();
-            else if (result == 4)
+            else if (result == 8)
             {
                 const auto dir = p.getLicense().getPackDir();
                 dir.createDirectory();
                 dir.startAsProcess();
+            }
+            else if (result == 9)
+            {
+                p.rescanCatalog();
+                safe->say (utf8 ("Список звуков обновлён"), false);
             }
         });
     }
@@ -159,7 +151,7 @@ namespace samplit
                 lic.setLibraryRoot ({});
                 const bool enforced = lic.isEnforced();
                 safe->say (enforced ? utf8 ("Обычный режим: звук из пакетов")
-                                    : utf8 ("Папка библиотеки не выбрана: выберите её («Моя библиотека…»)"),
+                                    : utf8 ("Папка со звуком не выбрана: «Установка ▾», «Папка со звуком…»"),
                            ! enforced);
             }
             else
@@ -246,7 +238,7 @@ namespace samplit
         {
             statusText = utf8 ("Не удалось загрузить: ") + last.error
                          + (processor.getLicense().isEnforced() ? utf8 (". Проверьте лицензию и пакеты")
-                                                                : utf8 (". Выберите папку библиотеки («Моя библиотека…»)"));
+                                                                : utf8 (". Выберите папку со звуком («Установка ▾», «Папка со звуком…»)"));
             statusWarns = true;
         }
         else if (const auto kit = processor.getKit(); kit != nullptr)
@@ -274,7 +266,7 @@ namespace samplit
         }
         else if (! processor.getLicense().isEnforced() && processor.getLicense().getLibraryRoot() == juce::File())
         {
-            statusText = utf8 ("Выберите папку библиотеки («Моя библиотека…»)");
+            statusText = utf8 ("Выберите папку со звуком («Установка ▾», «Папка со звуком…»)");
             statusWarns = true;
         }
         else
@@ -308,22 +300,19 @@ namespace samplit
 
     void HeaderBar::paint (juce::Graphics& g)
     {
-        g.setColour (statusWarns ? kWarning : brand::textMuted);
-        g.setFont (juce::FontOptions (12.0f));
-        g.drawFittedText (statusText, statusArea, juce::Justification::centredLeft, 2, 1.0f);
+        // Строка статуса: точка состояния и одна строка текста. Пустая строка: всё в порядке
+        const auto area = getLocalBounds();
+        const bool idle = statusText.isEmpty();
+        const auto dot = juce::Rectangle<float> (7.0f, 7.0f).withCentre ({ (float) area.getX() + 14.0f, (float) area.getCentreY() });
+        g.setColour (statusWarns ? brand::warn : (idle ? brand::ok : brand::accentText));
+        g.fillEllipse (dot);
+        g.setColour (statusWarns ? brand::warn : brand::textMuted);
+        g.setFont (fonts::text (12.5f));
+        g.drawText (idle ? utf8 ("Готов") : statusText, statusArea, juce::Justification::centredLeft, true);
     }
 
     void HeaderBar::resized()
     {
-        auto area = getLocalBounds();
-        moreButton.setBounds (area.removeFromRight (36));
-        area.removeFromRight (6);
-        resetButton.setBounds (area.removeFromRight (70));
-        area.removeFromRight (6);
-        defaultButton.setBounds (area.removeFromRight (150));
-        area.removeFromRight (12);
-        libraryButton.setBounds (area.removeFromLeft (140));
-        area.removeFromLeft (12);
-        statusArea = area;
+        statusArea = getLocalBounds().withTrimmedLeft (28).withTrimmedRight (8);
     }
 }

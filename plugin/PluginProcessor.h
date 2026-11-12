@@ -148,6 +148,12 @@ namespace samplit
         void setRepeatable (bool on);
         void setMultiOut (bool multi);
 
+        // ---- Состояние окна: размер и клавиатура внизу. Необязательные свойства проекта (старые версии их игнорируют).
+        // width/height = 0: размер не задан, окно открывается стандартным. Только message thread ----
+        struct UiState { int width = 0, height = 0; bool keyboardOpen = true; };
+        UiState getUiState() const noexcept { return { uiWidth.load(), uiHeight.load(), uiKeyboardOpen.load() }; }
+        void setUiState (const UiState& u) noexcept { uiWidth.store (u.width); uiHeight.store (u.height); uiKeyboardOpen.store (u.keyboardOpen); }
+
         // ---- Партия (редактор «Партия»). Только message thread (setPattern пересобирает события). Хранится в проекте ----
         Pattern getPattern() const;                 // копия
         void setPattern (const Pattern&);           // сохраняет, отдаёт плееру на текущей частоте, шлёт change message
@@ -210,6 +216,8 @@ namespace samplit
         std::atomic<uint64_t> activeLo { 0 }, activeHi { 0 };
         std::atomic<uint32_t> enabledOutputs { 0 };
         std::atomic<bool> multiOut { false };
+        std::atomic<int> uiWidth { 0 }, uiHeight { 0 };
+        std::atomic<bool> uiKeyboardOpen { true };
         std::atomic<bool> partMode { false };
         std::atomic<bool> repeatable { true };
         void applyMixer();

@@ -1000,6 +1000,12 @@ namespace samplit
         state.setProperty ("multiOut", multiOut.load(), nullptr);
         state.setProperty ("partMode", partMode.load(), nullptr);
         state.setProperty ("repeatable", repeatable.load(), nullptr);
+        if (uiWidth.load() > 0 && uiHeight.load() > 0)
+        {
+            state.setProperty ("uiWidth", uiWidth.load(), nullptr);
+            state.setProperty ("uiHeight", uiHeight.load(), nullptr);
+        }
+        state.setProperty ("uiKeyboard", uiKeyboardOpen.load(), nullptr);
 
         Setup copy;
         {
@@ -1048,6 +1054,9 @@ namespace samplit
         multiOut.store (version >= 4 ? (bool) state.getProperty ("multiOut", false) : oldRouted);
         setPartMode ((bool) state.getProperty ("partMode", false));
         setRepeatable ((bool) state.getProperty ("repeatable", true));
+        setUiState ({ juce::jlimit (0, 4000, (int) state.getProperty ("uiWidth", 0)),
+                      juce::jlimit (0, 4000, (int) state.getProperty ("uiHeight", 0)),
+                      (bool) state.getProperty ("uiKeyboard", true) });
 
         {
             Pattern restoredPattern;
