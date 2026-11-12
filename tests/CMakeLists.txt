@@ -19,6 +19,7 @@ target_sources(SamplitTests PRIVATE
     kit_engine_tests.cpp
     kit_loader_tests.cpp
     setup_tests.cpp
+    pattern_tests.cpp
     license_manager_tests.cpp
     processor_tests.cpp
     core_tests.cpp

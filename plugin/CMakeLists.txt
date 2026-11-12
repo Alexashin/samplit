@@ -42,6 +42,8 @@ set(SAMPLIT_ENGINE_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/LicenseManager.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/Setup.h
     ${CMAKE_CURRENT_SOURCE_DIR}/Setup.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/Pattern.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/Pattern.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/PackCatalog.h
     ${CMAKE_CURRENT_SOURCE_DIR}/PackCatalog.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/PluginProcessor.h
