@@ -35,6 +35,9 @@ New-Item -ItemType Directory -Force (Join-Path $out 'Data\manifests') | Out-Null
 Get-ChildItem (Join-Path $root 'sample_library\packs-src\*.json') -Exclude 'studio600-unverified*' | Copy-Item -Destination (Join-Path $out 'Data\manifests')
 Copy-Item (Join-Path $root 'tools\dist\install.ps1'), (Join-Path $root 'tools\dist\uninstall.ps1') $setup
 Copy-Item (Join-Path $root 'tools\dist\img') $setup -Recurse
+# Карты ударных Cubase (python tools/gen_drum_map.py)
+New-Item -ItemType Directory -Force (Join-Path $out 'Data\drum-maps') | Out-Null
+Copy-Item (Join-Path $root 'tools\dist\drum-maps\*.drm') (Join-Path $out 'Data\drum-maps')
 Copy-Item (Join-Path $root 'tools\dist\guide.html') (Join-Path $out 'Инструкция.html')
 
 # Батники только с ASCII внутри: cmd читает их в кодировке консоли
