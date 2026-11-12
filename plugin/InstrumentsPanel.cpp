@@ -1,5 +1,6 @@
 #include "InstrumentsPanel.h"
 #include "Brand.h"
+#include "PatternPalette.h"
 
 #include <algorithm>
 #include <set>
@@ -155,11 +156,48 @@ namespace samplit
             return juce::GlyphArrangement::getStringWidthInt (plainFont (13.0f), b.getButtonText()) + 28;
         }
 
+        // Карта силы: кнопка на каждый вариант удара группы, клик играет клавишу с этим числом
+        void setStrengths (const std::vector<StrengthOption>& opts, std::function<void (int, int)> play)
+        {
+            for (const auto& o : opts)
+            {
+                auto& b = *strengthButtons.emplace_back (std::make_unique<juce::TextButton> (
+                    noteName (o.key) + utf8 (" · ") + (o.exact ? o.name : o.label) + " " + juce::String (o.velocity)));
+                b.setTooltip (utf8 ("Сыграть: клавиша ") + noteName (o.key) + utf8 (", сила ") + juce::String (o.velocity));
+                b.onClick = [play, key = o.key, vel = o.velocity] { if (play) play (key, vel); };
+                addAndMakeVisible (b);
+            }
+        }
+
+        static int strengthWidth (const juce::TextButton& b)
+        {
+            return juce::GlyphArrangement::getStringWidthInt (plainFont (12.0f), b.getButtonText()) + 20;
+        }
+
+        // Высота блока кнопок силы при ширине width (кнопки переносятся на новые строки)
+        int strengthsHeight (int width) const
+        {
+            if (strengthButtons.empty())
+                return 0;
+            int x = 0, rowsCount = 1;
+            for (auto& b : strengthButtons)
+            {
+                const int w = strengthWidth (*b);
+                if (x > 0 && x + w > width)
+                {
+                    x = 0;
+                    ++rowsCount;
+                }
+                x += w + 4;
+            }
+            return rowsCount * 28 + 6;
+        }
+
         bool stacked (int width) const { return width < controlsWidth() + 320; }
 
         int heightFor (int width) const
         {
-            int h = 12 + 20 + (hint.isNotEmpty() ? 18 : 0) + (where.isNotEmpty() ? 18 : 0);
+            int h = 12 + 20 + (hint.isNotEmpty() ? 18 : 0) + (where.isNotEmpty() ? 18 : 0) + strengthsHeight (width);
             if (! buttons.empty() && stacked (width))
                 h += 36;
             return juce::jmax (h, buttons.empty() || stacked (width) ? 0 : 52);
@@ -167,9 +205,26 @@ namespace samplit
 
         void resized() override
         {
+            const int sh = strengthsHeight (getWidth());
+            if (sh > 0)
+            {
+                int x = 0, y = getHeight() - 1 - sh + 6;
+                for (auto& b : strengthButtons)
+                {
+                    const int w = strengthWidth (*b);
+                    if (x > 0 && x + w > getWidth())
+                    {
+                        x = 0;
+                        y += 28;
+                    }
+                    b->setBounds (x, y, w, 24);
+                    x += w + 4;
+                }
+            }
             if (buttons.empty())
                 return;
             auto area = getLocalBounds().reduced (0, 8);
+            area.removeFromBottom (sh);
             area = stacked (getWidth()) ? area.removeFromBottom (30) : area.removeFromRight (controlsWidth()).withSizeKeepingCentre (controlsWidth(), 30);
             for (auto& b : buttons)
             {
@@ -184,7 +239,7 @@ namespace samplit
             g.fillRect (0, getHeight() - 1, getWidth(), 1);
 
             auto text = getLocalBounds().reduced (0, 6);
-            text.removeFromBottom (1);
+            text.removeFromBottom (1 + strengthsHeight (getWidth()));
             if (! buttons.empty() && stacked (getWidth()))
                 text.removeFromBottom (36);
             else if (! buttons.empty())
@@ -217,7 +272,7 @@ namespace samplit
         std::vector<Pick> allowed;
         Pick current;
         std::function<void (Pick)> onPick;
-        std::vector<std::unique_ptr<juce::TextButton>> buttons;
+        std::vector<std::unique_ptr<juce::TextButton>> buttons, strengthButtons;
     };
 
     struct InstrumentsPanel::GroupsContent final : juce::Component
@@ -531,6 +586,13 @@ namespace samplit
                     kitPiece = &kp;
 
         const juce::String placeId (def.id);
+        std::vector<StrengthOption> palette;
+        if (kit != nullptr && piece != nullptr)
+        {
+            pack::Piece meta;
+            const bool haveMeta = findPieceMeta (pks, def, ps, meta);
+            palette = buildPalette (*kit, def.slot, haveMeta ? &meta : nullptr);
+        }
         if (piece != nullptr)
             for (const auto& g : piece->groups)
             {
@@ -574,6 +636,15 @@ namespace samplit
                                                            if (safe != nullptr)
                                                                safe->processor.setGroupPick (choiceId, p);
                                                        });
+                std::vector<StrengthOption> mine;
+                for (const auto& o : palette)
+                    if (o.groupId == g.id)
+                        mine.push_back (o);
+                row->setStrengths (mine, [safe = juce::Component::SafePointer<InstrumentsPanel> (this)] (int key, int vel)
+                                   {
+                                       if (safe != nullptr)
+                                           safe->processor.triggerNote (key, vel);
+                                   });
                 groupsContent->addAndMakeVisible (*row);
                 groupsContent->rows.push_back (std::move (row));
             }
