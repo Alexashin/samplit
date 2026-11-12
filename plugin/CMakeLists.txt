@@ -71,6 +71,8 @@ target_sources(Samplit PRIVATE
     InstrumentsPanel.cpp
     KitView.h
     KitView.cpp
+    PatternPanel.h
+    PatternPanel.cpp
     PluginEditor.h
     PluginEditor.cpp)
 

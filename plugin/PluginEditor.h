@@ -8,6 +8,7 @@
 #include "LicensePanel.h"
 #include "LookAndFeel.h"
 #include "MixerPanel.h"
+#include "PatternPanel.h"
 #include "PluginProcessor.h"
 
 #include <juce_gui_basics/juce_gui_basics.h>
@@ -32,8 +33,8 @@ namespace samplit
         void resized() override;
         bool keyPressed (const juce::KeyPress&) override;
 
-        // Основной экран: схема установки, инструменты (настройка мест) или микшер микрофонов
-        enum class MainTab { Kit, Instruments, Mixer };
+        // Основной экран: схема установки, инструменты (настройка мест), партия (сетка шагов) или микшер микрофонов
+        enum class MainTab { Kit, Instruments, Pattern, Mixer };
         void showMainTab (MainTab);
 
         void selectInstrument (const juce::String& placeId) { instruments.selectPlace (placeId); }
@@ -69,7 +70,8 @@ namespace samplit
         MixerPanel mixer;
         InstrumentsPanel instruments;
         KitView kitView;
-        juce::TextButton kitTab, instrumentsTab, mixerTab;
+        PatternPanel patternPanel;
+        juce::TextButton kitTab, instrumentsTab, patternTab, mixerTab;
         MidiDragSource phraseSource;
         juce::TextButton hitSourceButton, repeatButton;
         void updateModeButtons();

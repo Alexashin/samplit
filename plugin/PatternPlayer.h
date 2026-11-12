@@ -35,6 +35,7 @@ namespace samplit
         void play() noexcept;                       // с начала партии
         void stop() noexcept;
         void setLoop (bool shouldLoop) noexcept { loop.store (shouldLoop); }
+        bool isLooping() const noexcept { return loop.load(); }
         bool isPlaying() const noexcept { return playing.load(); }
         int64_t getPositionSamples() const noexcept { return position.load (std::memory_order_relaxed); }
         void collectGarbage();                      // освободить снимки, которые audio thread уже не держит

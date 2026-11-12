@@ -5,6 +5,7 @@
 // samplit-snapshot <папка> --installed: то же на настоящих данных этого компьютера (%APPDATA%\Samplit, боевой ключ):
 // применяет заводскую установку, печатает время загрузки и объём в памяти, сохраняет снимок.
 
+#include "PatternPalette.h"
 #include "PluginEditor.h"
 #include "samplit/core/LicenseSigning.h"
 
@@ -153,8 +154,34 @@ namespace
     }
 
     // tab: схема установки или микшер; over: лицензия, открытая поверх окна
-    enum class Tab { Kit, Instruments, Mixer };
+    enum class Tab { Kit, Instruments, Pattern, Mixer };
     enum class Over { None, License };
+
+    // Пример партии для снимков вкладки «Партия»: бочка, малый, хэт по палитре загруженного кита
+    void drawDemoPattern (SamplitProcessor& processor, int bars)
+    {
+        Pattern p;
+        p.bars = bars;
+        p.bpm = 96.0;
+        if (const auto kit = processor.getKit())
+            for (int bar = 0; bar < bars; ++bar)
+            {
+                auto put = [&] (int slot, int step, bool strongest)
+                {
+                    const auto pal = buildPalette (*kit, slot);
+                    if (! pal.empty())
+                    {
+                        const auto& o = strongest ? pal.back() : pal.front();
+                        p.setStep (bar * Pattern::kStepsPerBar + step, slot, o.key, o.velocity);
+                    }
+                };
+                put (0, 0, true); put (0, 8, true); put (0, 10, true);
+                put (1, 4, true); put (1, 12, true); put (1, 15, false);
+                for (int s = 0; s < Pattern::kStepsPerBar; s += 2)
+                    put (6, s, s % 4 == 0);
+            }
+        processor.setPattern (p);
+    }
 
     bool shoot (SamplitProcessor& processor, const juce::File& out, int w, int h, Tab tab = Tab::Kit, Over over = Over::None,
                const char* place = nullptr)
@@ -162,7 +189,8 @@ namespace
         std::unique_ptr<juce::AudioProcessorEditor> editor (processor.createEditor());
         auto& samplitEditor = static_cast<SamplitEditor&> (*editor);
         samplitEditor.showMainTab (tab == Tab::Mixer ? SamplitEditor::MainTab::Mixer
-                                   : tab == Tab::Instruments ? SamplitEditor::MainTab::Instruments : SamplitEditor::MainTab::Kit);
+                                   : tab == Tab::Instruments ? SamplitEditor::MainTab::Instruments
+                                   : tab == Tab::Pattern ? SamplitEditor::MainTab::Pattern : SamplitEditor::MainTab::Kit);
         if (place != nullptr)
             samplitEditor.selectInstrument (place);
         editor->setSize (w, h);
@@ -299,6 +327,13 @@ int main (int argc, char** argv)
         failures += shoot (processor, outDir.getChildFile ("05-kit-wide.png"), 1600, 900) ? 0 : 1;
         failures += shoot (processor, outDir.getChildFile ("04-instruments.png"), 1180, 780, Tab::Instruments, Over::None, "snare") ? 0 : 1;
         failures += shoot (processor, outDir.getChildFile ("04-instruments-hat.png"), 1180, 780, Tab::Instruments, Over::None, "hat") ? 0 : 1;
+        drawDemoPattern (processor, 1);
+        failures += shoot (processor, outDir.getChildFile ("06-pattern.png"), 1180, 780, Tab::Pattern) ? 0 : 1;
+        drawDemoPattern (processor, 4);
+        failures += shoot (processor, outDir.getChildFile ("06-pattern-narrow.png"), 900, 620, Tab::Pattern) ? 0 : 1;
+        drawDemoPattern (processor, 2);
+        failures += shoot (processor, outDir.getChildFile ("06-pattern-wide.png"), 1600, 900, Tab::Pattern) ? 0 : 1;
+        processor.setPattern (Pattern {});
         failures += shoot (processor, outDir.getChildFile ("07-mixer.png"), 1180, 780, Tab::Mixer) ? 0 : 1;
         failures += shoot (processor, outDir.getChildFile ("08-mixer-narrow.png"), 900, 620, Tab::Mixer) ? 0 : 1;
         failures += shoot (processor, outDir.getChildFile ("10-license.png"), 1180, 780, Tab::Kit, Over::License) ? 0 : 1;

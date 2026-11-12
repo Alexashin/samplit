@@ -20,7 +20,7 @@ namespace samplit
     }
 
     SamplitEditor::SamplitEditor (SamplitProcessor& p)
-        : AudioProcessorEditor (&p), processor (p), headerBar (p), mixer (p), instruments (p), kitView (p), keyboard (p)
+        : AudioProcessorEditor (&p), processor (p), headerBar (p), mixer (p), instruments (p), kitView (p), patternPanel (p), keyboard (p)
     {
         setLookAndFeel (&lookAndFeel);
         logo = juce::Drawable::createFromImageData (BinaryData::lockuphondark_svg, BinaryData::lockuphondark_svgSize);
@@ -51,6 +51,8 @@ namespace samplit
         kitTab.setTooltip (utf8 ("Схема барабанов: левый клик играет барабан, правый открывает его настройки"));
         instrumentsTab.setButtonText (utf8 ("Инструменты"));
         instrumentsTab.setTooltip (utf8 ("Для каждого барабана: включить, выбрать звук, громкость и как выбирается удар"));
+        patternTab.setButtonText (utf8 ("Партия"));
+        patternTab.setTooltip (utf8 ("Нарисовать партию по шагам и послушать её прямо в плагине"));
         mixerTab.setButtonText (utf8 ("Микшер"));
         mixerTab.setTooltip (utf8 ("Уровень, панорама, выход, Mute и Solo каждого микрофона"));
         hitSourceButton.setTooltip (utf8 ("Кто выбирает запись удара. Плагин: velocity это сила, конкретную запись выбирает плагин. "
@@ -60,7 +62,7 @@ namespace samplit
                                        "экспорт и заморозка звучат одинаково. Живой выбор: каждый раз по-новому, как живой барабанщик"));
         repeatButton.onClick = [this] { processor.setRepeatable (! processor.isRepeatable()); updateModeButtons(); };
         updateModeButtons();
-        for (auto* t : { &kitTab, &instrumentsTab, &mixerTab })
+        for (auto* t : { &kitTab, &instrumentsTab, &patternTab, &mixerTab })
         {
             // Состояние вкладок задаёт только showMainTab: радио-группа и автопереключение оставляли подсвеченными две
             // Активна только вкладка с toggle-состоянием: клавиатурный фокус не должен рисовать вторую обводку
@@ -69,6 +71,7 @@ namespace samplit
         }
         kitTab.onClick = [this] { showMainTab (MainTab::Kit); };
         instrumentsTab.onClick = [this] { showMainTab (MainTab::Instruments); };
+        patternTab.onClick = [this] { showMainTab (MainTab::Pattern); };
         mixerTab.onClick = [this] { showMainTab (MainTab::Mixer); };
         kitView.onOpenInstruments = [safe = juce::Component::SafePointer<SamplitEditor> (this)] (const juce::String& placeId)
         {
@@ -79,12 +82,12 @@ namespace samplit
         };
 
         // Порядок добавления = порядок наложения: подложка и выпадающие панели поверх всего
-        for (auto* c : std::initializer_list<juce::Component*> { &mixer, &instruments, &kitView, &kitTab, &instrumentsTab, &mixerTab, &phraseSource, &hitSourceButton, &repeatButton, &keyboard, &headerBar,
+        for (auto* c : std::initializer_list<juce::Component*> { &mixer, &instruments, &kitView, &patternPanel, &kitTab, &instrumentsTab, &patternTab, &mixerTab, &phraseSource, &hitSourceButton, &repeatButton, &keyboard, &headerBar,
                                                                   &licenseButton, &scrim })
             addChildComponent (c);
         if (license != nullptr)
             addChildComponent (license.get());
-        for (auto* c : std::initializer_list<juce::Component*> { &kitTab, &instrumentsTab, &mixerTab, &phraseSource, &hitSourceButton, &repeatButton, &keyboard, &headerBar, &licenseButton })
+        for (auto* c : std::initializer_list<juce::Component*> { &kitTab, &instrumentsTab, &patternTab, &mixerTab, &phraseSource, &hitSourceButton, &repeatButton, &keyboard, &headerBar, &licenseButton })
             c->setVisible (true);
         showMainTab (MainTab::Kit);
         updateHeader();
@@ -188,10 +191,12 @@ namespace samplit
     {
         kitTab.setToggleState (tab == MainTab::Kit, juce::dontSendNotification);
         instrumentsTab.setToggleState (tab == MainTab::Instruments, juce::dontSendNotification);
+        patternTab.setToggleState (tab == MainTab::Pattern, juce::dontSendNotification);
         mixerTab.setToggleState (tab == MainTab::Mixer, juce::dontSendNotification);
         mixer.setVisible (tab == MainTab::Mixer);
         instruments.setVisible (tab == MainTab::Instruments);
         kitView.setVisible (tab == MainTab::Kit);
+        patternPanel.setVisible (tab == MainTab::Pattern);
     }
 
     void SamplitEditor::resized()
@@ -217,21 +222,26 @@ namespace samplit
         keyboard.setBounds (area.removeFromBottom (juce::jlimit (130, 180, area.getHeight() / 4)));
         area.removeFromBottom (14);
 
+        // Строка вкладок: справа режимы удара и плашка фразы, слева четыре вкладки. В узком окне (900 px) всё ужимается
         auto tabs = area.removeFromTop (30);
-        kitTab.setBounds (tabs.removeFromLeft (130));
-        tabs.removeFromLeft (6);
-        instrumentsTab.setBounds (tabs.removeFromLeft (130));
-        tabs.removeFromLeft (6);
-        mixerTab.setBounds (tabs.removeFromLeft (130));
-        phraseSource.setBounds (tabs.removeFromRight (200));
+        const bool narrow = tabs.getWidth() < 1000;
+        phraseSource.setBounds (tabs.removeFromRight (narrow ? 168 : 200));
         tabs.removeFromRight (8);
-        repeatButton.setBounds (tabs.removeFromRight (120));
+        repeatButton.setBounds (tabs.removeFromRight (narrow ? 112 : 120));
         tabs.removeFromRight (6);
-        hitSourceButton.setBounds (tabs.removeFromRight (120));
+        hitSourceButton.setBounds (tabs.removeFromRight (narrow ? 112 : 120));
+        tabs.removeFromRight (12);
+        const int tabWidth = juce::jlimit (90, 130, (tabs.getWidth() - 3 * 6) / 4);
+        for (auto* t : { &kitTab, &instrumentsTab, &patternTab, &mixerTab })
+        {
+            t->setBounds (tabs.removeFromLeft (tabWidth));
+            tabs.removeFromLeft (6);
+        }
         area.removeFromTop (8);
         mixer.setBounds (area);
         instruments.setBounds (area);
         kitView.setBounds (area);
+        patternPanel.setBounds (area);
 
         // Выпадающая панель под шапкой: лицензия у правого края
         scrim.setBounds (getLocalBounds().withTrimmedTop (kHeaderHeight));

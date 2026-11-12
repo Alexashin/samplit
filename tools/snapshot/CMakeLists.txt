@@ -10,6 +10,7 @@ target_sources(samplit-snapshot PRIVATE
     ${SAMPLIT_PLUGIN_DIR}/LicensePanel.cpp
     ${SAMPLIT_PLUGIN_DIR}/MixerPanel.cpp
     ${SAMPLIT_PLUGIN_DIR}/KitView.cpp
+    ${SAMPLIT_PLUGIN_DIR}/PatternPanel.cpp
     ${SAMPLIT_PLUGIN_DIR}/InstrumentsPanel.cpp
     ${SAMPLIT_PLUGIN_DIR}/KeyboardView.cpp
     ${SAMPLIT_PLUGIN_DIR}/MidiDragSource.cpp)
