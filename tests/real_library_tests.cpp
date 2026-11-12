@@ -580,3 +580,56 @@ TEST_CASE ("real library: strength palette of every place is not empty", "[.real
         }
     }
 }
+
+TEST_CASE ("real library: snare crescendo pairs with every tom at the same velocities", "[.reallib-palette]")
+{
+    const char* libPath = std::getenv ("SAMPLIT_REAL_LIB");
+    if (libPath == nullptr)
+        SKIP ("SAMPLIT_REAL_LIB не задана");
+
+    const auto repo = juce::File (SAMPLIT_TEST_FIXTURES).getParentDirectory().getParentDirectory();
+    KitLoadOptions opts;
+    opts.libraryRoot = juce::File (libPath);
+    opts.manifestDir = repo.getChildFile ("sample_library/packs-src");
+    const auto res = loadKit (factorySpec (opts), opts);
+    REQUIRE (res.ok());
+    const auto catalog = scanPackCatalog (opts, false);
+    const auto setup = Setup::factory();
+
+    auto place = [&] (const char* id)
+    {
+        const auto* def = findPlace (id);
+        REQUIRE (def != nullptr);
+        pack::Piece meta;
+        REQUIRE (findPieceMeta (catalog, *def, *setup.find (id), meta));
+        return PlacePalette { def->slot, def->id, def->type, buildPalette (*res.kit, def->slot, &meta) };
+    };
+
+    const auto snare = place ("snare");
+    std::vector<StrengthOption> crescendo;
+    for (const auto& o : snare.options)
+        if (o.groupId == "crescendo")
+            crescendo.push_back (o);
+    REQUIRE (crescendo.size() > 1);
+    CHECK (crescendo.front().exact);
+    CHECK (crescendo.front().pairType == "tom");
+
+    for (const char* id : { "tom_16l", "tom_16m", "tom_14", "tom_10" })
+    {
+        const auto tom = place (id);
+        INFO ("place " << id);
+        for (const auto& o : crescendo)
+        {
+            REQUIRE (canPair (tom, o));
+            const auto& po = tom.options[(size_t) pairOption (tom.options, o)];
+            // «Сила совпадает»; исключение: у Альта 12 удары 70 и 71 вырезаны (испорченные файлы, open-questions.md §3.1),
+            // пара берёт ближайшее число
+            if (juce::String (id) == "tom_14" && (o.velocity == 70 || o.velocity == 71))
+                CHECK (std::abs (po.velocity - o.velocity) <= 2);
+            else
+                CHECK (po.velocity == o.velocity);
+            CHECK (canPair (snare, po));                    // и обратно: том -> малый
+        }
+    }
+}
+

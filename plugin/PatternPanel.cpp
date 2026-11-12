@@ -6,6 +6,8 @@
 #include <algorithm>
 #include <cstdlib>
 #include <map>
+#include <optional>
+#include <tuple>
 
 namespace samplit
 {
@@ -19,6 +21,18 @@ namespace samplit
         constexpr int kMinRow = 22, kMaxRow = 46;
         constexpr int kScrollBar = 10;
         constexpr int kRemoveId = 100000;
+        constexpr int kTogetherId = 200000;
+        constexpr int kPartnerBaseId = 200100;
+        constexpr int kChipWidth = 52;
+
+        // Короткое имя типа места для подсказок пары
+        juce::String typeName (const juce::String& type)
+        {
+            if (type == "tom") return juce::String::fromUTF8 ("том");
+            if (type == "snare") return juce::String::fromUTF8 ("малый");
+            if (type == "kick") return juce::String::fromUTF8 ("бочка");
+            return type;
+        }
 
         juce::Font boldFont (float size) { return juce::Font (juce::FontOptions (size, juce::Font::bold)); }
         juce::Font plainFont (float size) { return juce::Font (juce::FontOptions (size)); }
@@ -103,7 +117,7 @@ namespace samplit
             for (int row = 0; row < (int) owner.rows.size(); ++row)
             {
                 const auto& r = owner.rows[(size_t) row];
-                const bool silent = r.palette.empty();
+                const bool silent = r.options.empty();
                 const auto colour = brand::groupColour (r.slot);
                 for (int s = 0; s < steps; ++s)
                 {
@@ -122,7 +136,7 @@ namespace samplit
                         {
                             auto t = cell.toNearestInt().reduced (2, 2);
                             g.setFont (plainFont (10.0f));
-                            g.drawText (r.palette[(size_t) opt].label, t.removeFromTop (t.getHeight() / 2), juce::Justification::centredBottom, true);
+                            g.drawText (r.options[(size_t) opt].label, t.removeFromTop (t.getHeight() / 2), juce::Justification::centredBottom, true);
                             g.setFont (boldFont (12.0f));
                             g.drawText (juce::String (st->velocity), t, juce::Justification::centredTop, false);
                         }
@@ -197,15 +211,15 @@ namespace samplit
             if (! cellAt (getMouseXYRelative(), row, step))
                 return {};
             const auto& r = owner.rows[(size_t) row];
-            if (r.palette.empty())
+            if (r.options.empty())
                 return utf8 ("У этого места нет звука: проверьте пак на вкладке «Инструменты»");
             if (const auto* st = owner.pattern.findStep (step, r.slot))
             {
                 const int opt = owner.optionFor (r, *st);
-                const auto what = opt >= 0 ? describe (r.palette[(size_t) opt]) : utf8 ("velocity ") + juce::String (st->velocity);
+                const auto what = opt >= 0 ? describe (r.options[(size_t) opt]) : utf8 ("velocity ") + juce::String (st->velocity);
                 return what + utf8 (". Клик снимает удар, правый клик меняет силу");
             }
-            return utf8 ("Клик ставит удар: ") + describe (r.palette[(size_t) r.current]) + utf8 (". Правый клик: выбрать силу");
+            return utf8 ("Клик ставит удар: ") + describe (r.options[(size_t) r.current]) + utf8 (". Правый клик: выбрать силу");
         }
     };
 
@@ -217,6 +231,17 @@ namespace samplit
         explicit Labels (PatternPanel& o) : owner (o) {}
 
         PatternPanel& owner;
+
+        // Переключатель «вместе» у строки, где выбранная сила имеет пару; пустой прямоугольник, если пары нет
+        juce::Rectangle<int> chipBounds (int row) const
+        {
+            const auto& r = owner.rows[(size_t) row];
+            if (r.current < 0 || r.options[(size_t) r.current].pairGroup.isEmpty())
+                return {};
+            const int rowH = owner.grid->rowH;
+            const auto area = juce::Rectangle<int> (0, kHeader + row * rowH, getWidth() - 8, rowH).reduced (8, 1);
+            return area.withTrimmedRight (14).removeFromRight (kChipWidth).withSizeKeepingCentre (kChipWidth, juce::jmin (20, rowH - 4));
+        }
 
         int rowAt (juce::Point<int> p) const
         {
@@ -249,7 +274,7 @@ namespace samplit
                 area.removeFromLeft (6);
 
                 // Треугольник справа: по клику открывается выбор силы
-                if (! r.palette.empty())
+                if (! r.options.empty())
                 {
                     const auto tri = area.removeFromRight (10).toFloat().withSizeKeepingCentre (8.0f, 5.0f);
                     juce::Path p;
@@ -259,8 +284,23 @@ namespace samplit
                     area.removeFromRight (4);
                 }
 
-                const auto strength = r.palette.empty() ? utf8 ("нет звука")
-                                                        : r.palette[(size_t) r.current].name + " " + juce::String (r.palette[(size_t) r.current].velocity);
+                if (const auto chip = chipBounds (row); ! chip.isEmpty())
+                {
+                    const bool can = owner.partnerFor (r, r.options[(size_t) r.current]) != nullptr;
+                    const bool on = r.together && can;
+                    const auto c = chip.toFloat().reduced (0.5f);
+                    g.setColour (on ? brand::accent : brand::pad);
+                    g.fillRoundedRectangle (c, c.getHeight() / 2.0f);
+                    g.setColour (on ? brand::accent : can ? brand::line.brighter (0.4f) : brand::line);
+                    g.drawRoundedRectangle (c, c.getHeight() / 2.0f, 1.0f);
+                    g.setColour (on ? brand::onAccent : can ? brand::text : brand::textMuted.withAlpha (0.6f));
+                    g.setFont (plainFont (11.0f));
+                    g.drawText (utf8 ("вместе"), chip, juce::Justification::centred, false);
+                    area.removeFromRight (kChipWidth + 6);
+                }
+
+                const auto strength = r.options.empty() ? utf8 ("нет звука")
+                                                        : r.options[(size_t) r.current].name + " " + juce::String (r.options[(size_t) r.current].velocity);
                 if (rowH >= 30)
                 {
                     auto top = area.removeFromTop (area.getHeight() / 2);
@@ -287,8 +327,19 @@ namespace samplit
         void mouseDown (const juce::MouseEvent& e) override
         {
             const int row = rowAt (e.getPosition());
-            if (row >= 0)
-                owner.showStrengthMenu (row, -1);
+            if (row < 0)
+                return;
+            if (chipBounds (row).contains (e.getPosition()) && ! e.mods.isPopupMenu())
+            {
+                auto& r = owner.rows[(size_t) row];
+                if (owner.partnerFor (r, r.options[(size_t) r.current]) != nullptr)
+                {
+                    r.together = ! r.together;
+                    repaint();
+                }
+                return;
+            }
+            owner.showStrengthMenu (row, -1);
         }
 
         juce::String getTooltip() override
@@ -297,9 +348,11 @@ namespace samplit
             if (row < 0)
                 return {};
             const auto& r = owner.rows[(size_t) row];
-            if (r.palette.empty())
+            if (r.options.empty())
                 return utf8 ("У этого места нет звука: проверьте пак на вкладке «Инструменты»");
-            return utf8 ("Сила новых ударов: ") + describe (r.palette[(size_t) r.current]) + utf8 (". Клик: выбрать другую");
+            if (chipBounds (row).contains (getMouseXYRelative()))
+                return owner.pairHint (r);
+            return utf8 ("Сила новых ударов: ") + describe (r.options[(size_t) r.current]) + utf8 (". Клик: выбрать другую");
         }
     };
 
@@ -454,9 +507,13 @@ namespace samplit
         lastKit = kit;
 
         std::map<int, StrengthOption> previous;     // слот -> выбранная сила, чтобы пережить перезагрузку кита
+        std::map<int, std::pair<bool, int>> pairs;  // слот -> «вместе» и выбранный партнёр
         for (const auto& r : rows)
+        {
             if (r.current >= 0)
-                previous[r.slot] = r.palette[(size_t) r.current];
+                previous[r.slot] = r.options[(size_t) r.current];
+            pairs[r.slot] = { r.together, r.partnerSlot };
+        }
 
         const auto catalog = kit != nullptr ? processor.getCatalog() : std::vector<CatalogPack> {};
         rows.clear();
@@ -468,52 +525,61 @@ namespace samplit
 
             Row r;
             r.slot = def.slot;
+            r.placeId = def.id;
+            r.type = def.type;
             r.label = utf8 (def.label);
             if (kit != nullptr)
             {
                 // Роли и пары групп: из описания барабана в каталоге (как во вкладке «Инструменты»)
                 pack::Piece meta;
-                bool haveMeta = false;
-                for (const auto& pk : catalog)
-                    if (pk.packId == juce::String (ps->packId))
-                        for (const auto& pc : pk.pieces)
-                            if (! haveMeta && (ps->pieceId.empty() ? pc.type == def.type : pc.id == juce::String (ps->pieceId)))
-                            {
-                                meta.id = pc.id;
-                                meta.type = pc.type;
-                                meta.groups = pc.groups;
-                                haveMeta = true;
-                            }
-                r.palette = buildPalette (*kit, def.slot, haveMeta ? &meta : nullptr);
+                const bool haveMeta = findPieceMeta (catalog, def, *ps, meta);
+                r.options = buildPalette (*kit, def.slot, haveMeta ? &meta : nullptr);
             }
 
-            r.current = defaultOption (r.palette);
+            r.current = defaultOption (r.options);
             if (const auto it = previous.find (r.slot); it != previous.end())
-                for (int i = 0; i < (int) r.palette.size(); ++i)
+                for (int i = 0; i < (int) r.options.size(); ++i)
                 {
-                    const auto& o = r.palette[(size_t) i];
+                    const auto& o = r.options[(size_t) i];
                     if (o.key == it->second.key && o.velocity == it->second.velocity && o.groupId == it->second.groupId)
                         r.current = i;
                 }
+            if (const auto it = pairs.find (r.slot); it != pairs.end())
+                std::tie (r.together, r.partnerSlot) = it->second;
             rows.push_back (std::move (r));
         }
     }
 
     int PatternPanel::optionFor (const Row& r, const PatternStep& st) const
     {
-        int best = -1;
-        for (int i = 0; i < (int) r.palette.size(); ++i)
-        {
-            const auto& o = r.palette[(size_t) i];
-            if (o.key != st.key)
-                continue;
-            if (o.velocity == st.velocity)
-                return i;
-            // Не точное число (например, из старой партии): ближайший вариант той же клавиши
-            if (best < 0 || std::abs (o.velocity - st.velocity) < std::abs (r.palette[(size_t) best].velocity - st.velocity))
-                best = i;
-        }
-        return best;
+        return findOption (r.options, st.key, st.velocity);
+    }
+
+    const PatternPanel::Row* PatternPanel::partnerFor (const Row& r, const StrengthOption& o) const
+    {
+        if (o.pairGroup.isEmpty())
+            return nullptr;
+        const Row* first = nullptr;
+        for (const auto& other : rows)
+            if (other.slot != r.slot && canPair (other, o))
+            {
+                if (other.slot == r.partnerSlot)
+                    return &other;
+                if (first == nullptr)
+                    first = &other;
+            }
+        return first;       // выбранный партнёр выключен или не подходит: первое подходящее место (решение пользователя 12.11)
+    }
+
+    juce::String PatternPanel::pairHint (const Row& r) const
+    {
+        const auto& o = r.options[(size_t) r.current];
+        const auto group = o.exact ? o.name.upToLastOccurrenceOf (" ", false, false) : o.name;
+        if (const auto* partner = partnerFor (r, o))
+            return utf8 ("Вместе: удар «") + group + utf8 ("» ставится и снимается сразу и здесь, и на месте «") + partner->label
+                 + utf8 ("» с той же силой. Партнёра можно сменить в меню строки");
+        return utf8 ("Пары нет: включите ") + typeName (o.pairType) + utf8 (" с группой «") + group
+             + utf8 ("» на вкладке «Инструменты»");
     }
 
     void PatternPanel::updateControls()
@@ -549,22 +615,53 @@ namespace samplit
         if (row < 0 || row >= (int) rows.size())
             return;
         const auto& r = rows[(size_t) row];
-        if (r.palette.empty())
+        if (r.options.empty())
             return;
-        const int slot = r.slot;
-        if (pattern.findStep (step, slot) != nullptr)
+        if (pattern.findStep (step, r.slot) != nullptr)
+            removeStep (r, step);
+        else
+            placeStep (r, step, r.options[(size_t) r.current]);
+    }
+
+    // Партнёр, которому достанется (или с которого снимется) пара для удара, стоящего на шаге строки; копия, потому что
+    // edit() пересобирает строки
+    std::optional<PlacePalette> PatternPanel::stepPartner (const Row& r, int step) const
+    {
+        const auto* st = pattern.findStep (step, r.slot);
+        const int opt = st != nullptr ? optionFor (r, *st) : -1;
+        const auto* partner = r.together && opt >= 0 ? partnerFor (r, r.options[(size_t) opt]) : nullptr;
+        return partner != nullptr ? std::optional<PlacePalette> (*partner) : std::nullopt;
+    }
+
+    void PatternPanel::removeStep (const Row& r, int step)
+    {
+        const PlacePalette own = r;
+        const auto partner = stepPartner (r, step);
+        edit ([step, own, partner] (Pattern& p) { removePairedStep (p, step, own, partner ? &*partner : nullptr); });
+    }
+
+    void PatternPanel::placeStep (const Row& r, int step, StrengthOption o)
+    {
+        const PlacePalette own = r;
+        const auto oldPartner = stepPartner (r, step);      // замена удара: прежняя пара снимается
+        const auto* partner = r.together ? partnerFor (r, o) : nullptr;
+        const auto partnerCopy = partner != nullptr ? std::optional<PlacePalette> (*partner) : std::nullopt;
+        edit ([step, own, o, oldPartner, partnerCopy] (Pattern& p)
         {
-            edit ([step, slot] (Pattern& p) { p.removeStep (step, slot); });
-            return;
-        }
-        const auto o = r.palette[(size_t) r.current];
-        edit ([step, slot, o] (Pattern& p) { p.setStep (step, slot, o.key, o.velocity); });
+            removePairedStep (p, step, own, oldPartner ? &*oldPartner : nullptr);
+            setPairedStep (p, step, own, o, partnerCopy ? &*partnerCopy : nullptr);
+        });
         processor.triggerNote (o.key, o.velocity);      // слышно, что поставили
+        if (partnerCopy)
+        {
+            const auto& po = partnerCopy->options[(size_t) pairOption (partnerCopy->options, o)];
+            processor.triggerNote (po.key, po.velocity);
+        }
     }
 
     void PatternPanel::showStrengthMenu (int row, int step)
     {
-        if (row < 0 || row >= (int) rows.size() || rows[(size_t) row].palette.empty())
+        if (row < 0 || row >= (int) rows.size() || rows[(size_t) row].options.empty())
             return;
         const auto& r = rows[(size_t) row];
         const auto* st = step >= 0 ? pattern.findStep (step, r.slot) : nullptr;
@@ -575,10 +672,10 @@ namespace samplit
         std::vector<MenuGroup> groups;
         std::map<juce::String, size_t> index;
         bool manyKeys = false;
-        for (int i = 0; i < (int) r.palette.size(); ++i)
+        for (int i = 0; i < (int) r.options.size(); ++i)
         {
-            const auto& o = r.palette[(size_t) i];
-            manyKeys = manyKeys || o.key != r.palette.front().key;
+            const auto& o = r.options[(size_t) i];
+            manyKeys = manyKeys || o.key != r.options.front().key;
             const auto id = juce::String (o.key) + "|" + (o.groupId.isNotEmpty() ? o.groupId : o.name);
             auto [it, fresh] = index.emplace (id, groups.size());
             if (fresh)
@@ -587,7 +684,7 @@ namespace samplit
         }
         for (auto& gr : groups)
         {
-            const auto& first = r.palette[(size_t) gr.items.front()];
+            const auto& first = r.options[(size_t) gr.items.front()];
             if (first.exact && gr.items.size() > 1)
                 gr.title = first.name.upToLastOccurrenceOf (" ", false, false);     // «Дроби 1» -> «Дроби»
             if (manyKeys)
@@ -596,7 +693,7 @@ namespace samplit
 
         auto itemText = [&] (int i, bool withGroup)
         {
-            const auto& o = r.palette[(size_t) i];
+            const auto& o = r.options[(size_t) i];
             juce::String t;
             if (withGroup)
                 t << o.name << ": ";
@@ -616,7 +713,7 @@ namespace samplit
                 if (gr.items.size() == 1)
                 {
                     const int i = gr.items.front();
-                    menu.addItem (i + 1, gr.title + ": " + r.palette[(size_t) i].label + ", " + juce::String (r.palette[(size_t) i].velocity),
+                    menu.addItem (i + 1, gr.title + ": " + r.options[(size_t) i].label + ", " + juce::String (r.options[(size_t) i].velocity),
                                   true, i == ticked);
                     continue;
                 }
@@ -634,6 +731,20 @@ namespace samplit
             menu.addSeparator();
             menu.addItem (kRemoveId, utf8 ("Снять удар"));
         }
+        else if (step < 0 && r.current >= 0 && r.options[(size_t) r.current].pairGroup.isNotEmpty())
+        {
+            // Пара: переключатель «вместе» и выбор партнёра среди подходящих включённых мест
+            const auto& o = r.options[(size_t) r.current];
+            const auto* partner = partnerFor (r, o);
+            menu.addSectionHeader (utf8 ("Парный удар"));
+            menu.addItem (kTogetherId, utf8 ("Играть вместе"), partner != nullptr, r.together && partner != nullptr);
+            for (const auto& other : rows)
+                if (other.slot != r.slot && canPair (other, o))
+                    menu.addItem (kPartnerBaseId + other.slot, utf8 ("Пара на месте «") + other.label + utf8 ("»"),
+                                  true, partner == &other);
+            if (partner == nullptr)
+                menu.addItem (-1, pairHint (r), false);
+        }
 
         const int slot = r.slot;
         const auto sig = rowsSignature;
@@ -643,23 +754,28 @@ namespace samplit
         {
             if (safe == nullptr || result == 0 || safe->rowsSignature != sig || safe->lastKit != kit)
                 return;     // строки поменялись, пока меню было открыто
-            if (result == kRemoveId)
-            {
-                safe->edit ([step, slot] (Pattern& p) { p.removeStep (step, slot); });
-                return;
-            }
             for (auto& row : safe->rows)
-                if (row.slot == slot && result - 1 < (int) row.palette.size())
+            {
+                if (row.slot != slot)
+                    continue;
+                if (result == kRemoveId)
+                    safe->removeStep (row, step);
+                else if (result == kTogetherId)
+                    row.together = ! row.together;
+                else if (result >= kPartnerBaseId)
+                {
+                    row.partnerSlot = result - kPartnerBaseId;
+                    row.together = true;
+                }
+                else if (result - 1 < (int) row.options.size())
                 {
                     row.current = result - 1;
-                    const auto o = row.palette[(size_t) row.current];
                     if (step >= 0)
-                    {
-                        safe->edit ([step, slot, o] (Pattern& p) { p.setStep (step, slot, o.key, o.velocity); });
-                        safe->processor.triggerNote (o.key, o.velocity);
-                    }
-                    safe->labels->repaint();
+                        safe->placeStep (row, step, row.options[(size_t) row.current]);
                 }
+                safe->labels->repaint();
+                return;     // removeStep/placeStep пересобирают rows: дальше по ним не идти
+            }
         });
     }
 

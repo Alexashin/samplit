@@ -7,6 +7,7 @@
 
 #include <functional>
 #include <memory>
+#include <optional>
 #include <vector>
 
 namespace samplit
@@ -27,12 +28,12 @@ namespace samplit
         void visibilityChanged() override;
 
     private:
-        struct Row
+        struct Row : PlacePalette
         {
-            int slot = 0;
             juce::String label;
-            std::vector<StrengthOption> palette;
-            int current = -1;           // индекс выбранной силы в palette (-1: палитра пуста)
+            int current = -1;           // индекс выбранной силы в options (-1: палитра пуста)
+            bool together = false;      // «вместе»: парный удар ставится и снимается вместе с этим
+            int partnerSlot = -1;       // выбранный партнёр пары; -1: первое подходящее место
         };
         struct Grid;
         struct Labels;
@@ -45,9 +46,14 @@ namespace samplit
         void layoutGrid();
         void edit (std::function<void (Pattern&)>);
         void toggleStep (int row, int step);
+        void placeStep (const Row&, int step, StrengthOption);     // с парой, если у строки «вместе»
+        void removeStep (const Row&, int step);
+        std::optional<PlacePalette> stepPartner (const Row&, int step) const;
         void showStrengthMenu (int row, int step);      // step < 0: только сила строки
         void setBars (int bars);
         int optionFor (const Row&, const PatternStep&) const;   // индекс в палитре или -1
+        const Row* partnerFor (const Row&, const StrengthOption&) const;    // партнёр пары для варианта или nullptr
+        juce::String pairHint (const Row&) const;                           // подсказка переключателя «вместе»
         int playStep() const;                           // шаг под курсором, -1 если не играет
 
         SamplitProcessor& processor;

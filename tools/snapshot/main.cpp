@@ -81,8 +81,9 @@ namespace
             const int lo = tom ? 96 : pd.keyLo, hi = tom ? 97 : pd.keyHi;
             for (int k = lo; k <= hi; ++k)
                 p.keys.push_back (k);
-            // Малый и хэт: две группы слоёв, чтобы вкладка «Инструменты» показывала строки групп
-            const bool grouped = pd.slot == 1 || pd.slot == 6;
+            // Малый, хэт и томы: две группы слоёв, чтобы вкладка «Инструменты» показывала строки групп.
+            // Сильный удар малого и томов парный (как крещендо Studio600): во вкладке «Партия» виден переключатель «вместе»
+            const bool grouped = pd.slot == 1 || pd.slot == 6 || tom;
             p.layers = { { "all", "center", 1, 127 } };
             if (grouped)
             {
@@ -95,6 +96,10 @@ namespace
                 g2.hint = juce::String::fromUTF8 ("Громкие акценты, играются по кругу");
                 g2.layers = { "rim" };
                 g2.pick = "cycle"; g2.picks = { "cycle" };
+                if (pd.slot == 1)
+                    g2.pair = { "tom", "", "rim" };
+                else if (tom)
+                    g2.pair = { "snare", "", "rim" };
                 p.groups = { g1, g2 };
             }
             for (const auto& layer : p.layers)
