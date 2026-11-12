@@ -28,11 +28,12 @@ namespace samplit
         void paint (juce::Graphics&) override;
         void resized() override;
 
+        void chooseLibrary();
+
         // Над строкой статуса: её полный текст (в узком окне он обрезается)
         juce::String getTooltip() override;
 
     private:
-        void chooseLibrary();
         void addPack();
         void showMoreMenu();
         void say (const juce::String& text, bool warns);

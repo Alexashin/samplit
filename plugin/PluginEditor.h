@@ -50,6 +50,15 @@ namespace samplit
             std::function<void()> onClick;
         };
 
+        // Первый запуск: библиотека не выбрана, кита нет. Закрывает вкладки понятным приглашением вместо пустых панелей
+        struct FirstRunPanel final : juce::Component
+        {
+            FirstRunPanel();
+            void paint (juce::Graphics&) override;
+            void resized() override;
+            juce::TextButton chooseButton;
+        };
+
         enum class Overlay { None, License };
 
         void globalFocusChanged (juce::Component*) override;
@@ -70,6 +79,7 @@ namespace samplit
         MixerPanel mixer;
         InstrumentsPanel instruments;
         KitView kitView;
+        FirstRunPanel firstRun;
         PatternPanel patternPanel;
         juce::TextButton kitTab, instrumentsTab, patternTab, mixerTab;
         MidiDragSource phraseSource;

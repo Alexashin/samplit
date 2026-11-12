@@ -19,6 +19,33 @@ namespace samplit
         return new SamplitEditor (*this);
     }
 
+    SamplitEditor::FirstRunPanel::FirstRunPanel()
+    {
+        chooseButton.setButtonText (utf8 ("Выбрать папку библиотеки…"));
+        addAndMakeVisible (chooseButton);
+    }
+
+    void SamplitEditor::FirstRunPanel::paint (juce::Graphics& g)
+    {
+        g.fillAll (brand::bg);
+        auto r = getLocalBounds().reduced (24).withSizeKeepingCentre (juce::jmin (560, getWidth() - 48), 150);
+        g.setColour (brand::text);
+        g.setFont (juce::FontOptions (22.0f, juce::Font::bold));
+        g.drawText (utf8 ("Выберите папку со звуком"), r.removeFromTop (34), juce::Justification::centredLeft);
+        g.setColour (brand::textMuted);
+        g.setFont (juce::FontOptions (14.0f));
+        g.drawFittedText (utf8 ("Укажите папку 00-Studio600ru-Drum-LIB с вашими WAV. Звук читается прямо из неё, без обрезки хвостов. "
+                                "Папку можно сменить позже кнопкой «Моя библиотека…» в шапке."),
+                          r.removeFromTop (60), juce::Justification::topLeft, 3);
+    }
+
+    void SamplitEditor::FirstRunPanel::resized()
+    {
+        auto r = getLocalBounds().reduced (24).withSizeKeepingCentre (juce::jmin (560, getWidth() - 48), 150);
+        r.removeFromTop (100);
+        chooseButton.setBounds (r.removeFromTop (34).removeFromLeft (240));
+    }
+
     SamplitEditor::SamplitEditor (SamplitProcessor& p)
         : AudioProcessorEditor (&p), processor (p), headerBar (p), mixer (p), instruments (p), kitView (p), patternPanel (p), keyboard (p)
     {
@@ -82,13 +109,14 @@ namespace samplit
         };
 
         // Порядок добавления = порядок наложения: подложка и выпадающие панели поверх всего
-        for (auto* c : std::initializer_list<juce::Component*> { &mixer, &instruments, &kitView, &patternPanel, &kitTab, &instrumentsTab, &patternTab, &mixerTab, &phraseSource, &hitSourceButton, &repeatButton, &keyboard, &headerBar,
+        for (auto* c : std::initializer_list<juce::Component*> { &mixer, &instruments, &kitView, &patternPanel, &firstRun, &kitTab, &instrumentsTab, &patternTab, &mixerTab, &phraseSource, &hitSourceButton, &repeatButton, &keyboard, &headerBar,
                                                                   &licenseButton, &scrim })
             addChildComponent (c);
         if (license != nullptr)
             addChildComponent (license.get());
         for (auto* c : std::initializer_list<juce::Component*> { &kitTab, &instrumentsTab, &patternTab, &mixerTab, &phraseSource, &hitSourceButton, &repeatButton, &keyboard, &headerBar, &licenseButton })
             c->setVisible (true);
+        firstRun.chooseButton.onClick = [this] { headerBar.chooseLibrary(); };
         showMainTab (MainTab::Kit);
         updateHeader();
 
@@ -143,6 +171,10 @@ namespace samplit
         updateHeader();
         updateModeButtons();
         phraseSource.refreshState();
+        const bool first = ! processor.getLicense().isEnforced() && processor.getLicense().getLibraryRoot() == juce::File()
+                           && processor.getKit() == nullptr;
+        if (first != firstRun.isVisible())
+            firstRun.setVisible (first);
     }
 
     // Подпись кнопки лицензии и ход загрузки
@@ -250,6 +282,7 @@ namespace samplit
         instruments.setBounds (area);
         kitView.setBounds (area);
         patternPanel.setBounds (area);
+        firstRun.setBounds (area);
 
         // Выпадающая панель под шапкой: лицензия у правого края
         scrim.setBounds (getLocalBounds().withTrimmedTop (kHeaderHeight));
