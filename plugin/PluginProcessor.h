@@ -70,6 +70,10 @@ namespace samplit
         void setPlaceLevel (const juce::String& placeId, float levelDb);
         // choiceId "<placeId>:<groupId>" (как Kit::choices[].id): движку сразу, в установку для следующих загрузок
         void setGroupPick (const juce::String& choiceId, Pick);
+        // Файл установки (.json): Setup плюс микшер микрофонов Studio600 (свойство mix по id). Message thread.
+        // Импорт: при ошибке (битый файл) ничего не меняется, error по-русски
+        juce::String exportSetupFile() const;
+        bool importSetupFile (const juce::String& json, juce::String& error);
         // Каталог паков последней применённой установки (для списков в интерфейсе)
         std::vector<CatalogPack> getCatalog() const;
         // Сбросить кэш каталога и применить установку заново

@@ -508,3 +508,33 @@ TEST_CASE ("processor: the pattern plays sound independent of the block size", "
     for (size_t i = 0; i < n; ++i)
         REQUIRE (a[i] == b[i]);
 }
+
+TEST_CASE ("processor: the setup file round trip keeps places and the mic mix, a broken file changes nothing", "[processor][setup]")
+{
+    SamplitProcessor a;
+    auto setup = a.getSetup();
+    setup.places[0].levelDb = -7.5f;
+    setup.places[1].enabled = false;
+    a.setSetup (setup);
+    auto m = a.getMicState (2);
+    m.levelDb = -3.0f;
+    m.pan = 0.25f;
+    m.mute = true;
+    a.setMicState (2, m);
+    const auto file = a.exportSetupFile();
+
+    SamplitProcessor b;
+    juce::String error;
+    REQUIRE (b.importSetupFile (file, error));
+    CHECK (b.getSetup().places[0].levelDb == -7.5f);
+    CHECK (! b.getSetup().places[1].enabled);
+    const auto mb = b.getMicState (2);
+    CHECK (mb.levelDb == -3.0f);
+    CHECK (mb.pan == 0.25f);
+    CHECK (mb.mute);
+
+    const auto before = b.getSetup().toJson();
+    CHECK (! b.importSetupFile ("{ not json", error));
+    CHECK (error.isNotEmpty());
+    CHECK (b.getSetup().toJson() == before);
+}

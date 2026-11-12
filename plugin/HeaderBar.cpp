@@ -71,6 +71,8 @@ namespace samplit
         juce::PopupMenu menu;
         menu.addItem (1, utf8 ("Вернуть заводскую"));
         menu.addItem (2, utf8 ("Обновить список паков"));
+        menu.addItem (5, utf8 ("Сохранить установку в файл…"));
+        menu.addItem (6, utf8 ("Открыть установку из файла…"));
         if (processor.getLicense().isEnforced())
         {
             menu.addSeparator();
@@ -101,6 +103,34 @@ namespace samplit
             {
                 p.rescanCatalog();
                 safe->say (utf8 ("Список паков обновлён"), false);
+            }
+            else if (result == 5 || result == 6)
+            {
+                const bool save = result == 5;
+                safe->chooser = std::make_unique<juce::FileChooser> (
+                    save ? utf8 ("Сохранить установку") : utf8 ("Открыть установку"),
+                    juce::File::getSpecialLocation (juce::File::userDocumentsDirectory).getChildFile ("Samplit-setup.json"), "*.json");
+                safe->chooser->launchAsync (save ? (juce::FileBrowserComponent::saveMode | juce::FileBrowserComponent::warnAboutOverwriting)
+                                                 : juce::FileBrowserComponent::openMode,
+                    [safe, save] (const juce::FileChooser& fc)
+                {
+                    const auto f = fc.getResult();
+                    if (safe == nullptr || f == juce::File())
+                        return;
+                    if (save)
+                    {
+                        const bool ok = f.withFileExtension ("json").replaceWithText (safe->processor.exportSetupFile(), false, false, "\n");
+                        safe->say (ok ? utf8 ("Установка сохранена в файл") : utf8 ("Не удалось записать файл"), ! ok);
+                    }
+                    else
+                    {
+                        juce::String err;
+                        if (safe->processor.importSetupFile (f.loadFileAsString(), err))
+                            safe->say (utf8 ("Установка загружена из файла"), false);
+                        else
+                            safe->say (err.isNotEmpty() ? err : utf8 ("Не удалось прочитать файл установки"), true);
+                    }
+                });
             }
             else if (result == 3)
                 safe->addPack();

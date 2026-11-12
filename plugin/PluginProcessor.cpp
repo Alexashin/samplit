@@ -766,6 +766,58 @@ namespace samplit
         pushParam (mic, fromUi);
     }
 
+    juce::String SamplitProcessor::exportSetupFile() const
+    {
+        juce::var root;
+        juce::String error;
+        juce::JSON::parse (getSetup().toJson(), root);
+        juce::Array<juce::var> mix;
+        for (int i = 0; i < kStudio600MicCount; ++i)
+        {
+            const auto m = getMicState (i);
+            auto* o = new juce::DynamicObject();
+            o->setProperty ("id", juce::String (std::string (kStudio600Mics[i].id)));
+            o->setProperty ("levelDb", (double) m.levelDb);
+            o->setProperty ("pan", (double) m.pan);
+            o->setProperty ("mute", m.mute);
+            o->setProperty ("solo", m.solo);
+            o->setProperty ("out", m.out);
+            mix.add (juce::var (o));
+        }
+        if (auto* obj = root.getDynamicObject())
+            obj->setProperty ("mix", mix);
+        return juce::JSON::toString (root);
+    }
+
+    bool SamplitProcessor::importSetupFile (const juce::String& json, juce::String& error)
+    {
+        Setup s;
+        if (! Setup::fromJson (json, s, error))
+            return false;
+        juce::var v;
+        juce::JSON::parse (json, v);
+        setSetup (s);
+        if (const auto* arr = v.getProperty ("mix", {}).getArray())
+            for (const auto& item : *arr)
+            {
+                if (! item.isObject())
+                    continue;
+                const auto id = item.getProperty ("id", {}).toString();
+                for (int i = 0; i < kStudio600MicCount; ++i)
+                    if (id == juce::String (std::string (kStudio600Mics[i].id)))
+                    {
+                        auto m = getMicState (i);
+                        m.levelDb = (float) (double) item.getProperty ("levelDb", m.levelDb);
+                        m.pan = (float) (double) item.getProperty ("pan", m.pan);
+                        m.mute = (bool) item.getProperty ("mute", m.mute);
+                        m.solo = (bool) item.getProperty ("solo", m.solo);
+                        m.out = (int) item.getProperty ("out", m.out);
+                        setMicState (i, m);
+                    }
+            }
+        return true;
+    }
+
     void SamplitProcessor::beginMicGesture (int mic, bool pan)
     {
         if (! juce::isPositiveAndBelow (mic, kAutomatedMics) || gestureOpen[(size_t) (mic * 2 + (pan ? 1 : 0))])
