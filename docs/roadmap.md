@@ -47,7 +47,7 @@
 - **Готово когда:** тесты и полный `ctest` зелёные, `code-reviewer` без блокеров.
 - **Модель:** Opus на ТЗ-детали, реализация Sonnet; ревью обязательно.
 
-### P2. Партия в процессоре и в состоянии проекта
+### P2. Партия в процессоре и в состоянии проекта — СДЕЛАНО 12.11 (`getPattern/setPattern/playPattern/stopPattern/isPatternPlaying/getPlayPositionSamples`, свойство `pattern` в состоянии; 4 теста, Debug `ctest` 218/218). `setPattern` только из message thread
 - **Зависит от:** P1.
 - **Файлы:** `PluginProcessor.{h,cpp}`, `tests/processor_tests.cpp`.
 - **Инструкция:** в процессоре: `Pattern getPattern() const` (копия под `stateLock`), `void setPattern (const Pattern&)` (хранит копию, зовёт `player.setPattern (p, getSampleRate())`, `sendChangeMessage()`), `play()`, `stop()`, `isPlaying()`, `getPlayPositionSamples()` (атомик, для курсора в UI). Состояние: узел `PATTERN` со свойством `json` = `Pattern::toJson()` в `getStateInformation`; `setStateInformation` читает через `Pattern::fromJson`, при отсутствии или ошибке пустая партия. Версия состояния остаётся 5 (свойства необязательные).

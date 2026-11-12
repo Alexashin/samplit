@@ -923,6 +923,24 @@ namespace samplit
         kitEngine.setRepeatable (on);
     }
 
+    Pattern SamplitProcessor::getPattern() const
+    {
+        const juce::ScopedLock sl (stateLock);
+        return pattern;
+    }
+
+    void SamplitProcessor::setPattern (const Pattern& p)
+    {
+        Pattern copy = p;
+        copy.clampToLimits();
+        {
+            const juce::ScopedLock sl (stateLock);
+            pattern = copy;
+        }
+        patternPlayer.setPattern (copy, getSampleRate() > 0.0 ? getSampleRate() : 44100.0);
+        sendChangeMessage();
+    }
+
     void SamplitProcessor::getStateInformation (juce::MemoryBlock& dest)
     {
         juce::ValueTree state ("SAMPLIT");
@@ -948,6 +966,11 @@ namespace samplit
             }
         }
         state.setProperty ("setup", copy.toJson(), nullptr);
+        {
+            const juce::ScopedLock sl (stateLock);
+            if (! pattern.steps.empty())
+                state.setProperty ("pattern", pattern.toJson(), nullptr);
+        }
 
         if (auto xml = state.createXml())
             copyXmlToBinary (*xml, dest);
@@ -973,6 +996,15 @@ namespace samplit
         multiOut.store (version >= 4 ? (bool) state.getProperty ("multiOut", false) : oldRouted);
         setPartMode ((bool) state.getProperty ("partMode", false));
         setRepeatable ((bool) state.getProperty ("repeatable", true));
+
+        {
+            Pattern restoredPattern;
+            juce::String patternError;
+            const auto json = state.getProperty ("pattern").toString();
+            if (json.isEmpty() || ! Pattern::fromJson (json, restoredPattern, patternError))
+                restoredPattern = Pattern();
+            setPattern (restoredPattern);
+        }
 
         std::map<juce::String, MicState> mix;
         for (const auto& v : state)

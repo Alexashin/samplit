@@ -402,3 +402,109 @@ TEST_CASE ("processor: releaseResources releases the strikes so replaced kits ca
     f.processor.collectGarbage();
     CHECK (f.processor.getRetiredCount() == 0);
 }
+
+// ---- Партия и режимы в состоянии проекта ----
+
+TEST_CASE ("processor: part mode, repeatable and pattern survive a state round trip", "[processor][pattern]")
+{
+    Pattern p;
+    p.bars = 2;
+    p.bpm = 90.0;
+    p.humanTimingMs = 7;
+    p.humanSeed = 42;
+    REQUIRE (p.setStep (3, 0, 36, 90));
+    REQUIRE (p.setStep (20, 1, 38, 55));
+
+    juce::MemoryBlock saved;
+    {
+        SamplitProcessor a;
+        a.setPartMode (true);
+        a.setRepeatable (false);
+        a.setPattern (p);
+        a.getStateInformation (saved);
+    }
+
+    SamplitProcessor b;
+    b.setStateInformation (saved.getData(), (int) saved.getSize());
+    CHECK (b.isPartMode());
+    CHECK_FALSE (b.isRepeatable());
+    const auto q = b.getPattern();
+    CHECK (q.bars == 2);
+    CHECK (q.bpm == 90.0);
+    CHECK (q.humanSeed == 42u);
+    CHECK (q.humanTimingMs == 7);
+    REQUIRE (q.steps.size() == 2);
+    REQUIRE (q.findStep (20, 1) != nullptr);
+    CHECK (q.findStep (20, 1)->velocity == 55);
+}
+
+TEST_CASE ("processor: state without optional properties gives defaults", "[processor][pattern]")
+{
+    juce::MemoryBlock saved;
+    {
+        SamplitProcessor a;
+        a.getStateInformation (saved);
+    }
+    SamplitProcessor b;
+    b.setPartMode (true);
+    b.setRepeatable (false);
+    Pattern p;
+    p.setStep (0, 0, 36, 100);
+    b.setPattern (p);
+    b.setStateInformation (saved.getData(), (int) saved.getSize());
+    CHECK_FALSE (b.isPartMode());
+    CHECK (b.isRepeatable());
+    CHECK (b.getPattern().steps.empty());
+}
+
+TEST_CASE ("processor: a damaged pattern in the state gives an empty pattern", "[processor][pattern]")
+{
+    juce::ValueTree state ("SAMPLIT");
+    state.setProperty ("version", 5, nullptr);
+    state.setProperty ("pattern", "{ not json", nullptr);
+    juce::MemoryBlock saved;
+    if (auto xml = state.createXml())
+        juce::AudioProcessor::copyXmlToBinary (*xml, saved);
+
+    SamplitProcessor b;
+    Pattern p;
+    p.setStep (0, 0, 36, 100);
+    b.setPattern (p);
+    b.setStateInformation (saved.getData(), (int) saved.getSize());
+    CHECK (b.getPattern().steps.empty());
+}
+
+TEST_CASE ("processor: the pattern plays sound independent of the block size", "[processor][pattern]")
+{
+    auto render = [] (int block)
+    {
+        KitFixture f;
+        f.processor.setKit (f.kit);
+        Pattern p;
+        p.bpm = 120.0;
+        p.setStep (0, 0, 36, 100);
+        p.setStep (4, 0, 36, 100);
+        f.processor.setPattern (p);
+        f.processor.playPattern();
+        std::vector<float> sumL;
+        const int total = (int) (kRate * 2.0);
+        for (int done = 0; done < total; done += block)
+        {
+            juce::AudioBuffer<float> buffer (f.processor.getTotalNumOutputChannels(), block);
+            juce::MidiBuffer midi;
+            f.processor.processBlock (buffer, midi);
+            for (int i = 0; i < block; ++i)
+                sumL.push_back (buffer.getSample (0, i));
+        }
+        return sumL;
+    };
+    const auto a = render (kFixtureBlock);
+    const auto b = render (kFixtureBlock / 2);
+    float peakA = 0.0f;
+    for (float v : a)
+        peakA = std::max (peakA, std::abs (v));
+    CHECK (peakA > 0.0f);
+    const size_t n = std::min (a.size(), b.size());
+    for (size_t i = 0; i < n; ++i)
+        REQUIRE (a[i] == b[i]);
+}

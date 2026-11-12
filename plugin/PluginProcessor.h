@@ -5,6 +5,7 @@
 #include "KitLoader.h"
 #include "LicenseManager.h"
 #include "PackCatalog.h"
+#include "Pattern.h"
 #include "PatternPlayer.h"
 #include "Setup.h"
 
@@ -143,6 +144,14 @@ namespace samplit
         void setRepeatable (bool on);
         void setMultiOut (bool multi);
 
+        // ---- Партия (редактор «Партия»). Только message thread (setPattern пересобирает события). Хранится в проекте ----
+        Pattern getPattern() const;                 // копия
+        void setPattern (const Pattern&);           // сохраняет, отдаёт плееру на текущей частоте, шлёт change message
+        void playPattern() { patternPlayer.play(); sendChangeMessage(); }
+        void stopPattern() { patternPlayer.stop(); sendChangeMessage(); }
+        bool isPatternPlaying() const noexcept { return patternPlayer.isPlaying(); }
+        int64_t getPlayPositionSamples() const noexcept { return patternPlayer.getPositionSamples(); }
+
         // ---- Автоматизация в DAW: уровень и панорама 15 слотов Studio600 (параметры "mic_<id>_level", "mic_<id>_pan", например "mic_kick_in_level").
         // Хост двигает параметр, микшер следует за ним, и наоборот. Mute, Solo и выход не автоматизируются ----
         static constexpr int kAutomatedMics = 15;     // = kStudio600MicCount
@@ -239,6 +248,7 @@ namespace samplit
         std::vector<Pick> picks;                            // только message thread, по индексу Kit::choices
         KitLoadResult lastLoad;                             // только message thread
         Setup setup;                                        // под stateLock: пишется в проект
+        Pattern pattern;                                    // под stateLock: пишется в проект
         std::vector<CatalogPack> catalog;                   // только message thread: каталог последней загрузки установки
         juce::File dataDir;
         bool serviceMode = false;
