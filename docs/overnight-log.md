@@ -18,7 +18,14 @@
 | 7 | В2: параметры в audio thread, рампа | готово | см. git log | ctest Debug и Release 180/180; p99 блока 143→150 мкс. Ревью: minor — mute/solo двумя атомиками (упаковать в один uint64), рампа ровно на длину блока (ограничить ~512 отсчётов), pushParam без beginChangeGesture (запись автоматизации мышью в Cubase), нет тестов pushMicTargets/маски/панорамы — идут в шаг 8 |
 | 8 | Мелкие замечания 5-9 + minor ревью В2 | готово | см. git log | Debug ctest 194/194. Ревью code-reviewer идёт после коммита |
 | 9 | Вкладки (фокус), схему не трогать | готово | см. git log | setMouseClickGrabsKeyboardFocus(false)+setWantsKeyboardFocus(false) у трёх вкладок (PluginEditor.cpp). Причина по коду, живьём не воспроизведена, снимок «до» не снят. Debug samplit-snapshot.exe падает 0xC00000FD (stack overflow?), Release работает — проверить |
-| 10 | Финал: ctest Debug+Release, pluginval, graphify, статус | в очереди | | |
+| 10 | Финал: ctest Debug+Release, pluginval, graphify, статус | готово | не закоммичено | Release ctest 196/196; pluginval 5 без GUI SUCCESS; с GUI падает из SSH (pluginval.exe 0xC0000005, так же на Kontakt) — не проверено; reallib-packs и stress без недогрузок; graphify update ок |
+
+## Итог для пользователя
+- Сделано: В1-В3, мелкие замечания ревью 5-9 и minor В2, вкладки, стриминг паков v2 (RAM 9958 МБ, затем 1933 МБ). Release ctest 196/196, pluginval 5 без GUI SUCCESS, reallib-packs без недогрузок.
+- Проверить утром в Cubase: загрузка кита из v2-паков (время, щелчки), игра длинных тарелок и аккордов, мульти-аут (7 моно + Toms/Over/Room), запись автоматизации мышью (`mic_*`), вкладки, пак-названия в «Инструментах».
+- pluginval с GUI запустить вручную на рабочем столе (из SSH падает в самом pluginval).
+- Решать вам: уточнить, что «криво» в схеме; замечания ревью 3, 4, 10, 11 (отложены); коммит и push; нужен ли Fable на финальное ревью.
+- v2-паки: `Z:\repo\samplit\build\packs-v2` (14 шт, 2,8 ГБ, ключи в `keys\`); для установки в Cubase скопировать/установить через `install_packs.ps1` вместо старых паков.
 
 ## Вопросы пользователю (накапливаются)
 - Схема барабанов «криво»: что именно (пропорции, положение мест)? Без этого `KitView.cpp` не трогаю.
