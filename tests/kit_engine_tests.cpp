@@ -251,7 +251,7 @@ TEST_CASE ("kit: the layer follows velocity", "[kit]")
     REQUIRE (r.hitOnce (60, 64).layer == 1);
 }
 
-TEST_CASE ("kit: unassigned velocity between layers is silent", "[kit]")
+TEST_CASE ("kit: velocity between layers plays the nearest layer", "[kit]")
 {
     KitBuilder b;
     b.mic ("m", 1);
@@ -262,8 +262,10 @@ TEST_CASE ("kit: unassigned velocity between layers is silent", "[kit]")
 
     Rig r;
     r.engine.setKit (kit.get());
-    for (int v : { 41, 50, 60, 75, 79 })
-        REQUIRE (r.hitOnce (60, v).voices == 0);
+    for (int v : { 41, 50 })
+        REQUIRE (r.hitOnce (60, v).layer == 0);
+    for (int v : { 60, 75, 79 })               // 60 равноудалено от окон: берётся более сильное
+        REQUIRE (r.hitOnce (60, v).layer == 1);
     REQUIRE (r.hitOnce (60, 1).layer == 0);
     REQUIRE (r.hitOnce (60, 40).layer == 0);
     REQUIRE (r.hitOnce (60, 80).layer == 1);
@@ -290,6 +292,61 @@ TEST_CASE ("kit: Kontakt mode needs the exact velocity", "[kit]")
     }
     REQUIRE (r.hitOnce (60, 119).voices == 0);   // щель между окнами: тишина, как в Kontakt
     REQUIRE (r.level (1) == 0.0f);
+}
+
+TEST_CASE ("kit: Live mode plays the nearest recorded layer when velocity is outside every window", "[kit]")
+{
+    KitBuilder b;
+    b.mic ("m", 1);
+    const int p = b.piece ("p");
+    const int low = b.layer (p, 46, 61);
+    const int high = b.layer (p, 80, 127);
+    b.hit (p, low, 60, { 0.5f });
+    b.hit (p, high, 60, { 1.0f });
+    const auto kit = b.done (HitSelect::Live);
+
+    Rig r;
+    r.engine.setKit (kit.get());
+    REQUIRE (r.hitOnce (60, 70).layer == low);      // щель 62-79: 70 ближе к 61
+    REQUIRE (r.hitOnce (60, 71).layer == high);     // 71 ближе к 80
+    REQUIRE (r.hitOnce (60, 100).layer == high);    // внутри окна ничего не меняется
+}
+
+TEST_CASE ("kit: Live mode plays a one-layer cymbal at any velocity, quieter below the recorded range", "[kit]")
+{
+    KitBuilder b;
+    b.mic ("m", 1);
+    const int p = b.piece ("p");
+    const int l = b.layer (p, 112, 127);
+    b.hit (p, l, 60, { 1.0f }, 112, 119);
+    b.hit (p, l, 60, { 1.0f }, 120, 127);
+    const auto kit = b.done (HitSelect::Live);
+
+    Rig r;
+    r.engine.setKit (kit.get());
+    REQUIRE (r.hitOnce (60, 120).voices == 1);
+    REQUIRE (std::abs (r.level (1) - 1.0f) < 1e-4f);
+    REQUIRE (r.hitOnce (60, 56).voices == 1);       // вдвое ниже окна: вдвое тише по уровню
+    REQUIRE (std::abs (r.level (1) - 0.5f) < 1e-4f);
+    REQUIRE (r.hitOnce (60, 1).voices == 1);        // не тише -18 дБ
+    REQUIRE (std::abs (r.level (1) - 0.125f) < 1e-4f);
+}
+
+TEST_CASE ("kit: Live mode with velocity 100 cycles through the recorded hits", "[kit]")
+{
+    KitBuilder b;
+    b.mic ("m", 1);
+    const int p = b.piece ("p");
+    const int l = b.layer (p, 112, 127);
+    b.hit (p, l, 60, { 1.0f }, 112, 119);
+    b.hit (p, l, 60, { 1.0f }, 120, 127);
+    const auto kit = b.done (HitSelect::Live);
+
+    Rig r;
+    r.engine.setKit (kit.get());
+    int a = r.hitOnce (60, 100).hit;
+    int c = r.hitOnce (60, 100).hit;
+    REQUIRE (a != c);                               // без повтора подряд
 }
 
 TEST_CASE ("kit: Live mode never repeats the previous hit and uses all hits of a layer", "[kit]")
@@ -595,7 +652,7 @@ TEST_CASE ("kit: exact selection plays only its assigned hit", "[kit]")
         REQUIRE (info.hit == 1 + (123 - 120));   // всегда один и тот же, повтор подряд разрешён
     }
 
-    REQUIRE (r.engine.noteOn (60, 112).voices == 0);
+    REQUIRE (r.engine.noteOn (60, 112).layer == soft);   // вне окон «точного» слоя берётся обычный, не чужой удар
     REQUIRE (r.engine.noteOn (60, 50).layer == soft);
 }
 
@@ -618,7 +675,6 @@ TEST_CASE ("kit: a layer with pick cycle plays its hits in velocity order and wr
     std::vector<int> played;
     for (int v : { 120, 127, 124, 122, 127, 120, 122, 124 })
     {
-        REQUIRE (r.engine.noteOn (60, 121).voices == 0); // пустой слот не продвигает круг
         const auto info = r.engine.noteOn (60, v);
         REQUIRE (info.layer == loud);
         played.push_back (info.hit);

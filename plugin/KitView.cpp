@@ -22,19 +22,21 @@ namespace samplit
             const char* label;
         };
 
+        // Координаты в сцене 1,65 x 1,0 (центр и полуоси). Вид сверху: барабанщик снизу, бочка по центру, томы дугой над ней,
+        // тарелки по краям. Ничто не пересекается (проверено по снимку окна), подписи тарелок под ними
         const Place kPlaces[] = {
-            { "kick",      0.84f, 0.30f, 0.27f, 0.23f, false, "Бочка" },
-            { "tom_10",    0.62f, 0.37f, 0.095f, 0.095f, false, "Альт 10" },
-            { "tom_14",    0.83f, 0.41f, 0.11f, 0.11f, false, "Альт 12" },
-            { "tom_16m",   1.08f, 0.50f, 0.12f, 0.12f, false, "Том 14" },
-            { "tom_16l",   1.25f, 0.76f, 0.15f, 0.15f, false, "Флор том 16" },
-            { "snare",     0.61f, 0.76f, 0.14f, 0.14f, false, "Малый" },
-            { "hat",       0.23f, 0.68f, 0.13f, 0.045f, true, "Hi-hat" },
-            { "crash_b",   0.38f, 0.24f, 0.17f, 0.055f, true, "Crash 16\"" },
-            { "crash_a",   1.33f, 0.22f, 0.17f, 0.060f, true, "Crash 18\"" },
-            { "ride",      1.45f, 0.48f, 0.17f, 0.060f, true, "Ride" },
-            { "china",     1.55f, 0.10f, 0.075f, 0.030f, true, "China" },
-            { "splash",    0.62f, 0.10f, 0.070f, 0.026f, true, "Splash" },
+            { "kick",      0.825f, 0.66f, 0.20f, 0.19f, false, "Бочка" },
+            { "tom_10",    0.70f,  0.30f, 0.095f, 0.095f, false, "Альт 10" },
+            { "tom_14",    0.95f,  0.30f, 0.11f, 0.11f, false, "Альт 12" },
+            { "tom_16m",   1.19f,  0.52f, 0.12f, 0.12f, false, "Том 14" },
+            { "tom_16l",   1.42f,  0.80f, 0.14f, 0.14f, false, "Флор том 16" },
+            { "snare",     0.43f,  0.70f, 0.14f, 0.14f, false, "Малый" },
+            { "hat",       0.15f,  0.62f, 0.13f, 0.045f, true, "Hi-hat" },
+            { "crash_b",   0.33f,  0.27f, 0.17f, 0.055f, true, "Crash 16\"" },
+            { "crash_a",   1.27f,  0.20f, 0.17f, 0.060f, true, "Crash 18\"" },
+            { "ride",      1.47f,  0.42f, 0.17f, 0.060f, true, "Ride" },
+            { "china",     1.55f,  0.08f, 0.075f, 0.030f, true, "China" },
+            { "splash",    0.60f,  0.09f, 0.070f, 0.026f, true, "Splash" },
         };
 
         // Подписи режимов выбора удара в меню места
@@ -142,7 +144,7 @@ namespace samplit
         const float scale = juce::jmin ((float) stage.getWidth() / kStageWidth, (float) stage.getHeight() / kStageHeight);
         const auto origin = stage.toFloat().getCentre() - juce::Point<float> (kStageWidth, kStageHeight) * (scale * 0.5f);
         stool = juce::Rectangle<float> (0.17f * scale, 0.13f * scale)
-                    .withCentre (origin + juce::Point<float> (0.88f, 0.91f) * scale);
+                    .withCentre (origin + juce::Point<float> (0.825f, 0.935f) * scale);
 
         const auto setup = processor.getSetup();
         for (const auto& pl : kPlaces)
@@ -459,7 +461,7 @@ namespace samplit
 
         g.setColour (brand::textMuted);
         g.setFont (juce::FontOptions (11.5f));
-        g.drawText (utf8 ("Клик по барабану: включить или выключить, выбрать звук и режим выбора удара."), hintArea.reduced (14, 0),
+        g.drawText (utf8 ("Клик по барабану: включить или выключить, выбрать звук и режим выбора удара. Сила удара выбирает слой, записи внутри слоя чередуются по режиму."), hintArea.reduced (14, 0),
                     juce::Justification::centredLeft, true);
     }
 }

@@ -405,6 +405,52 @@ namespace samplit
         return available;
     }
 
+    int KitEngine::fitVelocity (const Kit& kit, const NoteMap& map, int velocity, float& quietGain) const noexcept
+    {
+        quietGain = 1.0f;
+        if (selectMode.load() == (int) HitSelect::Kontakt)
+            return velocity;
+
+        const auto& piece = kit.pieces[(size_t) map.piece];
+        for (const auto& l : map.layers)
+            for (int h : l.hits)
+                if (velocity >= piece.hits[(size_t) h].velLo && velocity <= piece.hits[(size_t) h].velHi)
+                    return velocity;        // попали в записанное окно: ничего не меняем
+
+        // Два прохода: сначала слои с выбором «по кругу/случайно», «Точно по силе» только если других нет
+        for (int pass = 0; pass < 2; ++pass)
+        {
+            int bestVel = -1, bestDist = 1000, lowest = 1000;
+            for (const auto& l : map.layers)
+            {
+                Pick pick = l.pick;
+                if (l.choice >= 0 && l.choice < Kit::kMaxChoices)
+                    if (const int p = choicePick[(size_t) l.choice].load(); p >= 0)
+                        pick = (Pick) p;
+                if ((pass == 0) == (pick == Pick::Exact))
+                    continue;
+                for (int h : l.hits)
+                {
+                    const auto& hit = piece.hits[(size_t) h];
+                    lowest = std::min (lowest, hit.velLo);
+                    const int edge = velocity < hit.velLo ? hit.velLo : hit.velHi;
+                    const int dist = std::abs (edge - velocity);
+                    if (dist < bestDist || (dist == bestDist && edge > bestVel))
+                    {
+                        bestDist = dist;
+                        bestVel = edge;
+                    }
+                }
+            }
+            if (bestVel < 0)
+                continue;
+            if (velocity < lowest)
+                quietGain = std::max (0.125f, (float) velocity / (float) lowest);   // -18 дБ не больше
+            return bestVel;
+        }
+        return velocity;
+    }
+
     int KitEngine::selectHit (const Kit& kit, const NoteMap& map, int note, int velocity) noexcept
     {
         const auto& piece = kit.pieces[(size_t) map.piece];
@@ -518,6 +564,9 @@ namespace samplit
         if (map.piece < 0)
             return info;
 
+        float quietGain = 1.0f;
+        const int playedVelocity = velocity;     // громкость Linear считается по настоящей силе, не по сдвинутой
+        velocity = fitVelocity (*kit, map, velocity, quietGain);
         const int h = selectHit (*kit, map, note, velocity);
         if (h < 0)
             return info;
@@ -566,9 +615,10 @@ namespace samplit
         }
 
         auto& s = strikes[(size_t) slot];
-        float velGain = kit->velocityGain == VelocityGain::Linear ? (float) velocity / 127.0f : 1.0f;
+        float velGain = kit->velocityGain == VelocityGain::Linear ? (float) playedVelocity / 127.0f : 1.0f;
         if (piece.slot >= 0 && piece.slot < (int) placeGain.size())
             velGain *= placeGain[(size_t) piece.slot].load (std::memory_order_relaxed);
+        velGain *= quietGain;
         int started = 0, missing = 0;
         for (int m = 0; m < (int) hit.files.size(); ++m)
         {

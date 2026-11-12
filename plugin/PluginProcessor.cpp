@@ -963,8 +963,10 @@ namespace samplit
                 }
         }
 
+        bool sameSetup = false;
         {
             const juce::ScopedLock sl (stateLock);
+            sameSetup = setup.toJson() == restored.toJson();
             setup = std::move (restored);
             savedMix = std::move (mix);
         }
@@ -979,7 +981,9 @@ namespace samplit
             else
                 juce::MessageManager::callAsync (apply);
         }
-        applySetupSoon();
+        // Хост (Cubase) часто отдаёт то же состояние: кит уже загружен или грузится, заново читать пакеты не нужно
+        if (! (sameSetup && (getKit() != nullptr || kitLoading.load())))
+            applySetupSoon();
     }
 }
 

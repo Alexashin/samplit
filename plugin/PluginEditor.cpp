@@ -55,8 +55,7 @@ namespace samplit
         mixerTab.setTooltip (utf8 ("Уровень, панорама, выход, Mute и Solo каждого микрофона"));
         for (auto* t : { &kitTab, &instrumentsTab, &mixerTab })
         {
-            t->setClickingTogglesState (true);
-            t->setRadioGroupId (1);
+            // Состояние вкладок задаёт только showMainTab: радио-группа и автопереключение оставляли подсвеченными две
             // Активна только вкладка с toggle-состоянием: клавиатурный фокус не должен рисовать вторую обводку
             t->setMouseClickGrabsKeyboardFocus (false);
             t->setWantsKeyboardFocus (false);
@@ -171,8 +170,9 @@ namespace samplit
 
     void SamplitEditor::showMainTab (MainTab tab)
     {
-        (tab == MainTab::Mixer ? mixerTab : tab == MainTab::Instruments ? instrumentsTab : kitTab)
-            .setToggleState (true, juce::dontSendNotification);
+        kitTab.setToggleState (tab == MainTab::Kit, juce::dontSendNotification);
+        instrumentsTab.setToggleState (tab == MainTab::Instruments, juce::dontSendNotification);
+        mixerTab.setToggleState (tab == MainTab::Mixer, juce::dontSendNotification);
         mixer.setVisible (tab == MainTab::Mixer);
         instruments.setVisible (tab == MainTab::Instruments);
         kitView.setVisible (tab == MainTab::Kit);
