@@ -567,6 +567,7 @@ def main(argv=None):
     ap.add_argument('--library', default=str(DEFAULT_LIBRARY), help='корень библиотеки (пути файлов относительны ему)')
     ap.add_argument('--out', default=str(DEFAULT_OUT), help='куда писать манифесты')
     ap.add_argument('--check', action='store_true', help='проверить и не писать файлы')
+    ap.add_argument('--no-expect', action='store_true', help='не сверять число ударов и зон с docs/library-structure.md (для v2: проникание томов добавляет зоны)')
     args = ap.parse_args(argv)
 
     kit = load_json(args.kit)
@@ -576,7 +577,7 @@ def main(argv=None):
         return 2
 
     if args.check:
-        return 1 if check(kit, mappings, args.library) else 0
+        return 1 if check(kit, mappings, args.library, expected=None if args.no_expect else (EXPECTED_HITS, EXPECTED_ZONES)) else 0
 
     library = args.library if Path(args.library).is_dir() else None
     manifests, report = build_packs(kit, mappings, library)

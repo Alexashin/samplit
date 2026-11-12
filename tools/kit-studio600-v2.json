@@ -1,0 +1,2156 @@
+{
+  "comment": "Ручная разметка Studio600 Drum LIB поверх выгрузки из .nki (tools/nki_extract.py). Читает tools/mark_kit.py. Названия по руководству пользователя; всё, что в руководстве не описано или не совпадает с .nki, помечено verified:false и попадает в пакет studio600-unverified v2 (12.11.2026): новые малые, проникание томов, без excludeFiles; создано tools/library_v2.py.",
+  "sources": {
+    "base": "ED-Ahead-LIVE",
+    "snare_live": "ED-Ahead-LIVE",
+    "snare_low": "ED-Ahead-LOW",
+    "snare_hi": "ED-Ambasador-NEW",
+    "snare_amb_mid": "ED-Ahead-AMB-MID",
+    "snare_tone": "ED-Ahead-TONE",
+    "snare_fat_mid": "ED-FAT-MID",
+    "snare_ludwig_hi": "ED-LUDWIG-HI",
+    "snare_ludwig_mid": "ED-LUDWIG-MID"
+  },
+  "unverifiedPack": "studio600-unverified",
+  "excludeFiles": [],
+  "excludeFilesNote": "Файлы A2 0-397, 0-398 исправлены в обновлении 12.11.2026, исключений нет.",
+  "mics": [
+    {
+      "id": "kick_in",
+      "source": "KICK-IN",
+      "name": "Kick In",
+      "role": "close",
+      "out": 1
+    },
+    {
+      "id": "kick_out",
+      "source": "KICK-OUT",
+      "name": "Kick Out",
+      "role": "close",
+      "out": 2
+    },
+    {
+      "id": "sn_top",
+      "source": "SN-top",
+      "name": "Snare Top",
+      "role": "close",
+      "out": 3
+    },
+    {
+      "id": "sn_bot",
+      "source": "SN-bot",
+      "name": "Snare Bottom",
+      "role": "close",
+      "out": 4
+    },
+    {
+      "id": "oh_1",
+      "source": "OVER-1-Hat",
+      "name": "Over Hat",
+      "role": "overhead",
+      "out": 9
+    },
+    {
+      "id": "oh_2",
+      "source": "OVER-2-Ride",
+      "name": "Over Ride",
+      "role": "overhead",
+      "out": 9
+    },
+    {
+      "id": "room_1",
+      "source": "Room-1-Hat",
+      "name": "Room Hat",
+      "role": "room",
+      "out": 10
+    },
+    {
+      "id": "room_2",
+      "source": "Room-2-Ride",
+      "name": "Room Ride",
+      "role": "room",
+      "out": 10
+    },
+    {
+      "id": "room_mid",
+      "source": "ROOM-MID-Center",
+      "name": "Room Mid",
+      "role": "room",
+      "out": 7
+    },
+    {
+      "id": "hat",
+      "source": "HAT",
+      "name": "Hi-Hat",
+      "role": "close",
+      "out": 5
+    },
+    {
+      "id": "ride",
+      "source": "RIDE",
+      "name": "Ride",
+      "role": "close",
+      "out": 6
+    },
+    {
+      "id": "tom_a1",
+      "source": "A1",
+      "name": "Альт 10",
+      "role": "tom",
+      "out": 8
+    },
+    {
+      "id": "tom_a2",
+      "source": "A2",
+      "name": "Альт 12",
+      "role": "tom",
+      "out": 8
+    },
+    {
+      "id": "tom_a3",
+      "source": "A3",
+      "name": "Том 14",
+      "role": "tom",
+      "out": 8
+    },
+    {
+      "id": "tom_a4",
+      "source": "A4",
+      "name": "Флор том 16",
+      "role": "tom",
+      "out": 8
+    }
+  ],
+  "packs": [
+    {
+      "id": "studio600-kick-d12",
+      "title": "Studio600 Drum LIB: бочка, микрофон D12",
+      "tier": "base",
+      "requires": []
+    },
+    {
+      "id": "studio600-kick-d6",
+      "title": "Studio600 Drum LIB: бочка, микрофон D6 (old)",
+      "tier": "base",
+      "requires": []
+    },
+    {
+      "id": "studio600-kick-rode",
+      "title": "Studio600 Drum LIB: бочка, микрофон Rode",
+      "tier": "base",
+      "requires": []
+    },
+    {
+      "id": "studio600-kick-u87",
+      "title": "Studio600 Drum LIB: бочка, микрофон U87",
+      "tier": "base",
+      "requires": []
+    },
+    {
+      "id": "studio600-toms",
+      "title": "Studio600 Drum LIB: томы и альты",
+      "tier": "base",
+      "requires": []
+    },
+    {
+      "id": "studio600-snare-live",
+      "title": "Studio600 Drum LIB: малый Ahead Live",
+      "tier": "base",
+      "requires": []
+    },
+    {
+      "id": "studio600-snare-low",
+      "title": "Studio600 Drum LIB: малый Ahead Low",
+      "tier": "base",
+      "requires": []
+    },
+    {
+      "id": "studio600-snare-hi",
+      "title": "Studio600 Drum LIB: малый Ambasador Hi",
+      "tier": "base",
+      "requires": []
+    },
+    {
+      "id": "studio600-snare-amb-mid",
+      "title": "Studio600 Drum LIB: малый Ahead AMB Mid",
+      "tier": "addon",
+      "requires": []
+    },
+    {
+      "id": "studio600-snare-tone",
+      "title": "Studio600 Drum LIB: малый Ahead Tone",
+      "tier": "addon",
+      "requires": []
+    },
+    {
+      "id": "studio600-snare-fat-mid",
+      "title": "Studio600 Drum LIB: малый FAT Mid",
+      "tier": "addon",
+      "requires": []
+    },
+    {
+      "id": "studio600-snare-ludwig-hi",
+      "title": "Studio600 Drum LIB: малый Ludwig Hi",
+      "tier": "addon",
+      "requires": []
+    },
+    {
+      "id": "studio600-snare-ludwig-mid",
+      "title": "Studio600 Drum LIB: малый Ludwig Mid",
+      "tier": "addon",
+      "requires": []
+    },
+    {
+      "id": "studio600-hat",
+      "title": "Studio600 Drum LIB: хэт",
+      "tier": "base",
+      "requires": []
+    },
+    {
+      "id": "studio600-ride",
+      "title": "Studio600 Drum LIB: райд",
+      "tier": "addon",
+      "requires": []
+    },
+    {
+      "id": "studio600-crash18",
+      "title": "Studio600 Drum LIB: Crash 18\"",
+      "tier": "addon",
+      "requires": []
+    },
+    {
+      "id": "studio600-crash16",
+      "title": "Studio600 Drum LIB: Crash 16\"",
+      "tier": "addon",
+      "requires": []
+    },
+    {
+      "id": "studio600-china",
+      "title": "Studio600 Drum LIB: China",
+      "tier": "addon",
+      "requires": []
+    },
+    {
+      "id": "studio600-splash",
+      "title": "Studio600 Drum LIB: Splash",
+      "tier": "addon",
+      "requires": []
+    },
+    {
+      "id": "studio600-unverified",
+      "title": "Studio600 Drum LIB: непроверенное (группы -D, клавиши без описания)",
+      "tier": "unverified",
+      "requires": []
+    }
+  ],
+  "pieces": [
+    {
+      "id": "kick_u87",
+      "outId": "kick",
+      "type": "kick",
+      "name": "Бас-барабан, U87",
+      "pack": "studio600-kick-u87",
+      "source": "base",
+      "choke": null,
+      "note": "папка-источник KICK-PM-U87-OUT; на клавише 21 в .nki, в пакете на C0 (24). Соответствие клавиши и папки не подтверждено",
+      "groups": {
+        "main": {
+          "name": "Удары бочки",
+          "hint": "Сильные, средние и тихие удары; сила выбирает слой",
+          "role": "main",
+          "pick": "cycle"
+        }
+      },
+      "keys": [
+        {
+          "key": 21,
+          "outKey": 24,
+          "artic": "kick",
+          "name": "Бочка, микрофон U87",
+          "windows": [
+            {
+              "lo": 80,
+              "hi": 127,
+              "group": "main",
+              "label": "strong"
+            },
+            {
+              "lo": 63,
+              "hi": 78,
+              "group": "main",
+              "label": "medium"
+            },
+            {
+              "lo": 46,
+              "hi": 61,
+              "group": "main",
+              "label": "soft"
+            },
+            {
+              "lo": 29,
+              "hi": 44,
+              "label": "softest",
+              "verified": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "kick_d6",
+      "outId": "kick",
+      "type": "kick",
+      "name": "Бас-барабан, D6 (old)",
+      "pack": "studio600-kick-d6",
+      "source": "base",
+      "choke": null,
+      "note": "папка-источник KICK-PM-D6-OLD; на клавише 22 в .nki, в пакете на C0 (24). Соответствие клавиши и папки не подтверждено",
+      "groups": {
+        "main": {
+          "name": "Удары бочки",
+          "hint": "Сильные, средние и тихие удары; сила выбирает слой",
+          "role": "main",
+          "pick": "cycle"
+        }
+      },
+      "keys": [
+        {
+          "key": 22,
+          "outKey": 24,
+          "artic": "kick",
+          "name": "Бочка, микрофон D6 (old)",
+          "windows": [
+            {
+              "lo": 80,
+              "hi": 127,
+              "group": "main",
+              "label": "strong"
+            },
+            {
+              "lo": 63,
+              "hi": 78,
+              "group": "main",
+              "label": "medium"
+            },
+            {
+              "lo": 46,
+              "hi": 61,
+              "group": "main",
+              "label": "soft"
+            },
+            {
+              "lo": 29,
+              "hi": 44,
+              "label": "softest",
+              "verified": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "kick_d12",
+      "outId": "kick",
+      "type": "kick",
+      "name": "Бас-барабан, D12",
+      "pack": "studio600-kick-d12",
+      "source": "base",
+      "choke": null,
+      "note": "папка-источник KICK-PM-D12; на клавише 23 в .nki, в пакете на C0 (24). Соответствие клавиши и папки не подтверждено",
+      "groups": {
+        "main": {
+          "name": "Удары бочки",
+          "hint": "Сильные, средние и тихие удары; сила выбирает слой",
+          "role": "main",
+          "pick": "cycle"
+        }
+      },
+      "keys": [
+        {
+          "key": 23,
+          "outKey": 24,
+          "artic": "kick",
+          "name": "Бочка, микрофон D12",
+          "windows": [
+            {
+              "lo": 80,
+              "hi": 127,
+              "group": "main",
+              "label": "strong"
+            },
+            {
+              "lo": 63,
+              "hi": 78,
+              "group": "main",
+              "label": "medium"
+            },
+            {
+              "lo": 46,
+              "hi": 61,
+              "group": "main",
+              "label": "soft"
+            },
+            {
+              "lo": 29,
+              "hi": 44,
+              "label": "softest",
+              "verified": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "kick_rode",
+      "outId": "kick",
+      "type": "kick",
+      "name": "Бас-барабан, Rode",
+      "pack": "studio600-kick-rode",
+      "source": "base",
+      "choke": null,
+      "note": "папка-источник KICK-PM-RODE-OUT; на клавише 24 в .nki, в пакете на C0 (24). Соответствие клавиши и папки не подтверждено",
+      "groups": {
+        "main": {
+          "name": "Удары бочки",
+          "hint": "Сильные, средние и тихие удары; сила выбирает слой",
+          "role": "main",
+          "pick": "cycle"
+        }
+      },
+      "keys": [
+        {
+          "key": 24,
+          "outKey": 24,
+          "artic": "kick",
+          "name": "Бочка, микрофон Rode",
+          "windows": [
+            {
+              "lo": 80,
+              "hi": 127,
+              "group": "main",
+              "label": "strong"
+            },
+            {
+              "lo": 63,
+              "hi": 78,
+              "group": "main",
+              "label": "medium"
+            },
+            {
+              "lo": 46,
+              "hi": 61,
+              "group": "main",
+              "label": "soft"
+            },
+            {
+              "lo": 29,
+              "hi": 44,
+              "label": "softest",
+              "verified": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "snare_live",
+      "type": "snare",
+      "name": "Малый барабан, Ahead Live",
+      "pack": "studio600-snare-live",
+      "source": "snare_live",
+      "choke": null,
+      "template": "snare"
+    },
+    {
+      "id": "snare_low",
+      "type": "snare",
+      "name": "Малый барабан, Ahead Low",
+      "pack": "studio600-snare-low",
+      "source": "snare_low",
+      "choke": null,
+      "template": "snare"
+    },
+    {
+      "id": "snare_hi",
+      "type": "snare",
+      "name": "Малый барабан, Ambasador Hi",
+      "pack": "studio600-snare-hi",
+      "source": "snare_hi",
+      "choke": null,
+      "template": "snare"
+    },
+    {
+      "id": "snare_amb_mid",
+      "type": "snare",
+      "name": "Малый барабан, Ahead AMB Mid",
+      "pack": "studio600-snare-amb-mid",
+      "source": "snare_amb_mid",
+      "choke": null,
+      "template": "snare"
+    },
+    {
+      "id": "snare_tone",
+      "type": "snare",
+      "name": "Малый барабан, Ahead Tone",
+      "pack": "studio600-snare-tone",
+      "source": "snare_tone",
+      "choke": null,
+      "template": "snare"
+    },
+    {
+      "id": "snare_fat_mid",
+      "type": "snare",
+      "name": "Малый барабан, FAT Mid",
+      "pack": "studio600-snare-fat-mid",
+      "source": "snare_fat_mid",
+      "choke": null,
+      "template": "snare"
+    },
+    {
+      "id": "snare_ludwig_hi",
+      "type": "snare",
+      "name": "Малый барабан, Ludwig Hi",
+      "pack": "studio600-snare-ludwig-hi",
+      "source": "snare_ludwig_hi",
+      "choke": null,
+      "template": "snare"
+    },
+    {
+      "id": "snare_ludwig_mid",
+      "type": "snare",
+      "name": "Малый барабан, Ludwig Mid",
+      "pack": "studio600-snare-ludwig-mid",
+      "source": "snare_ludwig_mid",
+      "choke": null,
+      "template": "snare"
+    },
+    {
+      "id": "tom_16l",
+      "type": "tom",
+      "name": "Флор том 16",
+      "pack": "studio600-toms",
+      "source": "base",
+      "choke": null,
+      "template": "tom",
+      "keyOffset": 96
+    },
+    {
+      "id": "tom_16m",
+      "type": "tom",
+      "name": "Том 14",
+      "pack": "studio600-toms",
+      "source": "base",
+      "choke": null,
+      "template": "tom",
+      "keyOffset": 98
+    },
+    {
+      "id": "tom_14",
+      "type": "tom",
+      "name": "Альт 12",
+      "pack": "studio600-toms",
+      "source": "base",
+      "choke": null,
+      "template": "tom",
+      "keyOffset": 100
+    },
+    {
+      "id": "tom_10",
+      "type": "tom",
+      "name": "Альт 10",
+      "pack": "studio600-toms",
+      "source": "base",
+      "choke": null,
+      "template": "tom",
+      "keyOffset": 102
+    },
+    {
+      "id": "hat",
+      "type": "hat",
+      "name": "Хэт (HHX Evolution 14\")",
+      "pack": "studio600-hat",
+      "source": "base",
+      "choke": "hat",
+      "groups": {
+        "closed_top": {
+          "name": "Закрытый, верх",
+          "hint": "Закрытый хэт, удар по верху",
+          "role": "closed",
+          "pick": "cycle"
+        },
+        "closed_edge": {
+          "name": "Закрытый, ребро",
+          "hint": "Закрытый хэт, удар по ребру",
+          "role": "closed",
+          "pick": "cycle"
+        },
+        "ajar1": {
+          "name": "Чуть приоткрытый 1",
+          "role": "half",
+          "pick": "cycle"
+        },
+        "ajar2": {
+          "name": "Чуть приоткрытый 2",
+          "role": "half",
+          "pick": "cycle"
+        },
+        "open1": {
+          "name": "Открытый 1",
+          "role": "open",
+          "pick": "cycle"
+        },
+        "open2": {
+          "name": "Открытый 2",
+          "role": "open",
+          "pick": "cycle"
+        },
+        "wide": {
+          "name": "Широко открытый",
+          "role": "open",
+          "pick": "cycle"
+        },
+        "closing": {
+          "name": "Закрывание хэта",
+          "hint": "Каждое значение силы — своё закрывание, сила равна темпу трека",
+          "role": "closing",
+          "pick": "exact",
+          "picks": [
+            "exact"
+          ]
+        },
+        "crescendo": {
+          "name": "Крещендо хэта",
+          "hint": "Каждое значение силы — своя запись крещендо",
+          "role": "crescendo",
+          "pick": "exact",
+          "picks": [
+            "exact"
+          ]
+        },
+        "extra": {
+          "name": "Дополнительные удары",
+          "hint": "Каждое значение силы — свой удар, ставить вручную",
+          "role": "other",
+          "pick": "exact",
+          "picks": [
+            "exact"
+          ]
+        }
+      },
+      "note": "в руководстве хэт Paiste HHX Evolution, в .nki папка Hat-Sabian HHX-new; наборы по 4 клавиши: основной сильный, тихий, средний 1, средний 2",
+      "keys": [
+        {
+          "key": 48,
+          "artic": "closed-top-main",
+          "name": "Закрытый, верх: основной сильный",
+          "windows": [
+            {
+              "lo": 112,
+              "hi": 127,
+              "group": "closed_top",
+              "label": "main"
+            }
+          ]
+        },
+        {
+          "key": 49,
+          "artic": "closed-top-soft",
+          "name": "Закрытый, верх: тихий",
+          "windows": [
+            {
+              "lo": 112,
+              "hi": 127,
+              "group": "closed_top",
+              "label": "soft"
+            }
+          ]
+        },
+        {
+          "key": 50,
+          "artic": "closed-top-mid1",
+          "name": "Закрытый, верх: средний 1",
+          "windows": [
+            {
+              "lo": 112,
+              "hi": 127,
+              "group": "closed_top",
+              "label": "mid1"
+            }
+          ]
+        },
+        {
+          "key": 51,
+          "artic": "closed-top-mid2",
+          "name": "Закрытый, верх: средний 2",
+          "windows": [
+            {
+              "lo": 112,
+              "hi": 127,
+              "group": "closed_top",
+              "label": "mid2"
+            }
+          ]
+        },
+        {
+          "key": 52,
+          "artic": "closed-edge-main",
+          "name": "Закрытый, ребро: основной сильный",
+          "windows": [
+            {
+              "lo": 112,
+              "hi": 127,
+              "group": "closed_edge",
+              "label": "main"
+            }
+          ]
+        },
+        {
+          "key": 53,
+          "artic": "closed-edge-soft",
+          "name": "Закрытый, ребро: тихий",
+          "windows": [
+            {
+              "lo": 112,
+              "hi": 127,
+              "group": "closed_edge",
+              "label": "soft"
+            }
+          ]
+        },
+        {
+          "key": 54,
+          "artic": "closed-edge-mid1",
+          "name": "Закрытый, ребро: средний 1",
+          "windows": [
+            {
+              "lo": 112,
+              "hi": 127,
+              "group": "closed_edge",
+              "label": "mid1"
+            }
+          ]
+        },
+        {
+          "key": 55,
+          "artic": "closed-edge-mid2",
+          "name": "Закрытый, ребро: средний 2",
+          "windows": [
+            {
+              "lo": 112,
+              "hi": 127,
+              "group": "closed_edge",
+              "label": "mid2"
+            }
+          ]
+        },
+        {
+          "key": 56,
+          "artic": "ajar1-main",
+          "name": "Чуть приоткрытый 1: основной сильный",
+          "windows": [
+            {
+              "lo": 112,
+              "hi": 127,
+              "group": "ajar1",
+              "label": "main"
+            }
+          ]
+        },
+        {
+          "key": 57,
+          "artic": "ajar1-soft",
+          "name": "Чуть приоткрытый 1: тихий",
+          "windows": [
+            {
+              "lo": 112,
+              "hi": 127,
+              "group": "ajar1",
+              "label": "soft"
+            }
+          ]
+        },
+        {
+          "key": 58,
+          "artic": "ajar1-mid1",
+          "name": "Чуть приоткрытый 1: средний 1",
+          "windows": [
+            {
+              "lo": 112,
+              "hi": 127,
+              "group": "ajar1",
+              "label": "mid1"
+            }
+          ]
+        },
+        {
+          "key": 59,
+          "artic": "ajar1-mid2",
+          "name": "Чуть приоткрытый 1: средний 2",
+          "windows": [
+            {
+              "lo": 112,
+              "hi": 127,
+              "group": "ajar1",
+              "label": "mid2"
+            }
+          ]
+        },
+        {
+          "key": 60,
+          "artic": "ajar2-main",
+          "name": "Чуть приоткрытый 2: основной сильный",
+          "note": "в руководстве наборы 2 и 3 перепутаны (две клавиши G#2), в .nki здесь один набор из четырёх клавиш",
+          "windows": [
+            {
+              "lo": 112,
+              "hi": 127,
+              "group": "ajar2",
+              "label": "main"
+            }
+          ]
+        },
+        {
+          "key": 61,
+          "artic": "ajar2-soft",
+          "name": "Чуть приоткрытый 2: тихий",
+          "windows": [
+            {
+              "lo": 112,
+              "hi": 127,
+              "group": "ajar2",
+              "label": "soft"
+            }
+          ]
+        },
+        {
+          "key": 62,
+          "artic": "ajar2-mid1",
+          "name": "Чуть приоткрытый 2: средний 1",
+          "windows": [
+            {
+              "lo": 112,
+              "hi": 127,
+              "group": "ajar2",
+              "label": "mid1"
+            }
+          ]
+        },
+        {
+          "key": 63,
+          "artic": "ajar2-mid2",
+          "name": "Чуть приоткрытый 2: средний 2",
+          "windows": [
+            {
+              "lo": 112,
+              "hi": 127,
+              "group": "ajar2",
+              "label": "mid2"
+            }
+          ]
+        },
+        {
+          "key": 64,
+          "artic": "open1-main",
+          "name": "Открытый 1: основной сильный",
+          "windows": [
+            {
+              "lo": 112,
+              "hi": 127,
+              "group": "open1",
+              "label": "main"
+            }
+          ]
+        },
+        {
+          "key": 65,
+          "artic": "open1-soft",
+          "name": "Открытый 1: тихий",
+          "windows": [
+            {
+              "lo": 112,
+              "hi": 127,
+              "group": "open1",
+              "label": "soft"
+            }
+          ]
+        },
+        {
+          "key": 66,
+          "artic": "open1-mid1",
+          "name": "Открытый 1: средний 1",
+          "windows": [
+            {
+              "lo": 112,
+              "hi": 127,
+              "group": "open1",
+              "label": "mid1"
+            }
+          ]
+        },
+        {
+          "key": 67,
+          "artic": "open1-mid2",
+          "name": "Открытый 1: средний 2",
+          "windows": [
+            {
+              "lo": 112,
+              "hi": 127,
+              "group": "open1",
+              "label": "mid2"
+            }
+          ]
+        },
+        {
+          "key": 68,
+          "artic": "open2-main",
+          "name": "Открытый 2: основной сильный",
+          "windows": [
+            {
+              "lo": 112,
+              "hi": 127,
+              "group": "open2",
+              "label": "main"
+            }
+          ]
+        },
+        {
+          "key": 69,
+          "artic": "open2-soft",
+          "name": "Открытый 2: тихий",
+          "windows": [
+            {
+              "lo": 112,
+              "hi": 127,
+              "group": "open2",
+              "label": "soft"
+            }
+          ]
+        },
+        {
+          "key": 70,
+          "artic": "open2-mid1",
+          "name": "Открытый 2: средний 1",
+          "windows": [
+            {
+              "lo": 112,
+              "hi": 127,
+              "group": "open2",
+              "label": "mid1"
+            }
+          ]
+        },
+        {
+          "key": 71,
+          "artic": "open2-mid2",
+          "name": "Открытый 2: средний 2",
+          "windows": [
+            {
+              "lo": 112,
+              "hi": 127,
+              "group": "open2",
+              "label": "mid2"
+            }
+          ]
+        },
+        {
+          "key": 72,
+          "artic": "wide-main",
+          "name": "Широко открытый: основной сильный",
+          "windows": [
+            {
+              "lo": 112,
+              "hi": 127,
+              "group": "wide",
+              "label": "main"
+            }
+          ]
+        },
+        {
+          "key": 73,
+          "artic": "wide-soft",
+          "name": "Широко открытый: тихий",
+          "windows": [
+            {
+              "lo": 112,
+              "hi": 127,
+              "group": "wide",
+              "label": "soft"
+            }
+          ]
+        },
+        {
+          "key": 74,
+          "artic": "wide-mid1",
+          "name": "Широко открытый: средний 1",
+          "windows": [
+            {
+              "lo": 112,
+              "hi": 127,
+              "group": "wide",
+              "label": "mid1"
+            }
+          ]
+        },
+        {
+          "key": 75,
+          "artic": "wide-mid2",
+          "name": "Широко открытый: средний 2",
+          "windows": [
+            {
+              "lo": 112,
+              "hi": 127,
+              "group": "wide",
+              "label": "mid2"
+            }
+          ]
+        },
+        {
+          "key": 77,
+          "artic": "closing-a",
+          "name": "Закрывание хэта (F4)",
+          "note": "по руководству velocity равна темпу трека; в .nki все удары на этой клавише в группе -D",
+          "windows": [
+            {
+              "lo": 112,
+              "hi": 127,
+              "group": "closing",
+              "label": "closing",
+              "peerOk": true
+            }
+          ]
+        },
+        {
+          "key": 78,
+          "artic": "closing-b",
+          "name": "Закрывание хэта (F#4)",
+          "note": "velocity равна темпу трека",
+          "windows": [
+            {
+              "lo": 112,
+              "hi": 127,
+              "group": "closing",
+              "label": "closing"
+            }
+          ]
+        },
+        {
+          "key": 79,
+          "artic": "crescendo",
+          "name": "Крещендо хэта (G4)",
+          "windows": [
+            {
+              "lo": 112,
+              "hi": 127,
+              "group": "crescendo",
+              "label": "crescendo"
+            }
+          ]
+        },
+        {
+          "key": 81,
+          "artic": "extra",
+          "name": "Дополнительные удары (A4)",
+          "windows": [
+            {
+              "lo": 121,
+              "hi": 127,
+              "group": "extra",
+              "label": "extra",
+              "peerOk": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "ride",
+      "type": "ride",
+      "name": "Райд (Amedia 22\")",
+      "pack": "studio600-ride",
+      "source": "base",
+      "choke": null,
+      "groups": {
+        "center": {
+          "name": "Центр",
+          "hint": "Удары в центр тарелки",
+          "role": "main",
+          "pick": "cycle"
+        },
+        "edge": {
+          "name": "Край",
+          "hint": "Удары по краю тарелки",
+          "role": "edge",
+          "pick": "cycle"
+        },
+        "spots": {
+          "name": "Разные места тарелки",
+          "hint": "Каждое значение силы — своё место удара",
+          "role": "other",
+          "pick": "exact"
+        },
+        "dome_tip": {
+          "name": "Купол, концом палочки",
+          "role": "bell",
+          "pick": "cycle"
+        },
+        "dome_shank": {
+          "name": "Купол, ребром палочки",
+          "hint": "Каждое значение силы — свой удар",
+          "role": "bell",
+          "pick": "exact"
+        },
+        "singles": {
+          "name": "Одиночные удары",
+          "hint": "Одиночные удары в спокойном состоянии",
+          "role": "main",
+          "pick": "cycle"
+        },
+        "extra": {
+          "name": "Дополнительные удары",
+          "role": "other",
+          "pick": "cycle"
+        }
+      },
+      "keys": [
+        {
+          "key": 84,
+          "artic": "center-strong",
+          "name": "Центр, сильные",
+          "windows": [
+            {
+              "lo": 112,
+              "hi": 127,
+              "group": "center",
+              "label": "strong"
+            }
+          ]
+        },
+        {
+          "key": 85,
+          "artic": "center-weak",
+          "name": "Центр, слабые",
+          "windows": [
+            {
+              "lo": 112,
+              "hi": 127,
+              "group": "center",
+              "label": "weak"
+            }
+          ]
+        },
+        {
+          "key": 86,
+          "artic": "edge-strong",
+          "name": "Край, сильные",
+          "windows": [
+            {
+              "lo": 112,
+              "hi": 127,
+              "group": "edge",
+              "label": "strong"
+            }
+          ]
+        },
+        {
+          "key": 87,
+          "artic": "edge-weak",
+          "name": "Край, слабые",
+          "windows": [
+            {
+              "lo": 112,
+              "hi": 127,
+              "group": "edge",
+              "label": "weak"
+            }
+          ]
+        },
+        {
+          "key": 88,
+          "artic": "spots-a",
+          "name": "Разные места тарелки (E5)",
+          "windows": [
+            {
+              "lo": 112,
+              "hi": 127,
+              "group": "spots",
+              "label": "spots"
+            }
+          ]
+        },
+        {
+          "key": 89,
+          "artic": "spots-b",
+          "name": "Разные места тарелки (F5)",
+          "windows": [
+            {
+              "lo": 112,
+              "hi": 127,
+              "group": "spots",
+              "label": "spots"
+            }
+          ]
+        },
+        {
+          "key": 90,
+          "artic": "extra",
+          "name": "Дополнительные удары (F#5)",
+          "windows": [
+            {
+              "lo": 112,
+              "hi": 127,
+              "group": "extra",
+              "label": "extra"
+            }
+          ]
+        },
+        {
+          "key": 91,
+          "artic": "dome-tip-strong",
+          "name": "Купол, концом палочки, сильные",
+          "windows": [
+            {
+              "lo": 112,
+              "hi": 127,
+              "group": "dome_tip",
+              "label": "strong"
+            }
+          ]
+        },
+        {
+          "key": 92,
+          "artic": "dome-tip-weak",
+          "name": "Купол, концом палочки, слабые",
+          "windows": [
+            {
+              "lo": 112,
+              "hi": 127,
+              "group": "dome_tip",
+              "label": "weak"
+            }
+          ]
+        },
+        {
+          "key": 93,
+          "artic": "dome-shank",
+          "name": "Купол, ребром палочки",
+          "note": "окна 108-114 в .nki разнесены по группе RIDE и группе -D, слиты в один удар",
+          "windows": [
+            {
+              "lo": 115,
+              "hi": 127,
+              "group": "dome_shank",
+              "label": "dome-shank"
+            },
+            {
+              "lo": 108,
+              "hi": 114,
+              "label": "dome-shank-low",
+              "verified": false
+            }
+          ]
+        },
+        {
+          "key": 94,
+          "artic": "singles",
+          "name": "Одиночные удары в спокойном состоянии",
+          "windows": [
+            {
+              "lo": 112,
+              "hi": 127,
+              "group": "singles",
+              "label": "singles"
+            }
+          ]
+        },
+        {
+          "key": 95,
+          "artic": "extra",
+          "name": "Дополнительные удары (B5)",
+          "windows": [
+            {
+              "lo": 112,
+              "hi": 127,
+              "group": "extra",
+              "label": "extra"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "crash_a",
+      "type": "crash",
+      "name": "Crash 18\" (папка ED-18)",
+      "pack": "studio600-crash18",
+      "source": "base",
+      "choke": null,
+      "groups": {
+        "calm": {
+          "name": "Спокойное состояние",
+          "hint": "Одиночные удары по неразбуженной тарелке",
+          "role": "main",
+          "pick": "exact"
+        },
+        "swing": {
+          "name": "Раскачанная тарелка",
+          "hint": "Три слоя раскачанной тарелки",
+          "role": "main",
+          "pick": "cycle"
+        }
+      },
+      "note": "в руководстве Crash 18\" на C1-D#1; первая клавиша набора это спокойное состояние, три следующие это три слоя раскачанной тарелки",
+      "keys": [
+        {
+          "key": 36,
+          "artic": "calm",
+          "name": "Спокойное состояние, одиночные",
+          "windows": [
+            {
+              "lo": 120,
+              "hi": 127,
+              "group": "calm",
+              "label": "calm",
+              "note": "по руководству 118-127, в .nki 120-127"
+            }
+          ]
+        },
+        {
+          "key": 37,
+          "artic": "layer1",
+          "name": "Раскачанная, слой 1 (сильные)",
+          "windows": [
+            {
+              "lo": 112,
+              "hi": 127,
+              "group": "swing",
+              "label": "strong"
+            }
+          ]
+        },
+        {
+          "key": 38,
+          "artic": "layer2",
+          "name": "Раскачанная, слой 2 (средние)",
+          "windows": [
+            {
+              "lo": 112,
+              "hi": 127,
+              "group": "swing",
+              "label": "medium"
+            }
+          ]
+        },
+        {
+          "key": 39,
+          "artic": "layer3",
+          "name": "Раскачанная, слой 3 (тихие)",
+          "windows": [
+            {
+              "lo": 112,
+              "hi": 127,
+              "group": "swing",
+              "label": "soft"
+            },
+            {
+              "lo": 95,
+              "hi": 110,
+              "label": "unknown",
+              "verified": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "crash_b",
+      "type": "crash",
+      "name": "Crash 16\" (папка ED-17)",
+      "pack": "studio600-crash16",
+      "source": "base",
+      "choke": null,
+      "groups": {
+        "calm": {
+          "name": "Спокойное состояние",
+          "hint": "Одиночные удары по неразбуженной тарелке",
+          "role": "main",
+          "pick": "exact"
+        },
+        "swing": {
+          "name": "Раскачанная тарелка",
+          "hint": "Три слоя раскачанной тарелки",
+          "role": "main",
+          "pick": "cycle"
+        }
+      },
+      "note": "в руководстве Crash 16\" на E1-G1; папка называется ED-17",
+      "keys": [
+        {
+          "key": 40,
+          "artic": "calm",
+          "name": "Спокойное состояние, одиночные",
+          "windows": [
+            {
+              "lo": 120,
+              "hi": 127,
+              "group": "calm",
+              "label": "calm",
+              "note": "по руководству 118-127, в .nki 120-127"
+            }
+          ]
+        },
+        {
+          "key": 41,
+          "artic": "layer1",
+          "name": "Раскачанная, слой 1 (сильные)",
+          "windows": [
+            {
+              "lo": 112,
+              "hi": 127,
+              "group": "swing",
+              "label": "strong"
+            }
+          ]
+        },
+        {
+          "key": 42,
+          "artic": "layer2",
+          "name": "Раскачанная, слой 2 (средние)",
+          "windows": [
+            {
+              "lo": 112,
+              "hi": 127,
+              "group": "swing",
+              "label": "medium"
+            }
+          ]
+        },
+        {
+          "key": 43,
+          "artic": "layer3",
+          "name": "Раскачанная, слой 3 (тихие)",
+          "windows": [
+            {
+              "lo": 112,
+              "hi": 127,
+              "group": "swing",
+              "label": "soft"
+            },
+            {
+              "lo": 95,
+              "hi": 110,
+              "label": "unknown",
+              "verified": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "china",
+      "type": "china",
+      "name": "China 16\" (папка Woohan-18)",
+      "pack": "studio600-china",
+      "source": "base",
+      "choke": null,
+      "groups": {
+        "calm": {
+          "name": "Спокойное состояние",
+          "role": "main",
+          "pick": "exact"
+        },
+        "swing": {
+          "name": "Раскачанная тарелка",
+          "role": "main",
+          "pick": "exact"
+        }
+      },
+      "note": "в руководстве Meinl Byzance China 16\", папка называется Woohan-18; громкость зон разная в трёх .nki (-5,02, 0, -4,01 дБ), берётся из ED-Ahead-LIVE",
+      "keys": [
+        {
+          "key": 44,
+          "artic": "calm",
+          "name": "Спокойное состояние, одиночные",
+          "windows": [
+            {
+              "lo": 120,
+              "hi": 127,
+              "group": "calm",
+              "label": "calm",
+              "note": "по руководству 118-127, в .nki 120-127"
+            }
+          ]
+        },
+        {
+          "key": 45,
+          "artic": "layer1",
+          "name": "Раскачанная, слой 1 (сильные)",
+          "windows": [
+            {
+              "lo": 112,
+              "hi": 127,
+              "group": "swing",
+              "label": "strong"
+            }
+          ]
+        },
+        {
+          "key": 46,
+          "artic": "layer2",
+          "name": "Раскачанная, слой 2 (средние)",
+          "windows": [
+            {
+              "lo": 112,
+              "hi": 127,
+              "group": "swing",
+              "label": "medium"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "splash",
+      "type": "splash",
+      "name": "Splash 10\" (Paiste)",
+      "pack": "studio600-splash",
+      "source": "base",
+      "choke": null,
+      "groups": {
+        "single": {
+          "name": "Одиночный удар",
+          "role": "main",
+          "pick": "exact"
+        }
+      },
+      "keys": [
+        {
+          "key": 47,
+          "artic": "single",
+          "name": "Сплеш",
+          "windows": [
+            {
+              "lo": 116,
+              "hi": 127,
+              "group": "single",
+              "label": "single"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "cymbals_x",
+      "type": "other",
+      "name": "Тарелки на C7-G#7 (в руководстве не описаны)",
+      "pack": "studio600-unverified",
+      "source": "base",
+      "choke": null,
+      "keys": [
+        {
+          "key": 108,
+          "artic": "unknown",
+          "name": "C7 (в .nki Crash ED-18)",
+          "windows": [
+            {
+              "lo": 112,
+              "hi": 127,
+              "label": "unknown",
+              "verified": false
+            }
+          ]
+        },
+        {
+          "key": 109,
+          "artic": "unknown",
+          "name": "C#7 (в .nki Crash ED-18)",
+          "windows": [
+            {
+              "lo": 120,
+              "hi": 127,
+              "label": "unknown",
+              "verified": false
+            }
+          ]
+        },
+        {
+          "key": 112,
+          "artic": "unknown",
+          "name": "E7 (в .nki Crash ED-17)",
+          "windows": [
+            {
+              "lo": 112,
+              "hi": 127,
+              "label": "unknown",
+              "verified": false
+            }
+          ]
+        },
+        {
+          "key": 113,
+          "artic": "unknown",
+          "name": "F7 (в .nki смесь ED-18 и ED-17)",
+          "windows": [
+            {
+              "lo": 120,
+              "hi": 127,
+              "label": "unknown",
+              "verified": false
+            }
+          ]
+        },
+        {
+          "key": 116,
+          "artic": "unknown",
+          "name": "G#7 (в .nki China)",
+          "windows": [
+            {
+              "lo": 120,
+              "hi": 127,
+              "label": "unknown",
+              "verified": false
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "templates": {
+    "snare": {
+      "groups": {
+        "rimclick": {
+          "name": "Удар по ободу",
+          "hint": "Палочкой по ободу, мембрана молчит",
+          "role": "rimclick",
+          "pick": "cycle"
+        },
+        "center": {
+          "name": "Удары в центр",
+          "hint": "Обычные удары, сила 75–127",
+          "role": "main",
+          "pick": "cycle"
+        },
+        "center_soft": {
+          "name": "Тихие удары в центр",
+          "hint": "Очень тихие удары, сила 26–49",
+          "role": "ghost",
+          "pick": "cycle"
+        },
+        "rolls": {
+          "name": "Дроби",
+          "hint": "Каждое значение силы — свой записанный удар",
+          "role": "roll",
+          "pick": "exact",
+          "picks": [
+            "exact"
+          ]
+        },
+        "rimshot": {
+          "name": "Римшот",
+          "hint": "Сильный удар с ободом",
+          "role": "rimshot",
+          "pick": "cycle"
+        },
+        "fills_left": {
+          "name": "Сбивки, левая рука",
+          "hint": "Короткие сбивки, каждый раз другая запись",
+          "role": "fill",
+          "pick": "random"
+        },
+        "fills_right": {
+          "name": "Сбивки, правая рука",
+          "hint": "Короткие сбивки, каждый раз другая запись",
+          "role": "fill",
+          "pick": "random"
+        },
+        "ghost_left": {
+          "name": "Ghost-ноты, левая рука",
+          "role": "ghost",
+          "pick": "cycle"
+        },
+        "ghost_right": {
+          "name": "Ghost-ноты, правая рука",
+          "role": "ghost",
+          "pick": "cycle"
+        },
+        "crescendo": {
+          "name": "Крещендо",
+          "hint": "Нарисуйте крещендо на малом и скопируйте на альты: сила совпадает",
+          "role": "crescendo",
+          "pick": "exact",
+          "picks": [
+            "exact"
+          ],
+          "pair": {
+            "type": "tom",
+            "group": "crescendo"
+          }
+        },
+        "crescendo_hi": {
+          "name": "Крещендо, сильное",
+          "hint": "Крещендо по силе 96–127",
+          "role": "crescendo",
+          "pick": "exact",
+          "picks": [
+            "exact"
+          ]
+        },
+        "manual": {
+          "name": "Особые удары (A0)",
+          "hint": "Каждое значение силы — свой удар, ставить вручную",
+          "role": "other",
+          "pick": "exact",
+          "picks": [
+            "exact"
+          ]
+        },
+        "extra": {
+          "name": "Дополнительные удары (A#0, B0)",
+          "role": "other",
+          "pick": "cycle"
+        }
+      },
+      "keys": [
+        {
+          "key": 25,
+          "artic": "rim-click",
+          "name": "Rim click: удар по ободу палочкой",
+          "windows": [
+            {
+              "lo": 120,
+              "hi": 127,
+              "group": "rimclick",
+              "label": "strong"
+            },
+            {
+              "lo": 111,
+              "hi": 118,
+              "group": "rimclick",
+              "label": "weak"
+            }
+          ]
+        },
+        {
+          "key": 26,
+          "artic": "center",
+          "name": "Центр",
+          "windows": [
+            {
+              "lo": 120,
+              "hi": 127,
+              "group": "center",
+              "label": "strong"
+            },
+            {
+              "lo": 111,
+              "hi": 118,
+              "group": "center",
+              "label": "strong2"
+            },
+            {
+              "lo": 102,
+              "hi": 109,
+              "group": "center",
+              "label": "medium"
+            },
+            {
+              "lo": 93,
+              "hi": 100,
+              "group": "center",
+              "label": "medium2"
+            },
+            {
+              "lo": 84,
+              "hi": 91,
+              "group": "center",
+              "label": "weak"
+            },
+            {
+              "lo": 75,
+              "hi": 82,
+              "group": "center",
+              "label": "weak2"
+            },
+            {
+              "lo": 51,
+              "hi": 73,
+              "group": "rolls",
+              "label": "roll-cuts",
+              "note": "по руководству дроби на D0, D#0, C0, C#0; в .nki и заметке окно 51-73 на D0, D#0, E0, F0"
+            },
+            {
+              "lo": 26,
+              "hi": 49,
+              "group": "center_soft",
+              "label": "soft",
+              "note": "не описано в руководстве; по заметке D0 26-49 по кругу"
+            }
+          ]
+        },
+        {
+          "key": 27,
+          "artic": "rimshot",
+          "name": "Rimshot",
+          "windows": [
+            {
+              "lo": 120,
+              "hi": 127,
+              "group": "rimshot",
+              "label": "strong"
+            },
+            {
+              "lo": 51,
+              "hi": 73,
+              "group": "rolls",
+              "label": "roll-cuts",
+              "note": "дроби"
+            }
+          ]
+        },
+        {
+          "key": 28,
+          "artic": "fills-left",
+          "name": "Сбивки, левая рука",
+          "windows": [
+            {
+              "lo": 120,
+              "hi": 127,
+              "group": "fills_left",
+              "label": "single"
+            },
+            {
+              "lo": 111,
+              "hi": 118,
+              "group": "fills_left",
+              "label": "fill1"
+            },
+            {
+              "lo": 102,
+              "hi": 109,
+              "group": "fills_left",
+              "label": "fill2"
+            },
+            {
+              "lo": 93,
+              "hi": 100,
+              "group": "fills_left",
+              "label": "thin-rim"
+            },
+            {
+              "lo": 84,
+              "hi": 91,
+              "group": "fills_left",
+              "label": "plastic-through-rim"
+            },
+            {
+              "lo": 51,
+              "hi": 73,
+              "group": "rolls",
+              "label": "roll-cuts",
+              "note": "дроби по заметке (E0, F0)"
+            }
+          ]
+        },
+        {
+          "key": 29,
+          "artic": "fills-right",
+          "name": "Сбивки, правая рука",
+          "windows": [
+            {
+              "lo": 120,
+              "hi": 127,
+              "group": "fills_right",
+              "label": "single"
+            },
+            {
+              "lo": 111,
+              "hi": 118,
+              "group": "fills_right",
+              "label": "fill1"
+            },
+            {
+              "lo": 102,
+              "hi": 109,
+              "group": "fills_right",
+              "label": "fill2"
+            },
+            {
+              "lo": 93,
+              "hi": 100,
+              "group": "fills_right",
+              "label": "thin-rim"
+            },
+            {
+              "lo": 84,
+              "hi": 91,
+              "group": "fills_right",
+              "label": "plastic-through-rim"
+            },
+            {
+              "lo": 51,
+              "hi": 73,
+              "group": "rolls",
+              "label": "roll-cuts",
+              "note": "дроби по заметке (E0, F0)"
+            }
+          ]
+        },
+        {
+          "key": 30,
+          "artic": "ghost-left",
+          "name": "Ghost-ноты, левая рука",
+          "windows": [
+            {
+              "lo": 112,
+              "hi": 127,
+              "group": "ghost_left",
+              "label": "ghost"
+            }
+          ]
+        },
+        {
+          "key": 31,
+          "artic": "ghost-right",
+          "name": "Ghost-ноты, правая рука",
+          "windows": [
+            {
+              "lo": 112,
+              "hi": 127,
+              "group": "ghost_right",
+              "label": "ghost"
+            }
+          ]
+        },
+        {
+          "key": 32,
+          "artic": "crescendo",
+          "name": "Крещендо",
+          "windows": [
+            {
+              "lo": 96,
+              "hi": 127,
+              "group": "crescendo_hi",
+              "label": "crescendo",
+              "note": "по руководству крещендо; заметка про 42-73, режим окна 96-127 ставим exact, уточнить"
+            },
+            {
+              "lo": 42,
+              "hi": 73,
+              "group": "crescendo",
+              "label": "crescendo",
+              "note": "пара с альтами C6, D6, E6, F#6 (одинаковые значения velocity)"
+            }
+          ]
+        },
+        {
+          "key": 33,
+          "artic": "manual",
+          "name": "A0: особые удары, вручную",
+          "windows": [
+            {
+              "lo": 117,
+              "hi": 127,
+              "group": "manual",
+              "label": "manual",
+              "note": "не в руководстве; по заметке и .nki это малый"
+            }
+          ]
+        },
+        {
+          "key": 34,
+          "artic": "extra",
+          "name": "A#0: дополнительные удары",
+          "windows": [
+            {
+              "lo": 120,
+              "hi": 127,
+              "group": "extra",
+              "label": "strong"
+            },
+            {
+              "lo": 111,
+              "hi": 118,
+              "group": "extra",
+              "label": "strong2"
+            },
+            {
+              "lo": 102,
+              "hi": 109,
+              "group": "extra",
+              "label": "medium"
+            },
+            {
+              "lo": 93,
+              "hi": 100,
+              "group": "extra",
+              "label": "weak"
+            }
+          ]
+        },
+        {
+          "key": 35,
+          "artic": "extra",
+          "name": "B0: дополнительные удары",
+          "windows": [
+            {
+              "lo": 120,
+              "hi": 127,
+              "group": "extra",
+              "label": "strong"
+            },
+            {
+              "lo": 111,
+              "hi": 118,
+              "group": "extra",
+              "label": "strong2"
+            }
+          ]
+        }
+      ]
+    },
+    "tom": {
+      "groups": {
+        "main": {
+          "name": "Основные удары",
+          "hint": "Левая и правая рука, сила 93–127",
+          "role": "main",
+          "pick": "cycle"
+        },
+        "ghost": {
+          "name": "Тихие удары",
+          "hint": "Сила 84–91",
+          "role": "ghost",
+          "pick": "cycle"
+        },
+        "ghost_soft": {
+          "name": "Самые тихие удары",
+          "hint": "Сила 66–73, правая рука",
+          "role": "ghost",
+          "pick": "cycle"
+        },
+        "rimshot": {
+          "name": "Римшот",
+          "hint": "Удар с ободом",
+          "role": "rimshot",
+          "pick": "cycle"
+        },
+        "crescendo": {
+          "name": "Крещендо",
+          "hint": "Те же значения силы, что у крещендо малого барабана",
+          "role": "crescendo",
+          "pick": "exact",
+          "picks": [
+            "exact"
+          ],
+          "pair": {
+            "type": "snare",
+            "group": "crescendo"
+          }
+        }
+      },
+      "comment": "Каждый том занимает две клавиши (левая и правая рука): чётная от keyOffset и следующая. Окна из .nki; в руководстве крещендо 62-82, римшоты 75-82",
+      "keys": [
+        {
+          "offset": 0,
+          "artic": "left",
+          "name": "Левая рука",
+          "windows": [
+            {
+              "lo": 120,
+              "hi": 127,
+              "group": "main",
+              "label": "strong"
+            },
+            {
+              "lo": 111,
+              "hi": 118,
+              "group": "main",
+              "label": "strong2"
+            },
+            {
+              "lo": 102,
+              "hi": 109,
+              "group": "main",
+              "label": "medium"
+            },
+            {
+              "lo": 93,
+              "hi": 100,
+              "group": "main",
+              "label": "weak"
+            },
+            {
+              "lo": 84,
+              "hi": 91,
+              "group": "ghost",
+              "label": "ghost"
+            },
+            {
+              "lo": 75,
+              "hi": 82,
+              "label": "unknown",
+              "verified": false,
+              "note": "по руководству римшоты на нечётных клавишах"
+            },
+            {
+              "lo": 42,
+              "hi": 73,
+              "group": "crescendo",
+              "label": "crescendo",
+              "note": "по заметке и .nki 42-73 на C6, D6, E6, F#6; в руководстве 62-82"
+            }
+          ]
+        },
+        {
+          "offset": 1,
+          "artic": "right",
+          "name": "Правая рука",
+          "windows": [
+            {
+              "lo": 120,
+              "hi": 127,
+              "group": "main",
+              "label": "strong"
+            },
+            {
+              "lo": 111,
+              "hi": 118,
+              "group": "main",
+              "label": "strong2"
+            },
+            {
+              "lo": 102,
+              "hi": 109,
+              "group": "main",
+              "label": "medium"
+            },
+            {
+              "lo": 93,
+              "hi": 100,
+              "group": "main",
+              "label": "weak"
+            },
+            {
+              "lo": 84,
+              "hi": 91,
+              "group": "ghost",
+              "label": "ghost"
+            },
+            {
+              "lo": 75,
+              "hi": 82,
+              "group": "rimshot",
+              "label": "rimshot"
+            },
+            {
+              "lo": 66,
+              "hi": 73,
+              "group": "ghost_soft",
+              "label": "ghost2",
+              "note": "окно 66-73 есть в .nki и в заметке; в руководстве не описано"
+            }
+          ]
+        }
+      ]
+    }
+  }
+}
