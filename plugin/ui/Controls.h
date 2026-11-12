@@ -63,7 +63,8 @@ namespace samplit
     };
 
     // Сегменты: один из нескольких вариантов (такты 1–4, Стерео / Мульти-аут). Выбранный: поднятая плашка, без заливки акцентом
-    class SegmentedControl final : public juce::Component
+    class SegmentedControl final : public juce::Component,
+                                   public juce::SettableTooltipClient
     {
     public:
         explicit SegmentedControl (std::vector<juce::String> labels) : items (std::move (labels)) { setWantsKeyboardFocus (true); }

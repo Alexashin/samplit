@@ -1,4 +1,5 @@
 #include "LicensePanel.h"
+#include "ui/Fonts.h"
 #include "Brand.h"
 
 namespace samplit
@@ -17,7 +18,7 @@ namespace samplit
     LicensePanel::LicensePanel (LicenseManager& l) : license (l)
     {
         title.setText (utf8 ("Лицензия"), juce::dontSendNotification);
-        title.setFont (juce::FontOptions (15.0f, juce::Font::bold));
+        title.setFont (fonts::strong (15.0f));
 
         renewButton.setButtonText (utf8 ("Обновить"));
         renewButton.setTooltip (utf8 ("Продлить лицензию через интернет. Без сети плагин работает до окончания срока"));
@@ -167,13 +168,13 @@ namespace samplit
         g.fillEllipse (line.removeFromLeft (10).withSizeKeepingCentre (8, 8).toFloat());
         line.removeFromLeft (6);
         g.setColour (brand::text);
-        g.setFont (juce::FontOptions (13.0f));
+        g.setFont (fonts::text (13.0f));
         g.drawText (statusText, line, juce::Justification::centredLeft, true);
 
         if (hintText.isNotEmpty())
         {
             g.setColour (ok ? brand::textMuted : kWarning);
-            g.setFont (juce::FontOptions (12.0f));
+            g.setFont (fonts::text (12.0f));
             g.drawFittedText (hintText, area.withTrimmedTop (2), juce::Justification::topLeft, 2, 1.0f);
         }
     }

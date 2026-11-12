@@ -1,5 +1,6 @@
 #include "MixerPanel.h"
 #include "Brand.h"
+#include "ui/Fonts.h"
 #include "Studio600Names.h"
 
 namespace samplit
@@ -9,13 +10,13 @@ namespace samplit
         constexpr int kHeaderHeight = 38;
         constexpr int kStripWidth = 86;
         constexpr int kStripGap = 6;
-        const juce::Colour kWarning { 0xffffb454 };
+        constexpr int kGroupHeight = 22;
 
         juce::String levelText (double v)
         {
             if (v <= -60.0)
-                return utf8 ("−∞ dB");
-            return (v > 0.0 ? "+" : "") + juce::String (v, 1) + " dB";
+                return utf8 ("−∞ дБ");
+            return (v > 0.0 ? "+" : "") + juce::String (v, 1) + utf8 (" дБ");
         }
 
         juce::String panText (double v)
@@ -29,11 +30,11 @@ namespace samplit
     class MixerPanel::Strip final : public juce::Component
     {
     public:
-        Strip (SamplitProcessor& p, int m, const Mic& mic) : processor (p), index (m)
+        Strip (SamplitProcessor& p, int m, const Mic& mic) : processor (p), index (m), micId (mic.id)
         {
             const auto micName = juce::String::fromUTF8 (mic.name.c_str());
             name.setText (micName, juce::dontSendNotification);
-            name.setFont (juce::FontOptions (12.0f, juce::Font::bold));
+            name.setFont (fonts::strong (12.5f));
             name.setJustificationType (juce::Justification::centred);
             name.setMinimumHorizontalScale (0.65f);
             name.setTooltip (micName);
@@ -84,7 +85,7 @@ namespace samplit
                 s->setColour (juce::Slider::trackColourId, brand::accent);
                 s->setColour (juce::Slider::backgroundColourId, brand::line);
                 s->setColour (juce::Slider::rotarySliderFillColourId, brand::accent);
-                s->setColour (juce::Slider::rotarySliderOutlineColourId, brand::line);
+                s->setColour (juce::Slider::rotarySliderOutlineColourId, brand::lineStrong);
                 s->setColour (juce::Slider::thumbColourId, brand::text);
                 s->setColour (juce::Slider::textBoxTextColourId, brand::text);
                 s->setColour (juce::Slider::textBoxOutlineColourId, juce::Colours::transparentBlack);
@@ -94,7 +95,7 @@ namespace samplit
             mute.setClickingTogglesState (true);
             mute.setTitle (utf8 ("Mute: ") + micName);
             mute.setTooltip (utf8 ("Заглушить микрофон"));
-            mute.setColour (juce::TextButton::buttonOnColourId, kWarning);
+            mute.setColour (juce::TextButton::buttonOnColourId, brand::warn);
             mute.onClick = [this] { edit ([v = mute.getToggleState()] (SamplitProcessor::MicState& s) { s.mute = v; }); };
 
             solo.setButtonText ("S");
@@ -103,9 +104,9 @@ namespace samplit
             solo.setTooltip (utf8 ("Слушать только микрофоны с Solo"));
             solo.onClick = [this] { edit ([v = solo.getToggleState()] (SamplitProcessor::MicState& s) { s.solo = v; }); };
 
-            routeNote.setFont (juce::FontOptions (11.0f));
+            routeNote.setFont (fonts::text (11.5f));
             routeNote.setJustificationType (juce::Justification::centred);
-            routeNote.setColour (juce::Label::textColourId, kWarning);
+            routeNote.setColour (juce::Label::textColourId, brand::warn);
             routeNote.setText (utf8 ("→ Main"), juce::dontSendNotification);
             routeNote.setTooltip (utf8 ("Этот выход не включён в DAW. Включите его в настройках выходов инструмента"));
 
@@ -118,6 +119,8 @@ namespace samplit
         }
 
         // anyEnabled: DAW включила хоть один отдельный выход. Если ни одного, предупреждение одно на весь микшер
+        const std::string& getMicId() const { return micId; }
+
         void update (uint32_t enabledOutputs, bool multiOut)
         {
             const juce::ScopedValueSetter<bool> guard (updating, true);
@@ -149,9 +152,9 @@ namespace samplit
             output.setEnabled (multiOut);
             const bool unavailable = multiOut && s.out > 0 && (enabledOutputs & (1u << (s.out - 1))) == 0;
             const bool warn = unavailable && enabledOutputs != 0;   // в режиме «Стерео» выход не используется
-            output.setColour (juce::ComboBox::textColourId, warn ? kWarning : brand::text);
-            output.setColour (juce::ComboBox::outlineColourId, warn ? kWarning : brand::line);
-            routeNote.setColour (juce::Label::textColourId, warn ? kWarning : brand::textMuted);
+            output.setColour (juce::ComboBox::textColourId, warn ? brand::warn : brand::text);
+            output.setColour (juce::ComboBox::outlineColourId, warn ? brand::warn : brand::line);
+            routeNote.setColour (juce::Label::textColourId, warn ? brand::warn : brand::textMuted);
             routeNote.setVisible (unavailable);
 
             if (! pan.isMouseButtonDown())
@@ -164,8 +167,11 @@ namespace samplit
 
         void paint (juce::Graphics& g) override
         {
+            const auto r = getLocalBounds().toFloat();
             g.setColour (brand::pad);
-            g.fillRoundedRectangle (getLocalBounds().toFloat(), 10.0f);
+            g.fillRoundedRectangle (r, brand::radiusM);
+            g.setColour (brand::line);
+            g.drawRoundedRectangle (r.reduced (0.5f), brand::radiusM, 1.0f);
         }
 
         void resized() override
@@ -196,6 +202,7 @@ namespace samplit
 
         SamplitProcessor& processor;
         int index;
+        std::string micId;
         bool updating = false;
         bool outputsBuilt = false;
         uint32_t builtFor = 0;
@@ -209,29 +216,24 @@ namespace samplit
     MixerPanel::MixerPanel (SamplitProcessor& p) : processor (p)
     {
         title.setText (utf8 ("Микрофоны"), juce::dontSendNotification);
-        title.setFont (juce::FontOptions (15.0f, juce::Font::bold));
+        title.setFont (fonts::strong (15.0f));
 
-        hint.setFont (juce::FontOptions (12.0f));
+        hint.setFont (fonts::text (12.5f));
         hint.setJustificationType (juce::Justification::centredRight);
         hint.setMinimumHorizontalScale (0.8f);
 
-        emptyText.setText (utf8 ("Когда установка загрузится, здесь появятся микрофоны. Если звука нет, выберите папку библиотеки в шапке окна."), juce::dontSendNotification);
+        emptyText.setText (utf8 ("Когда установка загрузится, здесь появятся микрофоны. Если звука нет, выберите папку: «Установка ▾», «Папка со звуком…»."), juce::dontSendNotification);
         emptyText.setColour (juce::Label::textColourId, brand::textMuted);
-        emptyText.setFont (juce::FontOptions (13.0f));
+        emptyText.setFont (fonts::text (13.0f));
         emptyText.setJustificationType (juce::Justification::centred);
 
         viewport.setViewedComponent (&content, false);
         viewport.setScrollBarsShown (false, true);
 
-        modeLabel.setText (utf8 ("Выходы:"), juce::dontSendNotification);
-        modeLabel.setFont (juce::FontOptions (12.0f));
-        modeLabel.setColour (juce::Label::textColourId, brand::textMuted);
-        mode.addItem (utf8 ("Стерео"), 1);
-        mode.addItem (utf8 ("Мульти-аут"), 2);
         mode.setTooltip (utf8 ("Стерео: всё играет в Main, панорама на линейках. Мульти-аут: каждый микрофон на свой выход DAW"));
-        mode.onChange = [this] { processor.setMultiOut (mode.getSelectedId() == 2); };
+        mode.onChange = [this] (int i) { processor.setMultiOut (i == 1); };
 
-        for (auto* c : std::initializer_list<juce::Component*> { &title, &hint, &emptyText, &viewport, &modeLabel, &mode })
+        for (auto* c : std::initializer_list<juce::Component*> { &title, &hint, &emptyText, &viewport, &mode })
             addAndMakeVisible (c);
 
         processor.addChangeListener (this);
@@ -288,7 +290,7 @@ namespace samplit
     {
         shownOutputs = processor.getEnabledOutputMask();
         shownMulti = processor.isMultiOut();
-        mode.setSelectedId (shownMulti ? 2 : 1, juce::dontSendNotification);
+        mode.setSelected (shownMulti ? 1 : 0);
         if (! shownMulti)
         {
             hint.setText (utf8 ("Всё играет в Main. Для раздельных дорожек в DAW выберите «Мульти-аут»"), juce::dontSendNotification);
@@ -297,7 +299,7 @@ namespace samplit
         else if (shownOutputs == 0)
         {
             hint.setText (utf8 ("Отдельные выходы в DAW выключены: все микрофоны играют в Main"), juce::dontSendNotification);
-            hint.setColour (juce::Label::textColourId, kWarning);
+            hint.setColour (juce::Label::textColourId, brand::warn);
         }
         else
         {
@@ -310,8 +312,33 @@ namespace samplit
 
     void MixerPanel::paint (juce::Graphics& g)
     {
+        const auto r = getLocalBounds().toFloat();
         g.setColour (brand::surface);
-        g.fillRoundedRectangle (getLocalBounds().toFloat(), 12.0f);
+        g.fillRoundedRectangle (r, brand::radiusM);
+        g.setColour (brand::line);
+        g.drawRoundedRectangle (r.reduced (0.5f), brand::radiusM, 1.0f);
+    }
+
+    // Группа микрофона по его id: Бочка, Малый, Хэт и райд, Томы, Овер, Комната
+    namespace
+    {
+        juce::String micGroup (const std::string& id)
+        {
+            const auto has = [&id] (const char* part) { return id.find (part) != std::string::npos; };
+            if (has ("kick"))                          return utf8 ("Бочка");
+            if (has ("sn"))                            return utf8 ("Малый");
+            if (has ("hat") || has ("ride"))           return utf8 ("Хэт и райд");
+            if (has ("tom"))                           return utf8 ("Томы");
+            if (has ("oh") || has ("over"))            return utf8 ("Овер");
+            if (has ("room"))                          return utf8 ("Комната");
+            return utf8 ("Прочее");
+        }
+    }
+
+    void MixerPanel::Content::paint (juce::Graphics& g)
+    {
+        for (const auto& [name, span] : groups)
+            drawSectionCaption (g, name, { span.getStart(), 0, span.getLength(), kGroupHeight - 4 });
     }
 
     void MixerPanel::resized()
@@ -320,9 +347,8 @@ namespace samplit
         auto header = area.removeFromTop (kHeaderHeight - 10);
         title.setBounds (header.removeFromLeft (juce::jmax (220, header.getWidth() * 2 / 5)));
         title.setTooltip (title.getText());
-        mode.setBounds (header.removeFromRight (120).reduced (0, 2));
-        modeLabel.setBounds (header.removeFromRight (62));
-        header.removeFromRight (8);
+        mode.setBounds (header.removeFromRight (juce::jmax (150, mode.preferredWidth())).reduced (0, 1));
+        header.removeFromRight (12);
         hint.setBounds (header);
         area.removeFromTop (8);
 
@@ -334,7 +360,17 @@ namespace samplit
         const int scrollBar = n * (kStripWidth + kStripGap) > area.getWidth() ? viewport.getScrollBarThickness() : 0;
         const int height = area.getHeight() - scrollBar;
         content.setSize (juce::jmax (area.getWidth(), n * (kStripWidth + kStripGap) - kStripGap), height);
+        content.groups.clear();
         for (int i = 0; i < n; ++i)
-            strips[(size_t) i]->setBounds (i * (kStripWidth + kStripGap), 0, kStripWidth, height);
+        {
+            strips[(size_t) i]->setBounds (i * (kStripWidth + kStripGap), kGroupHeight, kStripWidth, height - kGroupHeight);
+            const auto group = micGroup (strips[(size_t) i]->getMicId());
+            const int x = i * (kStripWidth + kStripGap);
+            if (! content.groups.empty() && content.groups.back().first == group)
+                content.groups.back().second.setEnd (x + kStripWidth);
+            else
+                content.groups.push_back ({ group, { x, x + kStripWidth } });
+        }
+        content.repaint();
     }
 }

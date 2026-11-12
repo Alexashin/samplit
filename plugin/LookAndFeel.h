@@ -53,6 +53,15 @@ namespace samplit
             setColour (juce::Slider::backgroundColourId, line);
         }
 
+        // Числа у слайдеров моноширинным шрифтом
+        juce::Label* createSliderTextBox (juce::Slider& slider) override
+        {
+            auto* l = LookAndFeel_V4::createSliderTextBox (slider);
+            l->setFont (fonts::mono (12.0f));
+            l->setJustificationType (juce::Justification::centred);
+            return l;
+        }
+
         juce::Typeface::Ptr getTypefaceForFont (const juce::Font& f) override
         {
             return f.isBold() ? fonts::sansMedium() : fonts::sansRegular();

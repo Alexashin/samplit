@@ -29,8 +29,8 @@ namespace samplit
             return juce::String (names[key % 12]) + juce::String (key / 12 - 2);
         }
 
-        juce::Font boldFont (float size) { return juce::Font (juce::FontOptions (size, juce::Font::bold)); }
-        juce::Font plainFont (float size) { return juce::Font (juce::FontOptions (size)); }
+        juce::Font boldFont (float size) { return fonts::strong (size); }
+        juce::Font plainFont (float size) { return fonts::text (size); }
 
         const CatalogPack* findPack (const std::vector<CatalogPack>& packs, const juce::String& id)
         {

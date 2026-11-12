@@ -1,5 +1,6 @@
 #include "KeyboardView.h"
 #include "Brand.h"
+#include "ui/Fonts.h"
 
 #include <algorithm>
 
@@ -189,7 +190,7 @@ namespace samplit
         {
             const auto name = pieceName (selectedKey);
             return noteName (selectedKey) + (name.isNotEmpty() ? utf8 ("  ·  ") + name : juce::String())
-                   + utf8 ("  ·  клик ниже — сильнее удар  ·  ←/→ выбор клавиши, пробел играет");
+                   + utf8 ("  ·  клик ниже: сильнее  ·  ←/→ выбор клавиши, пробел играет");
         }
 
         return utf8 ("Клик играет клавишу; клик ниже — сильнее удар  ·  ←/→ выбор клавиши");
@@ -198,7 +199,7 @@ namespace samplit
     void KeyboardView::paint (juce::Graphics& g)
     {
         g.setColour (brand::textMuted);
-        g.setFont (juce::FontOptions (12.0f));
+        g.setFont (fonts::text (12.0f));
         g.drawText (hintText(), hintArea, juce::Justification::centredLeft);
 
         // Полоса зон над клавишами: бочка, малый, тарелки, хэт, райд, томы
@@ -215,12 +216,14 @@ namespace samplit
                 continue;
             const float x0 = keyRect[(size_t) lo].getX(), x1 = keyRect[(size_t) hi].getRight();
             const auto zone = juce::Rectangle<float> (x0, (float) zoneArea.getY(), x1 - x0, (float) kZoneHeight).reduced (0.5f, 0.0f);
-            g.setColour (brand::groupColour (place.slot).withAlpha (0.85f));
-            g.fillRoundedRectangle (zone, 3.0f);
+            g.setColour (brand::raised2);
+            g.fillRoundedRectangle (zone, 2.0f);
+            g.setColour (brand::lineStrong);
+            g.drawRoundedRectangle (zone.reduced (0.5f), 2.0f, 1.0f);
             if (zone.getWidth() >= 56.0f)
             {
-                g.setColour (brand::onAccent);
-                g.setFont (juce::FontOptions (11.0f));
+                g.setColour (brand::textMuted);
+                g.setFont (fonts::text (11.5f));
                 g.drawText (utf8 (place.label), zone.reduced (3.0f, 0.0f), juce::Justification::centred, true);
             }
         }
@@ -245,28 +248,28 @@ namespace samplit
                 const bool lit = isLit (k) != 0;
 
                 // Цвет клавиши: звучит, подкрашена по барабану, пусто
-                juce::Colour fill = black ? juce::Colour (0xff10131a) : juce::Colour (0xffdfe3ea);
-                if (piece >= 0)
-                    fill = fill.interpolatedWith (brand::groupColour (piece), black ? 0.55f : 0.6f);
+                // Клавиши без звука в загруженном ките приглушены; цвет только у звучащей клавиши
+                const bool mapped = piece >= 0 || kit == nullptr;
+                juce::Colour fill = black ? (mapped ? juce::Colour (0xff0b0e15) : juce::Colour (0xff1c212b))
+                                          : (mapped ? juce::Colour (0xffdfe3ea) : juce::Colour (0xff5d6370));
                 if (lit)
-                    fill = brand::accentHover;
+                    fill = brand::accent;
 
                 g.setColour (fill);
-                g.fillRoundedRectangle (r, 3.0f);
-                g.setColour (brand::line);
-                g.drawRoundedRectangle (r, 3.0f, 1.0f);
+                g.fillRoundedRectangle (r, 2.0f);
+                g.setColour (black ? brand::lineStrong : brand::line);
+                g.drawRoundedRectangle (r, 2.0f, 1.0f);
 
                 if (k == selectedKey)
                 {
-                    g.setColour (brand::accent);
-                    g.drawRoundedRectangle (r.reduced (1.0f), 3.0f, 2.0f);
+                    g.setColour (brand::accentText);
+                    g.drawRoundedRectangle (r.reduced (1.0f), 2.0f, 2.0f);
                 }
 
-                const auto ink = (black && ! lit) ? brand::text : brand::onAccent;
                 if (! black && k % 12 == 0)
                 {
-                    g.setColour (brand::onAccent.withAlpha (0.7f));
-                    g.setFont (juce::FontOptions (10.0f));
+                    g.setColour (mapped ? brand::onAccent.withAlpha (0.7f) : brand::bg.withAlpha (0.7f));
+                    g.setFont (fonts::mono (10.0f));
                     g.drawText (noteName (k), r.withTrimmedBottom (4.0f).toNearestInt(), juce::Justification::centredBottom);
                 }
             }

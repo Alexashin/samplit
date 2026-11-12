@@ -1,6 +1,7 @@
 #pragma once
 
 #include "PluginProcessor.h"
+#include "ui/Controls.h"
 
 #include <juce_gui_basics/juce_gui_basics.h>
 
@@ -35,12 +36,16 @@ namespace samplit
         std::shared_ptr<const Kit> kit;
         uint32_t shownOutputs = 0;
         bool shownMulti = false;
-        juce::Label modeLabel;
-        juce::ComboBox mode;
+        SegmentedControl mode { { utf8 ("Стерео"), utf8 ("Мульти-аут") } };
 
         juce::Label title, hint, emptyText;
         juce::Viewport viewport;
-        juce::Component content;
+        // Содержимое прокрутки: линейки и подписи групп над ними (Бочка, Малый, Томы, Тарелки, Овер, Комната)
+        struct Content final : juce::Component
+        {
+            void paint (juce::Graphics&) override;
+            std::vector<std::pair<juce::String, juce::Range<int>>> groups;
+        } content;
         std::vector<std::unique_ptr<Strip>> strips;
 
         JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (MixerPanel)

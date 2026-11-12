@@ -1,5 +1,6 @@
 #include "PatternPanel.h"
 #include "Brand.h"
+#include "ui/Fonts.h"
 
 #include "samplit/core/Manifest.h"
 
@@ -16,7 +17,7 @@ namespace samplit
         constexpr int kControlsHeight = 32;
         constexpr int kGap = 10;
         constexpr int kHeader = 22;
-        constexpr int kLabelWidth = 210;
+        constexpr int kLabelWidth = 200;
         constexpr int kMinCell = 36;
         constexpr int kMinRow = 22, kMaxRow = 46;
         constexpr int kScrollBar = 10;
@@ -34,8 +35,8 @@ namespace samplit
             return type;
         }
 
-        juce::Font boldFont (float size) { return juce::Font (juce::FontOptions (size, juce::Font::bold)); }
-        juce::Font plainFont (float size) { return juce::Font (juce::FontOptions (size)); }
+        juce::Font boldFont (float size) { return fonts::strong (size); }
+        juce::Font plainFont (float size) { return fonts::text (size); }
 
         // Сила по умолчанию: самый сильный удар основной группы (роль main) на нижней клавише, иначе самый сильный на первой клавише
         int defaultOption (const std::vector<StrengthOption>& p)
@@ -63,7 +64,7 @@ namespace samplit
 
         juce::String noteName (int key) { return juce::MidiMessage::getMidiNoteName (key, true, true, 3); }
 
-        juce::Colour textOn (juce::Colour fill) { return fill.getPerceivedBrightness() > 0.55f ? brand::onAccent : brand::text; }
+        juce::Colour textOn (juce::Colour fill) { return fill.getPerceivedBrightness() > 0.6f ? brand::onAccent : brand::text; }
     }
 
     // ---- Сетка: заголовок с тактами и долями, клетки шагов, курсор проигрывания ----
@@ -118,18 +119,19 @@ namespace samplit
             {
                 const auto& r = owner.rows[(size_t) row];
                 const bool silent = r.options.empty();
-                const auto colour = brand::groupColour (r.slot);
                 for (int s = 0; s < steps; ++s)
                 {
                     const auto cell = cellBounds (row, s).toFloat().reduced (1.5f);
                     const bool evenBeat = (s / 4) % 2 == 0;
                     g.setColour (silent ? brand::surface : evenBeat ? brand::pad : brand::pad.darker (0.25f));
-                    g.fillRoundedRectangle (cell, 3.0f);
+                    g.fillRoundedRectangle (cell, 2.0f);
 
                     if (const auto* st = owner.pattern.findStep (s, r.slot))
                     {
+                        // Сила удара читается по насыщенности одного акцента, а не по цвету барабана
+                        const auto colour = juce::Colour (0xff2a3d8f).interpolatedWith (brand::accentHover, juce::jlimit (0.0f, 1.0f, (float) st->velocity / 127.0f));
                         g.setColour (colour);
-                        g.fillRoundedRectangle (cell, 3.0f);
+                        g.fillRoundedRectangle (cell, 2.0f);
                         g.setColour (textOn (colour));
                         const int opt = owner.optionFor (r, *st);
                         if (rowH >= 30 && cellW >= 40 && opt >= 0)
@@ -149,8 +151,8 @@ namespace samplit
 
                     if (row == hoverRow && s == hoverStep && ! silent)
                     {
-                        g.setColour (brand::accentHover);
-                        g.drawRoundedRectangle (cell, 3.0f, 1.5f);
+                        g.setColour (brand::accentText);
+                        g.drawRoundedRectangle (cell, 2.0f, 1.5f);
                     }
                 }
             }
@@ -212,7 +214,7 @@ namespace samplit
                 return {};
             const auto& r = owner.rows[(size_t) row];
             if (r.options.empty())
-                return utf8 ("У этого места нет звука: проверьте пак на вкладке «Инструменты»");
+                return utf8 ("У этого места нет звука: выберите звук в панели барабана");
             if (const auto* st = owner.pattern.findStep (step, r.slot))
             {
                 const int opt = owner.optionFor (r, *st);
@@ -257,7 +259,7 @@ namespace samplit
             g.fillAll (brand::bg);
             g.setColour (brand::textMuted);
             g.setFont (plainFont (11.0f));
-            g.drawText (utf8 ("Место и сила удара"), juce::Rectangle<int> (0, 0, getWidth() - 8, kHeader), juce::Justification::centredLeft);
+            g.drawText (utf8 ("Барабан и сила удара"), juce::Rectangle<int> (0, 0, getWidth() - 8, kHeader), juce::Justification::centredLeft);
 
             const int rowH = owner.grid->rowH;
             for (int row = 0; row < (int) owner.rows.size(); ++row)
@@ -265,13 +267,8 @@ namespace samplit
                 const auto& r = owner.rows[(size_t) row];
                 auto area = juce::Rectangle<int> (0, kHeader + row * rowH, getWidth() - 8, rowH).reduced (0, 1);
                 g.setColour (brand::surface);
-                g.fillRoundedRectangle (area.toFloat(), 4.0f);
-                area.reduce (8, 0);
-
-                const auto dot = area.removeFromLeft (10);
-                g.setColour (brand::groupColour (r.slot));
-                g.fillEllipse (juce::Rectangle<float> (8.0f, 8.0f).withCentre (dot.getCentre().toFloat()));
-                area.removeFromLeft (6);
+                g.fillRoundedRectangle (area.toFloat(), brand::radiusS);
+                area.reduce (10, 0);
 
                 // Треугольник справа: по клику открывается выбор силы
                 if (! r.options.empty())
@@ -290,9 +287,9 @@ namespace samplit
                     const bool on = r.together && can;
                     const auto c = chip.toFloat().reduced (0.5f);
                     g.setColour (on ? brand::accent : brand::pad);
-                    g.fillRoundedRectangle (c, c.getHeight() / 2.0f);
-                    g.setColour (on ? brand::accent : can ? brand::line.brighter (0.4f) : brand::line);
-                    g.drawRoundedRectangle (c, c.getHeight() / 2.0f, 1.0f);
+                    g.fillRoundedRectangle (c, brand::radiusS);
+                    g.setColour (on ? brand::accent : can ? brand::lineStrong : brand::line);
+                    g.drawRoundedRectangle (c, brand::radiusS, 1.0f);
                     g.setColour (on ? brand::onAccent : can ? brand::text : brand::textMuted.withAlpha (0.6f));
                     g.setFont (plainFont (11.0f));
                     g.drawText (utf8 ("вместе"), chip, juce::Justification::centred, false);
@@ -349,7 +346,7 @@ namespace samplit
                 return {};
             const auto& r = owner.rows[(size_t) row];
             if (r.options.empty())
-                return utf8 ("У этого места нет звука: проверьте пак на вкладке «Инструменты»");
+                return utf8 ("У этого места нет звука: выберите звук в панели барабана");
             if (chipBounds (row).contains (getMouseXYRelative()))
                 return owner.pairHint (r);
             return utf8 ("Сила новых ударов: ") + describe (r.options[(size_t) r.current]) + utf8 (". Клик: выбрать другую");
@@ -365,7 +362,8 @@ namespace samplit
 
         barsLabel.setText (utf8 ("Такты"), juce::dontSendNotification);
         tempoLabel.setText (utf8 ("Темп"), juce::dontSendNotification);
-        for (auto* l : { &barsLabel, &tempoLabel })
+        liveLabel.setText (utf8 ("Живость"), juce::dontSendNotification);
+        for (auto* l : { &barsLabel, &tempoLabel, &liveLabel })
         {
             l->setFont (plainFont (13.0f));
             l->setColour (juce::Label::textColourId, brand::textMuted);
@@ -373,16 +371,9 @@ namespace samplit
             addAndMakeVisible (l);
         }
 
-        for (int i = 0; i < Pattern::kMaxBars; ++i)
-        {
-            auto& b = barButtons[i];
-            b.setButtonText (juce::String (i + 1));
-            b.setTooltip (utf8 ("Длина партии: ") + juce::String (i + 1) + utf8 (i == 0 ? " такт" : " такта") + utf8 (" по 16 шагов"));
-            b.setConnectedEdges ((i > 0 ? juce::Button::ConnectedOnLeft : 0) | (i < Pattern::kMaxBars - 1 ? juce::Button::ConnectedOnRight : 0));
-            b.setWantsKeyboardFocus (false);
-            b.onClick = [this, i] { setBars (i + 1); };
-            addAndMakeVisible (b);
-        }
+        barsSeg.setTooltip (utf8 ("Длина партии, в тактах по 16 шагов"));
+        barsSeg.onChange = [this] (int i) { setBars (i + 1); };
+        addAndMakeVisible (barsSeg);
 
         tempo.setSliderStyle (juce::Slider::IncDecButtons);
         tempo.setIncDecButtonsMode (juce::Slider::incDecButtonsDraggable_Horizontal);
@@ -391,8 +382,8 @@ namespace samplit
         tempo.setTextValueSuffix (" BPM");
         tempo.setTooltip (utf8 ("Темп партии внутри плагина (30–300): кнопки −/+, перетаскивание по ним или ввод числа в поле"));
         tempo.setColour (juce::Slider::textBoxTextColourId, brand::text);
-        tempo.setColour (juce::Slider::textBoxBackgroundColourId, brand::pad);
-        tempo.setColour (juce::Slider::textBoxOutlineColourId, brand::line);
+        tempo.setColour (juce::Slider::textBoxBackgroundColourId, brand::bg);
+        tempo.setColour (juce::Slider::textBoxOutlineColourId, brand::lineStrong);
         tempo.onValueChange = [this]
         {
             const double bpm = tempo.getValue();
@@ -401,35 +392,25 @@ namespace samplit
         };
         addAndMakeVisible (tempo);
 
-        timingLabel.setText (utf8 ("Время ± мс"), juce::dontSendNotification);
-        velLabel.setText (utf8 ("Сила ±"), juce::dontSendNotification);
-        for (auto* l : { &timingLabel, &velLabel })
+        // Живость: случайность времени и силы, результат запоминается в проекте и попадает в MIDI
+        timingKnob.setRange (0.0, 40.0, 1.0, 0.0);
+        timingKnob.format = [] (double v) { return juce::String ((int) v) + utf8 (" мс"); };
+        timingKnob.setTooltip (utf8 ("Случайный сдвиг каждого удара по времени, до ± этого числа мс. Результат запоминается и попадает в MIDI"));
+        timingKnob.onChange = [this]
         {
-            l->setFont (plainFont (13.0f));
-            l->setColour (juce::Label::textColourId, brand::textMuted);
-            l->setJustificationType (juce::Justification::centredRight);
-            addAndMakeVisible (l);
-        }
-        const auto setupHuman = [this] (juce::Slider& sl, double maxV, const juce::String& tip, std::function<void (Pattern&, int)> apply)
-        {
-            sl.setSliderStyle (juce::Slider::LinearHorizontal);
-            sl.setTextBoxStyle (juce::Slider::TextBoxRight, false, 40, kControlsHeight);
-            sl.setRange (0.0, maxV, 1.0);
-            sl.setTooltip (tip);
-            sl.setColour (juce::Slider::textBoxTextColourId, brand::text);
-            sl.setColour (juce::Slider::textBoxBackgroundColourId, brand::pad);
-            sl.setColour (juce::Slider::textBoxOutlineColourId, brand::line);
-            sl.onValueChange = [this, &sl, apply]
-            {
-                const int v = (int) sl.getValue();
-                edit ([&] (Pattern& p) { apply (p, v); });
-            };
-            addAndMakeVisible (sl);
+            const int v = (int) timingKnob.getValue();
+            edit ([v] (Pattern& p) { p.humanTimingMs = v; });
         };
-        setupHuman (humanTiming, 40.0, utf8 ("Случайный сдвиг каждого удара по времени, до ± этого числа мс. Результат запоминается и попадает в MIDI"),
-                    [] (Pattern& p, int v) { p.humanTimingMs = v; });
-        setupHuman (humanVel, 20.0, utf8 ("Случайный сдвиг силы каждого удара, до ± этого числа. Результат запоминается и попадает в MIDI"),
-                    [] (Pattern& p, int v) { p.humanVelocity = v; });
+        velKnob.setRange (0.0, 20.0, 1.0, 0.0);
+        velKnob.format = [] (double v) { return juce::String ((int) v); };
+        velKnob.setTooltip (utf8 ("Случайный сдвиг силы каждого удара, до ± этого числа. Результат запоминается и попадает в MIDI"));
+        velKnob.onChange = [this]
+        {
+            const int v = (int) velKnob.getValue();
+            edit ([v] (Pattern& p) { p.humanVelocity = v; });
+        };
+        addAndMakeVisible (timingKnob);
+        addAndMakeVisible (velKnob);
         variantButton.setButtonText (utf8 ("Другой вариант"));
         variantButton.setTooltip (utf8 ("Бросить случайность заново. Выбранный вариант запоминается в проекте и совпадает с MIDI при перетаскивании"));
         variantButton.setWantsKeyboardFocus (false);
@@ -439,20 +420,11 @@ namespace samplit
         };
         addAndMakeVisible (variantButton);
 
-        saveButton.setButtonText (utf8 ("Сохранить…"));
-        saveButton.setTooltip (utf8 ("Записать партию в файл .json"));
-        saveButton.onClick = [this] { saveJson(); };
-        openButton.setButtonText (utf8 ("Открыть…"));
-        openButton.setTooltip (utf8 ("Загрузить партию из файла .json (текущая партия будет заменена)"));
-        openButton.onClick = [this] { openJson(); };
-        midiButton.setButtonText (utf8 ("MIDI…"));
-        midiButton.setTooltip (utf8 ("Сохранить партию как файл .mid (то же, что перетаскивание в Cubase)"));
-        midiButton.onClick = [this] { saveMidi(); };
-        for (auto* b : { &saveButton, &openButton, &midiButton })
-        {
-            b->setWantsKeyboardFocus (false);
-            addAndMakeVisible (b);
-        }
+        moreButton.setButtonText (utf8 ("⋯"));
+        moreButton.setTooltip (utf8 ("Файлы партии: сохранить, открыть, сохранить как MIDI"));
+        moreButton.onClick = [this] { showMoreMenu(); };
+        moreButton.setWantsKeyboardFocus (false);
+        addAndMakeVisible (moreButton);
 
         playButton.setTooltip (utf8 ("Сыграть партию с начала или остановить"));
         playButton.onClick = [this]
@@ -463,12 +435,10 @@ namespace samplit
                 processor.playPattern();
             updateControls();
         };
-        loopButton.setButtonText (utf8 ("Цикл"));
         loopButton.setTooltip (utf8 ("Включено: партия повторяется по кругу. Выключено: играет один раз"));
         loopButton.onClick = [this]
         {
-            auto& player = processor.getPatternPlayer();
-            player.setLoop (! player.isLooping());
+            processor.getPatternPlayer().setLoop (loopButton.getToggleState());
             updateControls();
         };
         clearButton.setButtonText (utf8 ("Очистить"));
@@ -478,19 +448,14 @@ namespace samplit
             trimmed.clear();
             edit ([] (Pattern& p) { p.steps.clear(); });
         };
-        for (auto* b : { &playButton, &loopButton, &clearButton })
+        for (auto* b : { &playButton, &clearButton })
         {
             b->setWantsKeyboardFocus (false);
             addAndMakeVisible (b);
         }
+        addAndMakeVisible (loopButton);
 
-        hint.setText (utf8 ("Клик ставит или снимает удар, правый клик выбирает силу"), juce::dontSendNotification);
-        hint.setFont (plainFont (12.0f));
-        hint.setColour (juce::Label::textColourId, brand::textMuted);
-        hint.setMinimumHorizontalScale (1.0f);
-        addAndMakeVisible (hint);
-
-        emptyState.setText (utf8 ("Нет включённых мест. Включите барабаны на вкладке «Инструменты», и они появятся здесь строками"),
+        emptyState.setText (utf8 ("Нет включённых барабанов. Включите их на странице «Барабаны», и они появятся здесь строками"),
                             juce::dontSendNotification);
         emptyState.setFont (plainFont (14.0f));
         emptyState.setColour (juce::Label::textColourId, brand::textMuted);
@@ -637,11 +602,10 @@ namespace samplit
 
     void PatternPanel::updateControls()
     {
-        for (int i = 0; i < Pattern::kMaxBars; ++i)
-            barButtons[i].setToggleState (pattern.bars == i + 1, juce::dontSendNotification);
+        barsSeg.setSelected (pattern.bars - 1);
         tempo.setValue (pattern.bpm, juce::dontSendNotification);
-        humanTiming.setValue (pattern.humanTimingMs, juce::dontSendNotification);
-        humanVel.setValue (pattern.humanVelocity, juce::dontSendNotification);
+        timingKnob.setValue (pattern.humanTimingMs);
+        velKnob.setValue (pattern.humanVelocity);
         variantButton.setEnabled (pattern.humanTimingMs > 0 || pattern.humanVelocity > 0);
 
         const bool playing = processor.isPatternPlaying();
@@ -651,13 +615,10 @@ namespace samplit
         playButton.setToggleState (playing, juce::dontSendNotification);
         loopButton.setToggleState (processor.getPatternPlayer().isLooping(), juce::dontSendNotification);
         clearButton.setEnabled (! pattern.steps.empty());
-        saveButton.setEnabled (! pattern.steps.empty());
-        midiButton.setEnabled (! pattern.steps.empty());
 
         emptyState.setVisible (rows.empty());
         viewport.setVisible (! rows.empty());
         labelsClip.setVisible (! rows.empty());
-        hint.setVisible (! rows.empty());
     }
 
     void PatternPanel::edit (std::function<void (Pattern&)> change)
@@ -965,32 +926,56 @@ namespace samplit
             updateControls();
     }
 
+    // Меню «⋯»: файлы партии
+    void PatternPanel::showMoreMenu()
+    {
+        juce::PopupMenu m;
+        m.addItem (1, utf8 ("Сохранить партию…"), ! pattern.steps.empty());
+        m.addItem (2, utf8 ("Открыть партию…"));
+        m.addSeparator();
+        m.addItem (3, utf8 ("Сохранить как MIDI…"), ! pattern.steps.empty());
+        m.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&moreButton),
+                         [safe = juce::Component::SafePointer<PatternPanel> (this)] (int r)
+        {
+            if (safe == nullptr)
+                return;
+            if (r == 1)      safe->saveJson();
+            else if (r == 2) safe->openJson();
+            else if (r == 3) safe->saveMidi();
+        });
+    }
+
+    // Полоса управления: слева такты, темп, запуск; справа живость (две крутилки и «Другой вариант»), «Очистить» и «⋯».
+    // В узком окне живость уходит второй строкой
     void PatternPanel::resized()
     {
         auto area = getLocalBounds();
-        auto bar = area.removeFromTop (kControlsHeight);
-        area.removeFromTop (kGap);
-        auto bar2 = area.removeFromTop (kControlsHeight);
-        area.removeFromTop (kGap);
-        timingLabel.setBounds (bar2.removeFromLeft (90));
-        bar2.removeFromLeft (6);
-        humanTiming.setBounds (bar2.removeFromLeft (150));
-        bar2.removeFromLeft (14);
-        velLabel.setBounds (bar2.removeFromLeft (60));
-        bar2.removeFromLeft (6);
-        humanVel.setBounds (bar2.removeFromLeft (150));
-        bar2.removeFromLeft (14);
-        variantButton.setBounds (bar2.removeFromLeft (124));
-        midiButton.setBounds (bar2.removeFromRight (64));
-        bar2.removeFromRight (6);
-        openButton.setBounds (bar2.removeFromRight (80));
-        bar2.removeFromRight (6);
-        saveButton.setBounds (bar2.removeFromRight (92));
+        const int liveW = 60 + 8 + 60 + 16 + 124;
+        const bool wide = area.getWidth() >= 1060;
+        const int bandH = 66;
 
+        auto band = area.removeFromTop (wide ? bandH : kControlsHeight);
+        if (wide)
+        {
+            liveRow = band.removeFromRight (liveW + 70);
+            transportRow = band.withSizeKeepingCentre (band.getWidth(), kControlsHeight);
+        }
+        else
+        {
+            transportRow = band;
+            area.removeFromTop (6);
+            liveRow = area.removeFromTop (bandH);
+        }
+        area.removeFromTop (kGap);
+
+        auto bar = transportRow;
+        moreButton.setBounds (bar.removeFromRight (36));
+        bar.removeFromRight (6);
+        clearButton.setBounds (bar.removeFromRight (86));
+        bar.removeFromRight (12);
         barsLabel.setBounds (bar.removeFromLeft (52));
         bar.removeFromLeft (6);
-        for (auto& b : barButtons)
-            b.setBounds (bar.removeFromLeft (32));
+        barsSeg.setBounds (bar.removeFromLeft (barsSeg.preferredWidth() > 0 ? juce::jmax (136, barsSeg.preferredWidth()) : 136));
         bar.removeFromLeft (14);
         tempoLabel.setBounds (bar.removeFromLeft (44));
         bar.removeFromLeft (6);
@@ -998,12 +983,18 @@ namespace samplit
         bar.removeFromLeft (14);
         playButton.setBounds (bar.removeFromLeft (92));
         bar.removeFromLeft (6);
-        loopButton.setBounds (bar.removeFromLeft (72));
-        clearButton.setBounds (bar.removeFromRight (100));
-        bar.removeFromRight (12);
-        bar.removeFromLeft (14);
-        hint.setBounds (bar);
-        hint.setVisible (! rows.empty() && bar.getWidth() >= 220);
+        loopButton.setBounds (bar.removeFromLeft (82));
+
+        auto live = liveRow;
+        if (! wide)
+            live = live.withTrimmedLeft (0);
+        liveLabel.setBounds (live.removeFromLeft (wide ? 62 : 56).withSizeKeepingCentre (wide ? 62 : 56, kControlsHeight));
+        live.removeFromLeft (8);
+        timingKnob.setBounds (live.removeFromLeft (Knob::widthFor (Knob::Size::Small)).withHeight (Knob::heightFor (Knob::Size::Small)));
+        live.removeFromLeft (8);
+        velKnob.setBounds (live.removeFromLeft (Knob::widthFor (Knob::Size::Small)).withHeight (Knob::heightFor (Knob::Size::Small)));
+        live.removeFromLeft (16);
+        variantButton.setBounds (live.removeFromLeft (124).withSizeKeepingCentre (124, kControlsHeight).withY (live.getY() + 15));
 
         gridArea = area;
         emptyState.setBounds (area.withSizeKeepingCentre (juce::jmin (area.getWidth(), 520), 80));

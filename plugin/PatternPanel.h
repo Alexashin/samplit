@@ -2,6 +2,8 @@
 
 #include "PatternPalette.h"
 #include "PluginProcessor.h"
+#include "ui/Controls.h"
+#include "ui/Knob.h"
 
 #include <juce_gui_basics/juce_gui_basics.h>
 
@@ -67,10 +69,15 @@ namespace samplit
         juce::String rowsSignature;
         int shownPlayStep = -1;
 
-        juce::Label barsLabel, tempoLabel, timingLabel, velLabel, hint, emptyState;
-        juce::TextButton barButtons[Pattern::kMaxBars];
-        juce::Slider tempo, humanTiming, humanVel;
-        juce::TextButton playButton, loopButton, clearButton, variantButton, saveButton, openButton, midiButton;
+        void showMoreMenu();
+
+        juce::Label barsLabel, tempoLabel, liveLabel, emptyState;
+        SegmentedControl barsSeg { { "1", "2", "3", "4" } };
+        juce::Slider tempo;
+        Knob timingKnob { utf8 ("Время ±"), Knob::Size::Small }, velKnob { utf8 ("Сила ±"), Knob::Size::Small };
+        juce::TextButton playButton, clearButton, variantButton, moreButton;
+        LedButton loopButton { utf8 ("Цикл") };
+        juce::Rectangle<int> transportRow, liveRow;
         std::unique_ptr<juce::FileChooser> chooser;
         juce::Component labelsClip;                     // обрезает подписи строк при вертикальной прокрутке
         std::unique_ptr<Labels> labels;
