@@ -184,11 +184,19 @@ namespace samplit
         bool transportValid = false;
         if (auto* head = getPlayHead())
             if (const auto info = head->getPosition(); info && info->getIsPlaying())
+            {
                 if (const auto t = info->getTimeInSamples())
                 {
                     transportStart = *t;
                     transportValid = true;
                 }
+                else if (const auto ppq = info->getPpqPosition(); ppq && info->getBpm() && *info->getBpm() > 0.0)
+                {
+                    // Хост даёт только PPQ: позиция в сэмплах из долей и темпа
+                    transportStart = (int64_t) std::llround (*ppq * 60.0 / *info->getBpm() * getSampleRate());
+                    transportValid = true;
+                }
+            }
         auto noteOn = [&] (int note, int velocity) { kitEngine.noteOn (note, velocity); };
         auto renderRange = [&] (int from, int to) { kitEngine.render (outL, outR, from, to); };
 

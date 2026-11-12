@@ -105,6 +105,8 @@ namespace samplit
         fadeLength = std::max (1, (int) (0.005 * sr));  // 5 мс: недогрузка диска
         stealFade = std::max (1, (int) (0.010 * sr));   // 10 мс: choke и вытеснение
         releaseAll();
+        lastStrikePos = -1;
+        samePosCount = 0;
         offlineGaveUp = false;
         lastHit.fill (-1);
         for (auto& c : cyclePos)
@@ -501,7 +503,8 @@ namespace samplit
         // Повторяемый выбор: запись зависит только от позиции в песне, клавиши и слоя (без состояния)
         if (pick != Pick::Exact && strikePosValid && repeatable.load() && ! layer.hits.empty())
         {
-            uint64_t x = (uint64_t) strikePos * 0x9e3779b97f4a7c15ull ^ ((uint64_t) note << 32) ^ ((uint64_t) chosen << 48);
+            uint64_t x = (uint64_t) strikePos * 0x9e3779b97f4a7c15ull ^ ((uint64_t) note << 32) ^ ((uint64_t) chosen << 48)
+                         ^ ((uint64_t) samePosCount << 52);
             x ^= x >> 30; x *= 0xbf58476d1ce4e5b9ull;
             x ^= x >> 27; x *= 0x94d049bb133111ebull;
             x ^= x >> 31;
@@ -560,6 +563,13 @@ namespace samplit
         const Kit* kit = inBlock ? blockKit : current.load();   // в блоке только защищённый кит
         if (kit == nullptr || note < 0 || note > 127)
             return info;
+
+        kontaktNow = partMode.load() || selectMode.load() == (int) HitSelect::Kontakt;
+        if (strikePosValid && strikePos == lastStrikePos)
+            ++samePosCount;
+        else
+            samePosCount = 0;
+        lastStrikePos = strikePosValid ? strikePos : -1;
 
         if (kit->serial.value != lastKitSerial)
         {

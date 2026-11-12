@@ -206,7 +206,10 @@ namespace samplit
         std::atomic<bool> repeatable { true };
         int64_t strikePos = 0;              // только audio thread
         bool strikePosValid = false;
-        bool isKontakt() const noexcept { return partMode.load() || selectMode.load() == (int) HitSelect::Kontakt; }
+        bool kontaktNow = false;            // режим на время одного удара: читается один раз в noteOn, чтобы fitVelocity и selectHit не разошлись
+        int64_t lastStrikePos = -1;         // для разведения одинаковых нот в одном сэмпле
+        uint32_t samePosCount = 0;
+        bool isKontakt() const noexcept { return kontaktNow; }
         std::array<std::atomic<float>, Kit::kMaxMics> micLevel;
         std::array<std::atomic<float>, Kit::kMaxMics> micPan;
         std::array<std::atomic<int>, Kit::kMaxMics> micOut;

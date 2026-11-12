@@ -151,6 +151,31 @@ TEST_CASE ("kit: repeatable pick depends only on song position, key and layer", 
     REQUIRE (live.size() >= 3);
 }
 
+TEST_CASE ("kit: two equal notes at one position do not always play the same take", "[kit][velocity]")
+{
+    KitBuilder b;
+    b.mic ("m", 1);
+    const int p = b.piece ("snare");
+    const int l = b.layer (p, 1, 127);
+    for (int i = 0; i < 6; ++i)
+        b.hit (p, l, 26, { 0.1f * (float) (i + 1) });
+    const auto kit = b.done();
+
+    Rig r;
+    r.engine.setKit (kit.get());
+    r.engine.setRepeatable (true);
+    int different = 0;
+    for (int pos = 0; pos < 40; ++pos)
+    {
+        r.engine.prepare (kRate);
+        r.engine.setStrikePosition (pos * 5000, true);
+        const int a = r.engine.noteOn (26, 100).hit;
+        const int b2 = r.engine.noteOn (26, 100).hit;
+        different += a != b2;
+    }
+    REQUIRE (different > 0);
+}
+
 TEST_CASE ("kit: part mode plays the exact take for a velocity number", "[kit][velocity]")
 {
     KitBuilder b;
