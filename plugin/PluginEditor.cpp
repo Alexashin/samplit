@@ -57,6 +57,9 @@ namespace samplit
         {
             t->setClickingTogglesState (true);
             t->setRadioGroupId (1);
+            // Активна только вкладка с toggle-состоянием: клавиатурный фокус не должен рисовать вторую обводку
+            t->setMouseClickGrabsKeyboardFocus (false);
+            t->setWantsKeyboardFocus (false);
         }
         kitTab.onClick = [this] { showMainTab (MainTab::Kit); };
         instrumentsTab.onClick = [this] { showMainTab (MainTab::Instruments); };

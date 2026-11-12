@@ -17,7 +17,7 @@
 | 6 | В1: фиксированные слоты микрофонов | готово | не закоммичено | Debug ctest 177/177; Release/pluginval не гонялись |
 | 7 | В2: параметры в audio thread, рампа | готово | см. git log | ctest Debug и Release 180/180; p99 блока 143→150 мкс. Ревью: minor — mute/solo двумя атомиками (упаковать в один uint64), рампа ровно на длину блока (ограничить ~512 отсчётов), pushParam без beginChangeGesture (запись автоматизации мышью в Cubase), нет тестов pushMicTargets/маски/панорамы — идут в шаг 8 |
 | 8 | Мелкие замечания 5-9 + minor ревью В2 | готово | см. git log | Debug ctest 194/194. Ревью code-reviewer идёт после коммита |
-| 9 | Вкладки (фокус), схему не трогать | в очереди | | |
+| 9 | Вкладки (фокус), схему не трогать | готово | см. git log | setMouseClickGrabsKeyboardFocus(false)+setWantsKeyboardFocus(false) у трёх вкладок (PluginEditor.cpp). Причина по коду, живьём не воспроизведена, снимок «до» не снят. Debug samplit-snapshot.exe падает 0xC00000FD (stack overflow?), Release работает — проверить |
 | 10 | Финал: ctest Debug+Release, pluginval, graphify, статус | в очереди | | |
 
 ## Вопросы пользователю (накапливаются)
