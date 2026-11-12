@@ -91,6 +91,7 @@ namespace samplit
     void SamplitProcessor::prepareToPlay (double sampleRate, int)
     {
         kitEngine.prepare (sampleRate);
+        patternPlayer.setSampleRate (sampleRate);
     }
 
     bool SamplitProcessor::isBusesLayoutSupported (const BusesLayout& layouts) const
@@ -217,10 +218,29 @@ namespace samplit
         }
         queueRead.store (r);
 
+        // Партия плагина: удары по расписанию, сливаются с MIDI по отсчёту блока (при равенстве раньше MIDI-событие)
+        std::array<PatternPlayer::Hit, PatternPlayer::kMaxHits> hits;
+        const int numHits = patternPlayer.process (numSamples, hits.data(), (int) hits.size());
+        int nextHit = 0;
+
         // MIDI: рендерим кусками между событиями, чтобы нота стартовала в нужном сэмпле
         int pos = 0;
+        auto playHitsBefore = [&] (int limit)
+        {
+            for (; nextHit < numHits && hits[(size_t) nextHit].offset < limit; ++nextHit)
+            {
+                const auto& h = hits[(size_t) nextHit];
+                const int at = juce::jlimit (pos, numSamples, h.offset);
+                if (at > pos)
+                    renderRange (pos, at);
+                pos = at;
+                kitEngine.setStrikePosition (h.seedPos, true);
+                noteOn (h.key, h.velocity);
+            }
+        };
         for (const auto meta : midi)
         {
+            playHitsBefore (meta.samplePosition);
             const auto msg = meta.getMessage();
             if (msg.isAllSoundOff() || msg.isAllNotesOff())
             {
@@ -242,6 +262,7 @@ namespace samplit
             kitEngine.setStrikePosition (transportStart + meta.samplePosition, transportValid);
             noteOn (msg.getNoteNumber(), msg.getVelocity());
         }
+        playHitsBefore (numSamples);
         if (numSamples > pos)
             renderRange (pos, numSamples);
 
@@ -284,6 +305,7 @@ namespace samplit
         {
             garbageTicks = 0;
             collectGarbage();
+            patternPlayer.collectGarbage();
         }
     }
 

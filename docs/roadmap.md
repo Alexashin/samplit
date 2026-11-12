@@ -33,7 +33,7 @@
 
 ## Дорожка P: редактор партии (по порядку, каждый шаг зависит от предыдущих)
 
-### P1. `PatternPlayer`: проигрывание партии в audio thread
+### P1. `PatternPlayer`: проигрывание партии в audio thread — СДЕЛАНО 12.11 (`plugin/PatternPlayer.*`, `tests/pattern_player_tests.cpp`, слияние с MIDI в `processBlock`; Debug `ctest` 214/214; ревью без блокеров). В P2 вызывать `setPattern` только из message thread; `prepareToPlay` зовёт `setSampleRate` (в хостах это message thread)
 - **Цель:** воспроизводить `Pattern` внутри плагина независимо от транспорта Cubase, с точностью до сэмпла.
 - **Файлы:** новые `plugin/PatternPlayer.h/.cpp`, `tests/pattern_player_tests.cpp`; правки `plugin/PluginProcessor.{h,cpp}` (`processBlock`), CMake.
 - **Инструкция:**

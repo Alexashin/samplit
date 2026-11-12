@@ -5,6 +5,7 @@
 #include "KitLoader.h"
 #include "LicenseManager.h"
 #include "PackCatalog.h"
+#include "PatternPlayer.h"
 #include "Setup.h"
 
 #include <juce_audio_processors/juce_audio_processors.h>
@@ -168,6 +169,7 @@ namespace samplit
         const DiskStreamer& getStreamer() const noexcept { return streamer; }
 
         // Message thread: сводка здоровья звука (обрывы, вытеснения, ошибки чтения) и её сброс; сброс идёт при смене кита
+        PatternPlayer& getPatternPlayer() noexcept { return patternPlayer; }
         StreamHealth getHealth() const { return kitEngine.getHealth(); }
         void resetHealth() { kitEngine.resetHealth(); }
         // Message thread: удаляет списанные киты, которые audio thread больше не использует (по факту, без ожидания по времени)
@@ -179,6 +181,7 @@ namespace samplit
 
         DiskStreamer streamer;      // раньше kitEngine: переживает его при разрушении
         KitEngine kitEngine;
+        PatternPlayer patternPlayer;
         struct Retired { std::shared_ptr<const Kit> kit; };
         std::vector<Retired> retired;
 
