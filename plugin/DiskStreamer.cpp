@@ -1,7 +1,5 @@
 #include "DiskStreamer.h"
 
-#include "samplit/core/Wav.h"
-
 #include <algorithm>
 #include <new>
 
@@ -18,7 +16,6 @@ namespace samplit
             blockPtr[(size_t) i].store (nullptr, std::memory_order_relaxed);
         blocks.reserve ((size_t) numBlocks);
         chunk.resize ((size_t) kChunkFrames);
-        scratch.resize ((size_t) kChunkFrames * 3);
 
         if (startThread)
             Thread::startThread (juce::Thread::Priority::high);
@@ -156,21 +153,27 @@ namespace samplit
 
     void DiskStreamer::setError (const Stream& s, const juce::String& what)
     {
-        const auto name = juce::File (juce::String::fromUTF8 (s.clip->path.c_str())).getFileName();
+        const auto name = juce::String::fromUTF8 (s.clip->source != nullptr ? s.clip->source->name().c_str() : "");
         const std::lock_guard<std::mutex> lock (errorMutex);
         lastError = name + " (" + what + ")";
     }
 
+    // Голос доиграет голову и затихнет как при недогрузке
+    void DiskStreamer::fail (Stream& s, const juce::String& what)
+    {
+        setError (s, what);
+        s.reader.reset();
+        s.failed.store (true, std::memory_order_release);
+        readErrors.fetch_add (1, std::memory_order_relaxed);
+    }
+
     void DiskStreamer::open (Stream& s)
     {
-        s.file = std::make_unique<juce::FileInputStream> (juce::File (juce::String::fromUTF8 (s.clip->path.c_str())));
-        if (s.file->failedToOpen())
-        {
-            setError (s, juce::String::fromUTF8 ("файл не открылся"));
-            s.file.reset();
-            s.failed.store (true, std::memory_order_release);
-            readErrors.fetch_add (1, std::memory_order_relaxed);     // голос доиграет голову и затихнет как при недогрузке
-        }
+        std::string err;
+        if (s.clip->source != nullptr)
+            s.reader = s.clip->source->open (err);
+        if (s.reader == nullptr)
+            fail (s, err.empty() ? juce::String::fromUTF8 ("файл не открылся") : juce::String::fromUTF8 (err.c_str()));
     }
 
     bool DiskStreamer::readChunk (Stream& s, int index)
@@ -182,12 +185,10 @@ namespace samplit
         if (n <= 0 || written + n > consumed + kRingFrames)
             return false;
 
-        if (! pack::readWav24 (*s.file, s.clip->dataOffset + written * 3, (int) n, chunk.data(), scratch))
+        std::string err;
+        if (! s.reader->read (written, (int) n, chunk.data(), err))
         {
-            setError (s, juce::String::fromUTF8 ("ошибка чтения"));
-            s.file.reset();         // дальше этот голос не читается: он затихнет как при недогрузке
-            s.failed.store (true, std::memory_order_release);
-            readErrors.fetch_add (1, std::memory_order_relaxed);
+            fail (s, err.empty() ? juce::String::fromUTF8 ("ошибка чтения") : juce::String::fromUTF8 (err.c_str()));
             return false;
         }
         float* ring = blockPtr[(size_t) (index / blockSlots)].load (std::memory_order_relaxed) + (size_t) (index % blockSlots) * kRingFrames;
@@ -219,11 +220,11 @@ namespace samplit
             }
             else if (state == Released)
             {
-                s.file.reset();
+                s.reader.reset();
                 s.state.store (Free, std::memory_order_release);
                 worked = true;
             }
-            else if (state == Active && s.file != nullptr)
+            else if (state == Active && s.reader != nullptr)
             {
                 const int64_t written = s.written.load (std::memory_order_relaxed);
                 const int64_t consumed = s.consumed.load (std::memory_order_acquire);

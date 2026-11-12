@@ -104,7 +104,7 @@ namespace samplit
             std::atomic<int64_t> written { 0 };
             std::atomic<int64_t> consumed { 0 };
             std::atomic<bool> failed { false };     // файл не открылся или не читается: хвоста не будет
-            std::unique_ptr<juce::FileInputStream> file;    // только поток чтения
+            std::unique_ptr<ClipReader> reader;     // только поток чтения (файл WAV или куски хвоста пакета)
         };
 
         void run() override;
@@ -112,6 +112,7 @@ namespace samplit
         bool ensureCapacity();
         bool allocateBlock();
         void setError (const Stream&, const juce::String& what);
+        void fail (Stream&, const juce::String& what);
         void open (Stream&);
         bool readChunk (Stream&, int index);
 
@@ -125,7 +126,6 @@ namespace samplit
         std::atomic<bool> needBlock { false };                      // acquire отказал: поток чтения должен срочно выделить блок
         std::atomic<bool> allocFailed { false };                    // пишет только поток чтения (или reserve без потока), читает кто угодно
         std::vector<float> chunk;
-        std::vector<uint8_t> scratch;
         int nextFree = 0;                       // подсказка для acquire, только audio thread
 
         mutable std::mutex errorMutex;          // audio thread его не берёт

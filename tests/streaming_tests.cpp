@@ -1,6 +1,7 @@
 #include "DiskStreamer.h"
 #include "KitEngine.h"
 #include "KitLoader.h"
+#include "PackSource.h"
 #include "spec_helper.h"
 
 #include "samplit/core/Pack.h"
@@ -10,7 +11,9 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <chrono>
 #include <cmath>
+#include <thread>
 #include <fstream>
 
 using namespace samplit;
@@ -783,7 +786,10 @@ TEST_CASE ("loadKit keeps only the head of a long local WAV and describes the ta
 
     REQUIRE (b.isStreamed());
     CHECK (b.frames() == 49000);
-    CHECK (b.dataOffset == a.dataOffset + 1000 * 3);
+    const auto* wa = dynamic_cast<const WavSource*> (a.source.get());
+    const auto* wb = dynamic_cast<const WavSource*> (b.source.get());
+    REQUIRE ((wa != nullptr && wb != nullptr));
+    CHECK (wb->dataOffset == wa->dataOffset + 1000 * 3);
     CHECK (std::equal (b.f32.begin(), b.f32.end(), floats.begin() + 1000));
 
     CHECK (res.memoryBytes == 2 * 4410 * 4);
@@ -843,4 +849,204 @@ TEST_CASE ("an unreadable file does not stall the offline render", "[stream]")
     for (float v : out)
         REQUIRE (std::isfinite (v));
     CHECK (engine.getNumActiveStrikes() == 0);
+}
+
+// ---------------------------------------------------------------- хвост из пакета v2 (PackSource)
+
+namespace
+{
+    struct TailKit
+    {
+        juce::File dir, file;
+        pack::PackKey key = pack::generateKey();
+        KitLoadResult res;
+        ClipPtr clip() const { return res.kit->pieces[0].hits[0].files[0].clip; }
+    };
+
+    // Пак v2 с одним ударом из samples (голова head, куски chunk) и кит, загруженный через loadKit
+    void writeTailPack (TailKit& t, const juce::String& id, const std::vector<int32_t>& samples, int head, int chunk)
+    {
+        t.dir = juce::File::getSpecialLocation (juce::File::tempDirectory).getChildFile ("samplit-tests").getChildFile ("streaming-pack").getChildFile (id);
+        t.dir.deleteRecursively();
+        t.dir.createDirectory();
+        t.file = t.dir.getChildFile (id + ".splpack");
+
+        juce::String error;
+        auto w = pack::PackWriter::create (t.file, id, t.key, error, pack::kFormatVersionTail);
+        REQUIRE (w != nullptr);
+
+        pack::DecodedAudio a;
+        a.sampleRate = 44100.0;
+        a.frames = (int) samples.size();
+        a.samples = samples;
+
+        pack::Manifest m;
+        m.id = id;
+        m.mics = { { "kick_in", "Kick In", "close", 0 } };
+        pack::Piece p;
+        p.id = "kick";
+        p.name = "kick";
+        p.keys = { 36 };
+        p.layers = { { "all", "center", 1, 127 } };
+        pack::Hit h;
+        h.id = "h0";
+        h.layer = "all";
+        h.key = 36;
+        REQUIRE (w->addClip (a, head, chunk, h.files["kick_in"], error));
+        p.hits = { h };
+        m.pieces.push_back (p);
+        REQUIRE (w->finish (m, error));
+    }
+
+    KitLoadResult loadTailKit (const TailKit& t, const juce::String& id, std::atomic<bool>* cancel = nullptr)
+    {
+        KitLoadOptions o;
+        o.packDir = t.dir;
+        o.threads = 2;
+        o.cancel = cancel;
+        const auto key = t.key;
+        o.keyFor = [key] (const juce::String&, pack::PackKey& out) { out = key; return true; };
+        return loadKit (testspec::oneSpec (id, "kick", 36), o);
+    }
+
+    void loadTail (TailKit& t, const juce::String& id, const std::vector<int32_t>& samples, int head, int chunk)
+    {
+        writeTailPack (t, id, samples, head, chunk);
+        t.res = loadTailKit (t, id);
+        REQUIRE (t.res.ok());
+    }
+
+    std::vector<float> playClip (ClipPtr clip, int frames, bool offline = false)
+    {
+        DiskStreamer streamer (false);
+        KitEngine engine;
+        engine.setStreamer (&streamer);
+        engine.prepare (44100.0);
+        const auto kit = oneHitKit (clip);
+        engine.setKit (kit.get());
+        REQUIRE (engine.noteOn (60, 100).voices == 1);
+        const auto out = playBlocks (engine, frames / kBlock + 6, &streamer);
+        CHECK (streamer.underruns.load() == 0);
+        CHECK (streamer.readErrors.load() == 0);
+        CHECK (engine.getNumActiveStrikes() == 0);
+        (void) offline;
+        return out;
+    }
+}
+
+TEST_CASE ("pack v2 loader keeps only the head in memory and streams the tail bit exact", "[stream][pack][loader]")
+{
+    TailKit t;
+    const auto samples = noise24 (kTotal);
+    loadTail (t, "tail-ram", samples, 4000, 4096);
+
+    const auto clip = t.clip();
+    REQUIRE (clip->isStreamed());
+    CHECK (clip->f32.size() == 4000);
+    CHECK (clip->frames() == kTotal);
+    CHECK (dynamic_cast<const PackSource*> (clip->source.get()) != nullptr);
+    CHECK (t.res.memoryBytes == 4000 * 4);
+    const auto floats = toFloats (samples);
+    CHECK (std::equal (clip->f32.begin(), clip->f32.end(), floats.begin()));
+
+    const auto streamed = playClip (clip, kTotal);
+    CHECK (streamed == referenceRender (samples, 44100.0, kTotal / kBlock + 6));
+}
+
+TEST_CASE ("pack v2 tail chunk boundaries", "[stream][pack]")
+{
+    const int head = 4000, chunk = 4096;
+    // хвост кратный chunk, не кратный, один кусок, один кадр, меньше kChunkFrames, больше кольца
+    const std::vector<int> lengths { head + 3 * chunk, head + 2 * chunk + 777, head + chunk, head + 2 * chunk + 1, head + 5000, 70001 };
+    int n = 0;
+    for (const int len : lengths)
+    {
+        INFO ("length " << len);
+        TailKit t;
+        const auto samples = noise24 (len);
+        loadTail (t, "tail-edge" + juce::String (n++), samples, head, chunk);
+        const auto clip = t.clip();
+        REQUIRE (clip->isStreamed());
+        CHECK (clip->frames() == len);
+        CHECK (playClip (clip, len) == referenceRender (samples, 44100.0, len / kBlock + 6));
+    }
+}
+
+TEST_CASE ("pack v2 clip without tail stays whole in memory", "[stream][pack][loader]")
+{
+    TailKit t;
+    loadTail (t, "tail-none", noise24 (3000), 4000, 4096);      // не длиннее головы: целый блок
+    CHECK_FALSE (t.clip()->isStreamed());
+    CHECK (t.clip()->f32.size() == 3000);
+}
+
+TEST_CASE ("a damaged pack tail chunk stops the voice without a crash", "[stream][pack]")
+{
+    TailKit t;
+    const auto samples = noise24 (kTotal);
+    writeTailPack (t, "tail-bad", samples, 4000, 4096);
+    {
+        juce::FileOutputStream out (t.file);        // последний байт файла: тег последнего куска хвоста
+        REQUIRE (! out.failedToOpen());
+        REQUIRE (out.setPosition (t.file.getSize() - 1));
+        out.writeByte ((char) 0x5A);
+    }
+    t.res = loadTailKit (t, "tail-bad");
+    REQUIRE (t.res.ok());       // голова целая
+
+    DiskStreamer streamer (false);
+    KitEngine engine;
+    engine.setStreamer (&streamer);
+    engine.prepare (44100.0);
+    const auto kit = oneHitKit (t.clip());
+    engine.setKit (kit.get());
+    REQUIRE (engine.noteOn (60, 100).voices == 1);
+    const auto out = playBlocks (engine, 160, &streamer);
+    for (float v : out)
+        REQUIRE (std::isfinite (v));
+    const auto h = engine.getHealth();
+    CHECK (h.readErrors >= 1);
+    CHECK (h.underruns == 1);
+    CHECK (h.lastError.contains ("tail-bad"));
+    CHECK (out.back() == 0.0f);
+    CHECK (engine.getNumActiveStrikes() == 0);
+}
+
+TEST_CASE ("a pack kit can be dropped while the streamer thread reads its tail", "[stream][pack]")
+{
+    TailKit t;
+    loadTail (t, "tail-drop", noise24 (kTotal), 4000, 4096);
+
+    DiskStreamer streamer (true);
+    KitEngine engine;
+    engine.setStreamer (&streamer);
+    engine.prepare (44100.0);
+    auto kit = oneHitKit (t.clip());
+    engine.setKit (kit.get());
+    REQUIRE (engine.noteOn (60, 100).voices == 1);
+    playBlocks (engine, 3, nullptr);
+
+    engine.setKit (nullptr);
+    engine.prepare (44100.0);       // удары отпущены
+    const Kit* raw = kit.get();
+    for (int i = 0; i < 1000 && streamer.isUsing (raw); ++i)
+        std::this_thread::sleep_for (std::chrono::milliseconds (2));
+    CHECK_FALSE (streamer.isUsing (raw));
+
+    // Кит, клип и читатель пакета уходят, пока поток чтения жив
+    kit.reset();
+    t.res = {};
+    std::this_thread::sleep_for (std::chrono::milliseconds (20));
+    streamer.shutdown();
+    CHECK (streamer.readErrors.load() == 0);
+}
+
+TEST_CASE ("cancelling a load of a pack with tails returns no kit", "[stream][pack][loader]")
+{
+    TailKit t;
+    writeTailPack (t, "tail-cancel", noise24 (kTotal), 4000, 4096);
+    std::atomic<bool> cancel { true };
+    const auto res = loadTailKit (t, "tail-cancel", &cancel);
+    CHECK_FALSE (res.ok());
+    CHECK (res.cancelled);
 }

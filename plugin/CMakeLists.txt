@@ -32,6 +32,8 @@ set(SAMPLIT_ENGINE_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/Interpolation.h
     ${CMAKE_CURRENT_SOURCE_DIR}/DiskStreamer.h
     ${CMAKE_CURRENT_SOURCE_DIR}/DiskStreamer.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/ClipSource.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/PackSource.h
     ${CMAKE_CURRENT_SOURCE_DIR}/KitEngine.h
     ${CMAKE_CURRENT_SOURCE_DIR}/KitEngine.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/KitLoader.h

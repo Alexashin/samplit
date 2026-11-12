@@ -16,16 +16,44 @@ namespace samplit
     constexpr int kFirstStereoOutput = 8;
     constexpr bool isStereoOutput (int out) noexcept { return out >= kFirstStereoOutput && out <= kNumOutputs; }
 
+    // Хвост потокового клипа. Читает только поток DiskStreamer (не audio thread). Источник общий для всех голосов
+    // клипа и после публикации не меняется; состояние чтения (файл, кэш куска) живёт в ClipReader, по одному на ячейку
+    struct ClipReader
+    {
+        virtual ~ClipReader() = default;
+        // n кадров области клипа с кадра frame в out (float32, 24 бит / 8388608). false: error объясняет причину
+        virtual bool read (int64_t frame, int n, float* out, std::string& error) = 0;
+    };
+
+    struct ClipSource
+    {
+        virtual ~ClipSource() = default;
+        // Поток чтения: открыть источник под одну ячейку. nullptr: не открылся (error)
+        virtual std::unique_ptr<ClipReader> open (std::string& error) const = 0;
+        virtual std::string name() const = 0;       // для сообщения об ошибке, без секретов
+    };
+
+    // Длинный 24-битный моно WAV: хвост читается с диска. dataOffset: байт файла, с которого начинается область (учтён start)
+    struct WavSource final : ClipSource
+    {
+        WavSource (std::string p, int64_t offset) : path (std::move (p)), dataOffset (offset) {}
+        std::unique_ptr<ClipReader> open (std::string& error) const override;
+        std::string name() const override;
+
+        std::string path;       // UTF-8
+        int64_t dataOffset = 0;
+    };
+
     // Декодированный моно-файл удара: float32, 24 бит без потерь (значение / 8388608).
-    // Целиком в f32, либо (потоковый клип, totalFrames > f32.size()) только голова, а остальное движок читает с диска
-    // из WAV по path через DiskStreamer. После публикации не меняется, поэтому его можно читать из audio thread.
+    // Целиком в f32, либо (потоковый клип, totalFrames > f32.size()) только голова, а остальное движок читает
+    // через source (WAV с диска или куски хвоста пакета) через DiskStreamer. После публикации не меняется,
+    // поэтому его можно читать из audio thread. source держит всё, что нужно хвосту (читатель пакета), пока клип жив.
     struct DecodedClip
     {
         std::vector<float> f32;         // клип целиком или его голова
         double sampleRate = 44100.0;
-        int totalFrames = 0;            // 0: клип целиком в f32; иначе полная длина области (голова + хвост на диске)
-        std::string path;               // потоковый клип: WAV (UTF-8)
-        int64_t dataOffset = 0;         // потоковый клип: байт файла, с которого начинается область (учтён start)
+        int totalFrames = 0;            // 0: клип целиком в f32; иначе полная длина области (голова + хвост вне памяти)
+        std::shared_ptr<const ClipSource> source;   // потоковый клип: откуда читать хвост
         std::string sourceKey;          // откуда клип (пак, блок, обрезка): по нему загрузчик переиспользует клип в новом ките
 
         int frames() const noexcept { return totalFrames > 0 ? totalFrames : (int) f32.size(); }
@@ -42,7 +70,7 @@ namespace samplit
         }
 
         static std::shared_ptr<const DecodedClip> fromStream (std::vector<float> head, int total, double rate,
-                                                              std::string path, int64_t dataOffset,
+                                                              std::shared_ptr<const ClipSource> source,
                                                               std::string sourceKey = {})
         {
             auto c = std::make_shared<DecodedClip>();
@@ -50,9 +78,16 @@ namespace samplit
             c->f32 = std::move (head);
             c->totalFrames = total;
             c->sampleRate = rate;
-            c->path = std::move (path);
-            c->dataOffset = dataOffset;
+            c->source = std::move (source);
             return c;
+        }
+
+        static std::shared_ptr<const DecodedClip> fromStream (std::vector<float> head, int total, double rate,
+                                                              std::string path, int64_t dataOffset,
+                                                              std::string sourceKey = {})
+        {
+            return fromStream (std::move (head), total, rate, std::make_shared<WavSource> (std::move (path), dataOffset),
+                               std::move (sourceKey));
         }
     };
 

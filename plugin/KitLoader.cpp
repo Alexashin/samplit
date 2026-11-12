@@ -2,6 +2,7 @@
 #include "Setup.h"
 #include "Studio600Names.h"
 #include "DiskStreamer.h"
+#include "PackSource.h"
 
 #include "samplit/core/Wav.h"
 
@@ -39,7 +40,7 @@ namespace samplit
         struct LoadedPack
         {
             juce::String id;
-            std::unique_ptr<pack::PackReader> reader;
+            std::shared_ptr<pack::PackReader> reader;     // делится с PackSource потоковых клипов
             pack::PackKey key {};
             pack::Manifest manifest;
             juce::File libraryRoot;                 // не пусто: режим локальной библиотеки, reader нет
@@ -114,7 +115,7 @@ namespace samplit
                             return nullptr;
                         }
                         return DecodedClip::fromStream (std::move (head), (int) (to - from), info.sampleRate,
-                                                        file.getFullPathName().toStdString(), info.dataOffset + from * 3,
+                                                        std::make_shared<WavSource> (file.getFullPathName().toStdString(), info.dataOffset + from * 3),
                                                         std::move (sourceKey));
                     }
                 }
@@ -125,7 +126,7 @@ namespace samplit
                     return nullptr;
                 return DecodedClip::fromFloat (pack::toFloat24 (audio), audio.sampleRate, std::move (sourceKey));
             }
-            // Файл с хвостом (формат v2) собираем целиком: голова + куски. Стриминг хвоста из пакета подключит следующий шаг
+            // Файл с хвостом (формат v2): в памяти только голова, куски хвоста потом читает DiskStreamer (PackSource)
             if (std::get<4> (key) >= 0)
             {
                 pack::HitFile whole;
@@ -134,10 +135,25 @@ namespace samplit
                 whole.frames = std::get<5> (key);
                 whole.chunkFrames = std::get<6> (key);
                 whole.headFrames = std::get<7> (key);
-                if (! pk.reader->decodeWhole (pk.key, whole, audio, error))
+
+                juce::String tailError;
+                if (! pack::checkTailFields (whole, pk.reader->getChunkCount(), tailError))
+                {
+                    error = tailError;
                     return nullptr;
+                }
+                if (! pk.reader->decodeChunk (pk.key, whole.chunk, audio, error))
+                    return nullptr;
+                if (audio.channels != 1 || audio.frames != whole.headFrames)
+                {
+                    error = "длина головы не совпадает с манифестом"_s;
+                    return nullptr;
+                }
+                return DecodedClip::fromStream (pack::toFloat24 (audio), whole.frames, audio.sampleRate,
+                                                std::make_shared<PackSource> (pk.reader, pk.key, whole, pk.id.toStdString()),
+                                                std::move (sourceKey));
             }
-            else if (! pk.reader->decodeChunk (pk.key, std::get<1> (key), audio, error))
+            if (! pk.reader->decodeChunk (pk.key, std::get<1> (key), audio, error))
                 return nullptr;
             if (audio.channels != 1)
             {
