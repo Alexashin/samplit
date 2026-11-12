@@ -51,6 +51,9 @@ namespace samplit
         std::optional<PlacePalette> stepPartner (const Row&, int step) const;
         void showStrengthMenu (int row, int step);      // step < 0: только сила строки
         void setBars (int bars);
+        void saveJson();
+        void openJson();
+        void saveMidi();
         int optionFor (const Row&, const PatternStep&) const;   // индекс в палитре или -1
         const Row* partnerFor (const Row&, const StrengthOption&) const;    // партнёр пары для варианта или nullptr
         juce::String pairHint (const Row&) const;                           // подсказка переключателя «вместе»
@@ -67,7 +70,8 @@ namespace samplit
         juce::Label barsLabel, tempoLabel, timingLabel, velLabel, hint, emptyState;
         juce::TextButton barButtons[Pattern::kMaxBars];
         juce::Slider tempo, humanTiming, humanVel;
-        juce::TextButton playButton, loopButton, clearButton, variantButton;
+        juce::TextButton playButton, loopButton, clearButton, variantButton, saveButton, openButton, midiButton;
+        std::unique_ptr<juce::FileChooser> chooser;
         juce::Component labelsClip;                     // обрезает подписи строк при вертикальной прокрутке
         std::unique_ptr<Labels> labels;
         std::unique_ptr<Grid> grid;

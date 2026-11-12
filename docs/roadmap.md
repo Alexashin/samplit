@@ -90,7 +90,7 @@
 - **Проверка пользователем в Cubase:** перетаскивание, velocity и сдвиги в MIDI совпадают с тем, что играет плагин (хуманайз запечён в тики, тест `pattern: midi file…` уже есть).
 - **Модель:** Sonnet.
 
-### P7. Файлы партии, Release и проверка
+### P7. Файлы партии, Release и проверка — СДЕЛАНО 12.11 (кнопки «Сохранить…», «Открыть…», «MIDI…» во второй строке панели; Debug и Release `ctest` 223/223, pluginval strictness 5 без GUI SUCCESS; диалоги файлов и Cubase вживую не проверены)
 - Кнопки «Сохранить партию…» / «Открыть партию…» (`.json` через `Pattern::toJson/fromJson`, `juce::FileChooser` асинхронно), «Сохранить MIDI…». Release-сборка, `ctest` Debug и Release, `pluginval` strictness 5 без GUI (`C:\Users\artem\tools\pluginval\pluginval.exe`; GUI-версию пользователь запускает сам), снимки, обновление `current-status.md`, `user-stories.md`, `phrase-editor-spec.md`. Чек-лист Cubase для пользователя: нарисовать, послушать, перетащить, закрыть и открыть проект (партия сохранилась), экспорт двух одинаковых миксдаунов совпадает.
 
 ---

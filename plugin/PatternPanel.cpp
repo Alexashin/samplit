@@ -439,6 +439,21 @@ namespace samplit
         };
         addAndMakeVisible (variantButton);
 
+        saveButton.setButtonText (utf8 ("Сохранить…"));
+        saveButton.setTooltip (utf8 ("Записать партию в файл .json"));
+        saveButton.onClick = [this] { saveJson(); };
+        openButton.setButtonText (utf8 ("Открыть…"));
+        openButton.setTooltip (utf8 ("Загрузить партию из файла .json (текущая партия будет заменена)"));
+        openButton.onClick = [this] { openJson(); };
+        midiButton.setButtonText (utf8 ("MIDI…"));
+        midiButton.setTooltip (utf8 ("Сохранить партию как файл .mid (то же, что перетаскивание в Cubase)"));
+        midiButton.onClick = [this] { saveMidi(); };
+        for (auto* b : { &saveButton, &openButton, &midiButton })
+        {
+            b->setWantsKeyboardFocus (false);
+            addAndMakeVisible (b);
+        }
+
         playButton.setTooltip (utf8 ("Сыграть партию с начала или остановить"));
         playButton.onClick = [this]
         {
@@ -636,6 +651,8 @@ namespace samplit
         playButton.setToggleState (playing, juce::dontSendNotification);
         loopButton.setToggleState (processor.getPatternPlayer().isLooping(), juce::dontSendNotification);
         clearButton.setEnabled (! pattern.steps.empty());
+        saveButton.setEnabled (! pattern.steps.empty());
+        midiButton.setEnabled (! pattern.steps.empty());
 
         emptyState.setVisible (rows.empty());
         viewport.setVisible (! rows.empty());
@@ -820,6 +837,68 @@ namespace samplit
         });
     }
 
+    void PatternPanel::saveJson()
+    {
+        chooser = std::make_unique<juce::FileChooser> (utf8 ("Сохранить партию"),
+                                                       juce::File::getSpecialLocation (juce::File::userDocumentsDirectory).getChildFile ("Samplit-партия.json"), "*.json");
+        chooser->launchAsync (juce::FileBrowserComponent::saveMode | juce::FileBrowserComponent::canSelectFiles | juce::FileBrowserComponent::warnAboutOverwriting,
+                              [safe = juce::Component::SafePointer<PatternPanel> (this)] (const juce::FileChooser& fc)
+                              {
+                                  auto f = fc.getResult();
+                                  if (safe == nullptr || f == juce::File())
+                                      return;
+                                  f = f.withFileExtension ("json");
+                                  if (! f.replaceWithText (safe->processor.getPattern().toJson(), false, false, "\n"))
+                                      juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon, utf8 ("Партия"),
+                                                                              utf8 ("Не удалось записать файл: ") + f.getFullPathName());
+                              });
+    }
+
+    void PatternPanel::openJson()
+    {
+        chooser = std::make_unique<juce::FileChooser> (utf8 ("Открыть партию"),
+                                                       juce::File::getSpecialLocation (juce::File::userDocumentsDirectory), "*.json");
+        chooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
+                              [safe = juce::Component::SafePointer<PatternPanel> (this)] (const juce::FileChooser& fc)
+                              {
+                                  const auto f = fc.getResult();
+                                  if (safe == nullptr || ! f.existsAsFile())
+                                      return;
+                                  Pattern p;
+                                  juce::String error;
+                                  if (! Pattern::fromJson (f.loadFileAsString(), p, error))
+                                  {
+                                      juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon, utf8 ("Партия"),
+                                                                              utf8 ("Файл не похож на партию Samplit: ") + error);
+                                      return;
+                                  }
+                                  safe->trimmed.clear();
+                                  safe->processor.setPattern (p);
+                                  safe->refresh();
+                              });
+    }
+
+    void PatternPanel::saveMidi()
+    {
+        const auto pat = processor.getPattern();
+        const auto name = "Samplit-" + juce::String (pat.bars) + "t-" + juce::String (juce::roundToInt (pat.bpm)) + "bpm.mid";
+        chooser = std::make_unique<juce::FileChooser> (utf8 ("Сохранить партию как MIDI"),
+                                                       juce::File::getSpecialLocation (juce::File::userDocumentsDirectory).getChildFile (name), "*.mid");
+        chooser->launchAsync (juce::FileBrowserComponent::saveMode | juce::FileBrowserComponent::canSelectFiles | juce::FileBrowserComponent::warnAboutOverwriting,
+                              [safe = juce::Component::SafePointer<PatternPanel> (this)] (const juce::FileChooser& fc)
+                              {
+                                  auto f = fc.getResult();
+                                  if (safe == nullptr || f == juce::File())
+                                      return;
+                                  f = f.withFileExtension ("mid");
+                                  f.deleteFile();
+                                  juce::FileOutputStream out (f);
+                                  if (! out.openedOk() || ! safe->processor.getPattern().toMidiFile().writeTo (out))
+                                      juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon, utf8 ("Партия"),
+                                                                              utf8 ("Не удалось записать файл: ") + f.getFullPathName());
+                              });
+    }
+
     void PatternPanel::setBars (int bars)
     {
         bars = juce::jlimit (1, Pattern::kMaxBars, bars);
@@ -895,13 +974,18 @@ namespace samplit
         area.removeFromTop (kGap);
         timingLabel.setBounds (bar2.removeFromLeft (90));
         bar2.removeFromLeft (6);
-        humanTiming.setBounds (bar2.removeFromLeft (200));
+        humanTiming.setBounds (bar2.removeFromLeft (150));
         bar2.removeFromLeft (14);
         velLabel.setBounds (bar2.removeFromLeft (60));
         bar2.removeFromLeft (6);
-        humanVel.setBounds (bar2.removeFromLeft (200));
+        humanVel.setBounds (bar2.removeFromLeft (150));
         bar2.removeFromLeft (14);
-        variantButton.setBounds (bar2.removeFromLeft (130));
+        variantButton.setBounds (bar2.removeFromLeft (124));
+        midiButton.setBounds (bar2.removeFromRight (64));
+        bar2.removeFromRight (6);
+        openButton.setBounds (bar2.removeFromRight (80));
+        bar2.removeFromRight (6);
+        saveButton.setBounds (bar2.removeFromRight (92));
 
         barsLabel.setBounds (bar.removeFromLeft (52));
         bar.removeFromLeft (6);
