@@ -241,6 +241,7 @@ namespace samplit
 
     MixerPanel::~MixerPanel()
     {
+        processor.closeAllGestures();
         processor.removeChangeListener (this);
     }
 
@@ -261,6 +262,7 @@ namespace samplit
     void MixerPanel::rebuild()
     {
         kit = processor.getKit();
+        processor.closeAllGestures();     // старые ползунки уничтожаются: onDragEnd не придёт
         strips.clear();
         if (kit != nullptr)
             for (int i = 0; i < (int) kit->mics.size(); ++i)

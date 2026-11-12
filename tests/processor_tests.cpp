@@ -283,6 +283,55 @@ TEST_CASE ("processor: UI edits write the host parameter inside a gesture, timer
     p.removeListener (&c);
 }
 
+TEST_CASE ("processor: closeAllGestures closes every open gesture (begin/end are paired)", "[processor][mixer]")
+{
+    struct Counter final : juce::AudioProcessorListener
+    {
+        void audioProcessorParameterChanged (juce::AudioProcessor*, int, float) override {}
+        void audioProcessorChanged (juce::AudioProcessor*, const ChangeDetails&) override {}
+        void audioProcessorParameterChangeGestureBegin (juce::AudioProcessor*, int) override { ++begins; }
+        void audioProcessorParameterChangeGestureEnd (juce::AudioProcessor*, int) override { ++ends; }
+        int begins = 0, ends = 0;
+    } c;
+
+    SamplitProcessor p;
+    p.addListener (&c);
+    p.beginMicGesture (0, false);
+    p.beginMicGesture (3, true);
+    CHECK (c.begins == 2);
+    CHECK (c.ends == 0);
+    p.closeAllGestures();
+    CHECK (c.ends == 2);
+    p.closeAllGestures();                                // повторно ничего не делает
+    p.endMicGesture (0, false);                          // и поздний onDragEnd не даёт лишний end
+    CHECK (c.begins == 2);
+    CHECK (c.ends == 2);
+    p.removeListener (&c);
+}
+
+TEST_CASE ("processor: after bypass the first block takes the mix target without a ramp", "[processor][mixer]")
+{
+    KitFixture f;
+    f.processor.setMultiOut (false);
+    f.processor.setKit (makeWideKit());
+    for (int slot : { 0, 1 })
+        neutralMix (f.processor, slot, true);
+    neutralMix (f.processor, 16);
+    juce::MidiBuffer none;
+    f.play (36);
+    f.run (none);                                        // движок «прогрет» старой панорамой
+
+    juce::AudioBuffer<float> buffer (f.processor.getTotalNumOutputChannels(), kFixtureBlock);
+    juce::MidiBuffer midi;
+    f.processor.processBlockBypassed (buffer, midi);
+    SamplitProcessor::MicState m;
+    m.pan = -1.0f;
+    f.processor.setMicState (16, m);
+    f.play (36);
+    const auto out = f.run (none);
+    CHECK (std::abs (out.getSample (1, 0)) < 0.01f);     // сразу цель, не рампа от старого значения
+}
+
 TEST_CASE ("processor: notes queued while the audio thread stood still are not played as a volley", "[processor]")
 {
     KitFixture f;

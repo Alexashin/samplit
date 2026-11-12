@@ -126,6 +126,8 @@ namespace samplit
         // Message thread: жест мыши на ползунке (пока он удерживается, параметр хоста не закрывает gesture между тиками)
         void beginMicGesture (int mic, bool pan);
         void endMicGesture (int mic, bool pan);
+        // Message thread: закрывает все открытые gesture (редактор закрыт или полосы микшера пересозданы: onDragEnd не придёт)
+        void closeAllGestures();
 
         // ---- Режим выходов: false = «Стерео» (все микрофоны в Main с панорамой), true = «Мульти-аут» (каждый микрофон на
         // свой выход, как выбрано в микшере; выключенный в DAW выход играет в Main). Хранится в проекте ----

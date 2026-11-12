@@ -205,7 +205,9 @@ int main (int argc, char** argv)
 
     if (argc > 2 && juce::String (argv[2]) == "--installed")
     {
-        SamplitProcessor processor;
+        // В куче: объект процессора (движок с 256 ударами) не помещается в стек 1 МБ в Debug
+        auto processorHeap = std::make_unique<SamplitProcessor>();
+        auto& processor = *processorHeap;
         processor.prepareToPlay (48000.0, 512);
         auto m = std::make_unique<LicenseManager> (LicenseManager::defaultConfig());
         pumpUntil ([&] { return ! m->getInfo().busy; });
@@ -263,7 +265,9 @@ int main (int argc, char** argv)
 
     // 1. Нет лицензии: пакеты закрыты, поле активации
     {
-        SamplitProcessor processor;
+        // В куче: объект процессора (движок с 256 ударами) не помещается в стек 1 МБ в Debug
+        auto processorHeap = std::make_unique<SamplitProcessor>();
+        auto& processor = *processorHeap;
         processor.prepareToPlay (44100.0, 512);
         processor.setLicenseManager (manager (noLicense, fingerprint));
         failures += shoot (processor, outDir.getChildFile ("01-no-license.png"), 1180, 780) ? 0 : 1;
@@ -271,7 +275,9 @@ int main (int argc, char** argv)
 
     // 2-4. С лицензией: до применения установки, с загруженным китом, в узком окне
     {
-        SamplitProcessor processor;
+        // В куче: объект процессора (движок с 256 ударами) не помещается в стек 1 МБ в Debug
+        auto processorHeap = std::make_unique<SamplitProcessor>();
+        auto& processor = *processorHeap;
         processor.prepareToPlay (44100.0, 512);
         processor.setLicenseManager (manager (withLicense, fingerprint));
         failures += shoot (processor, outDir.getChildFile ("02-licensed-empty.png"), 1180, 780) ? 0 : 1;

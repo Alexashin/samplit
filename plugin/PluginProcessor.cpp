@@ -74,6 +74,7 @@ namespace samplit
 
     SamplitProcessor::~SamplitProcessor()
     {
+        closeAllGestures();
         for (auto* p : levelParams)
             p->removeListener (this);
         for (auto* p : panParams)
@@ -736,6 +737,15 @@ namespace samplit
             return;
         gestureOpen[(size_t) (mic * 2 + (pan ? 1 : 0))] = false;
         (pan ? static_cast<juce::AudioProcessorParameter*> (panParams[(size_t) mic]) : levelParams[(size_t) mic])->endChangeGesture();
+    }
+
+    void SamplitProcessor::closeAllGestures()
+    {
+        for (int mic = 0; mic < kAutomatedMics; ++mic)
+        {
+            endMicGesture (mic, false);
+            endMicGesture (mic, true);
+        }
     }
 
     // Микшер → параметр хоста (только если значение действительно другое: без лишних уведомлений)

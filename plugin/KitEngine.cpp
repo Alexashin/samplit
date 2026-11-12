@@ -117,6 +117,7 @@ namespace samplit
     {
         for (int i = 0; i < kMaxStrikes; ++i)
             release (i);
+        mixPrimed = false;      // bypass/остановка: curLevel/curPan устарели, первый блок после них берёт цель без рампы
     }
 
     void KitEngine::fadeAll() noexcept
