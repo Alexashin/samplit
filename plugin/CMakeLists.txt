@@ -46,6 +46,8 @@ set(SAMPLIT_ENGINE_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/Pattern.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/PatternPlayer.h
     ${CMAKE_CURRENT_SOURCE_DIR}/PatternPlayer.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/PatternPalette.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/PatternPalette.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/PackCatalog.h
     ${CMAKE_CURRENT_SOURCE_DIR}/PackCatalog.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/PluginProcessor.h

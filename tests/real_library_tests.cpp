@@ -2,6 +2,7 @@
 #include "KitEngine.h"
 #include "KitLoader.h"
 #include "PackCatalog.h"
+#include "PatternPalette.h"
 #include "PluginProcessor.h"
 
 #include <catch2/catch_test_macros.hpp>
@@ -548,4 +549,34 @@ TEST_CASE ("real packs v2: chords of many cells, one streamer thread", "[.realli
     CHECK (streamer.readErrors.load() == 0);
     CHECK (streamer.underruns.load() == 0);
     streamer.shutdown();
+}
+
+// Палитра ударов на настоящих манифестах: для каждого места заводской установки не пуста, числа попадают в окна
+TEST_CASE ("real library: strength palette of every place is not empty", "[.reallib-palette]")
+{
+    const char* libPath = std::getenv ("SAMPLIT_REAL_LIB");
+    if (libPath == nullptr)
+        SKIP ("SAMPLIT_REAL_LIB не задана");
+
+    const auto repo = juce::File (SAMPLIT_TEST_FIXTURES).getParentDirectory().getParentDirectory();
+    KitLoadOptions opts;
+    opts.libraryRoot = juce::File (libPath);
+    opts.manifestDir = repo.getChildFile ("sample_library/packs-src");
+    const auto res = loadKit (factorySpec (opts), opts);
+    REQUIRE (res.ok());
+
+    for (const auto& def : kStudio600Places)
+    {
+        const auto pal = buildPalette (*res.kit, def.slot);
+        INFO ("slot " << def.id);
+        CHECK_FALSE (pal.empty());
+        for (const auto& o : pal)
+        {
+            const auto& map = res.kit->notes[(size_t) o.key];
+            bool inWindow = false;
+            for (const auto& ref : map.layers)
+                inWindow = inWindow || (o.velocity >= ref.velLo && o.velocity <= ref.velHi);
+            CHECK (inWindow);
+        }
+    }
 }

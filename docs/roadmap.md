@@ -55,7 +55,7 @@
 - **Готово когда:** тесты зелёные.
 - **Модель:** Sonnet.
 
-### P3. Сила удара словами («палитра»)
+### P3. Сила удара словами («палитра») — СДЕЛАНО 12.11 (`plugin/PatternPalette.*`: `buildPalette (kit, slot, meta*)`, `StrengthOption`; 3 теста, Debug `ctest` 221/221; скрытый `[.reallib-palette]` на настоящей библиотеке: палитра всех 12 мест не пуста, числа в окнах). Режим exact берётся из кита (учитывает настройку пользователя); роль и пара приходят из `pack::Piece` (параметр `meta`, можно nullptr); имя группы из `Kit::choices`
 - **Цель:** для места установки получить список ударов с понятными именами и точными числами velocity.
 - **Файлы:** новые `plugin/PatternPalette.{h,cpp}`, `tests/pattern_palette_tests.cpp`.
 - **Инструкция:** сначала выяснить, как имя и роль группы доходят до плагина: смотреть, откуда `plugin/InstrumentsPanel.cpp` берёт названия во вкладке «Группы ударов» (`pack::Group` из `PackCatalog`, `core/include/samplit/core/Manifest.h`), и использовать тот же источник. Функция `buildPalette (const Kit&, int slot)` возвращает `std::vector<StrengthOption> { key, groupId, name (русское), label (strong/medium/soft…), velocity, exact (bool), pairGroup/pairType }`:
