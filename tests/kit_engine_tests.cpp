@@ -116,6 +116,26 @@ TEST_CASE ("kit: mics without a file in this hit stay silent", "[kit]")
     REQUIRE (r.level (2) == 0.0f);
 }
 
+TEST_CASE ("kit: old Kontakt kick keys 21..23 play the kick on 24 when they are free", "[kit]")
+{
+    KitBuilder b;
+    b.mic ("kick_in", 1);
+    const int p = b.piece ("kick");
+    const int l = b.layer (p, 1, 127);
+    b.hit (p, l, 24, { 0.3f });
+    const auto kit = b.done();
+
+    Rig r;
+    r.engine.setKit (kit.get());
+    for (int note : { 21, 22, 23, 24 })
+    {
+        const auto info = r.hitOnce (note, 100);
+        REQUIRE (info.voices == 1);
+        REQUIRE (std::abs (r.level (1) - 0.3f) < 1e-4f);
+    }
+    REQUIRE (r.hitOnce (25, 100).voices == 0);
+}
+
 TEST_CASE ("kit: an output switched off in the host falls back to Main", "[kit]")
 {
     KitBuilder b;

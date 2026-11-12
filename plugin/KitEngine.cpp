@@ -551,6 +551,10 @@ namespace samplit
         if (kit == nullptr || note < 0 || note > 127)
             return info;
 
+        // Старые партии под Kontakt: бочки на A-1, A#-1, B-1 (21..23) играют бочку C0 (24), если сами не заняты
+        if (note >= 21 && note <= 23 && kit->notes[(size_t) note].piece < 0 && kit->notes[24].piece >= 0)
+            note = 24;
+
         if (kit->serial.value != lastKitSerial)
         {
             lastKitSerial = kit->serial.value;
