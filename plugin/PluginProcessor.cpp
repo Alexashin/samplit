@@ -6,6 +6,7 @@
 
 namespace samplit
 {
+    static_assert (Kit::kMaxMics <= 32, "маски mute/solo: по 32 бита в одном uint64");
     static_assert (SamplitProcessor::kAutomatedMics == kStudio600MicCount, "параметры хоста по слотам Studio600");
     namespace
     {
@@ -107,6 +108,22 @@ namespace samplit
         return layouts.inputBuses.isEmpty();
     }
 
+    void SamplitProcessor::releaseResources()
+    {
+        // Движок остановлен: удары старых китов иначе числились бы звучащими и киты не освобождались (collectGarbage по таймеру)
+        kitEngine.releaseAll();
+    }
+
+    // Bypass: звук не рендерится, голоса не должны «замерзать» и доигрываться после снятия bypass; накопленные экранные ноты тоже сброс
+    void SamplitProcessor::processBlockBypassed (juce::AudioBuffer<float>& buffer, juce::MidiBuffer&)
+    {
+        buffer.clear();
+        kitEngine.releaseAll();
+        queueRead.store (queueWrite.load());
+        activeLo.store (0);
+        activeHi.store (0);
+    }
+
     void SamplitProcessor::triggerNote (int note, int velocity) noexcept
     {
         if (note < 0 || note > 127)
@@ -168,8 +185,11 @@ namespace samplit
         kitEngine.setOffline (isNonRealtime());
 
         // Ноты с экранной клавиатуры
+        // Если audio thread стоял и пользователь нажал больше kQueue клавиш, устаревшие ноты отбрасываются (не играть залпом)
         auto r = queueRead.load();
         const auto w = queueWrite.load();
+        if (w - r > (uint32_t) kQueue)
+            r = w - (uint32_t) kQueue;
         for (; r != w; ++r)
         {
             const auto e = queue[r % kQueue].load();
@@ -182,6 +202,16 @@ namespace samplit
         for (const auto meta : midi)
         {
             const auto msg = meta.getMessage();
+            if (msg.isAllSoundOff() || msg.isAllNotesOff())
+            {
+                // CC120 / CC123: все удары затухают за ~10 мс с этой позиции блока
+                const int at = juce::jlimit (pos, numSamples, meta.samplePosition);
+                if (at > pos)
+                    renderRange (pos, at);
+                pos = at;
+                kitEngine.fadeAll();
+                continue;
+            }
             if (! msg.isNoteOn())
                 continue;
 
@@ -202,8 +232,9 @@ namespace samplit
 
     void SamplitProcessor::pushMicTargets() noexcept
     {
-        const auto mute = muteMask.load (std::memory_order_relaxed);
-        const auto solo = soloMask.load (std::memory_order_relaxed);
+        const auto masks = muteSoloMask.load (std::memory_order_relaxed);      // одна загрузка: mute и solo согласованы
+        const auto mute = (uint32_t) (masks & 0xffffffffu);
+        const auto solo = (uint32_t) (masks >> 32);
         for (int i = 0; i < Kit::kMaxMics; ++i)
         {
             const bool silent = ((mute >> i) & 1u) != 0 || (solo != 0 && ((solo >> i) & 1u) == 0);
@@ -247,6 +278,17 @@ namespace samplit
             kit = newKit;
         }
 
+        {
+            // Оценка хвоста для хоста: самый длинный клип кита (без блокировок, пишется до публикации в движок)
+            double longest = 0.0;
+            if (newKit != nullptr)
+                for (const auto& piece : newKit->pieces)
+                    for (const auto& hit : piece.hits)
+                        for (const auto& f : hit.files)
+                            if (f.clip != nullptr && f.clip->sampleRate > 0.0)
+                                longest = std::max (longest, f.clip->frames() / f.clip->sampleRate);
+            tailSeconds.store (newKit != nullptr ? longest : 30.0, std::memory_order_relaxed);
+        }
         kitEngine.setKit (newKit.get());
         kitEngine.resetHealth();        // счётчики относятся к прежнему киту (после setKit: новый кит начинает с нуля)
         picks.clear();
@@ -661,7 +703,7 @@ namespace samplit
         return juce::isPositiveAndBelow (mic, (int) mixer.size()) ? mixer[(size_t) mic] : MicState {};
     }
 
-    void SamplitProcessor::setMicState (int mic, const MicState& state)
+    void SamplitProcessor::setMicState (int mic, const MicState& state, bool fromUi)
     {
         if (! juce::isPositiveAndBelow (mic, (int) mixer.size()))
             return;
@@ -677,19 +719,46 @@ namespace samplit
                 savedMix[id] = s;
         }
         applyMixer();
-        pushParam (mic);
+        pushParam (mic, fromUi);
+    }
+
+    void SamplitProcessor::beginMicGesture (int mic, bool pan)
+    {
+        if (! juce::isPositiveAndBelow (mic, kAutomatedMics) || gestureOpen[(size_t) (mic * 2 + (pan ? 1 : 0))])
+            return;
+        gestureOpen[(size_t) (mic * 2 + (pan ? 1 : 0))] = true;
+        (pan ? static_cast<juce::AudioProcessorParameter*> (panParams[(size_t) mic]) : levelParams[(size_t) mic])->beginChangeGesture();
+    }
+
+    void SamplitProcessor::endMicGesture (int mic, bool pan)
+    {
+        if (! juce::isPositiveAndBelow (mic, kAutomatedMics) || ! gestureOpen[(size_t) (mic * 2 + (pan ? 1 : 0))])
+            return;
+        gestureOpen[(size_t) (mic * 2 + (pan ? 1 : 0))] = false;
+        (pan ? static_cast<juce::AudioProcessorParameter*> (panParams[(size_t) mic]) : levelParams[(size_t) mic])->endChangeGesture();
     }
 
     // Микшер → параметр хоста (только если значение действительно другое: без лишних уведомлений)
-    void SamplitProcessor::pushParam (int mic)
+    void SamplitProcessor::pushParam (int mic, bool fromUi)
     {
         if (! juce::isPositiveAndBelow (mic, kAutomatedMics) || ! juce::isPositiveAndBelow (mic, (int) mixer.size()))
             return;
         const auto& m = mixer[(size_t) mic];
+        // fromUi: запись внутри gesture (если жест мыши уже открыт ползунком, он и есть gesture). Таймер и загрузка проекта: без gesture.
+        // Обратная связь (parameterValueChanged -> applyHostParams) гаснет: значение микшера уже равно параметру
+        const auto write = [&] (juce::AudioParameterFloat* p, float v, bool pan)
+        {
+            const bool open = gestureOpen[(size_t) (mic * 2 + (pan ? 1 : 0))];
+            if (fromUi && ! open)
+                p->beginChangeGesture();
+            *p = v;
+            if (fromUi && ! open)
+                p->endChangeGesture();
+        };
         if (std::abs (levelParams[(size_t) mic]->get() - m.levelDb) > 0.051f)
-            *levelParams[(size_t) mic] = m.levelDb;
+            write (levelParams[(size_t) mic], m.levelDb, false);
         if (std::abs (panParams[(size_t) mic]->get() - m.pan) > 0.0051f)
-            *panParams[(size_t) mic] = m.pan;
+            write (panParams[(size_t) mic], m.pan, true);
     }
 
     void SamplitProcessor::pushAllParams()
@@ -770,8 +839,7 @@ namespace samplit
                 kitEngine.setMicOutput (i, multiOut.load() ? -1 : 0);
             }
         }
-        muteMask.store (mute);
-        soloMask.store (solo);
+        muteSoloMask.store ((uint64_t) mute | ((uint64_t) solo << 32));
     }
 
     void SamplitProcessor::setMultiOut (bool multi)

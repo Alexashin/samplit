@@ -927,3 +927,64 @@ TEST_CASE ("kit: mic level steps are ramped over the block without a jump", "[ki
     r.engine.endBlock();
     REQUIRE (std::abs (r.L[1][0] - 1.0f) < 1e-4f);
 }
+
+TEST_CASE ("kit: the mic ramp is capped, a huge block does not soften the attack of a note after unmute", "[kit][ramp]")
+{
+    KitBuilder b;
+    b.mic ("a", 1);
+    const int p = b.piece ("p");
+    b.hit (p, b.layer (p, 1, 127), 60, { 1.0f });
+    const auto kit = b.done();
+
+    Rig r;
+    r.engine.setKit (kit.get());
+    r.engine.setMicMix (0, -100.0f, 0.0f);
+    r.engine.beginBlock (kBlock);
+    r.engine.render (r.pl, r.pr, 0, kBlock);
+    r.engine.endBlock();
+
+    r.clear();
+    r.engine.setMicMix (0, 0.0f, 0.0f);
+    r.engine.beginBlock (kBlock);                   // блок 1024 > KitEngine::kMaxRampSamples
+    r.engine.noteOn (60, 100);
+    r.engine.render (r.pl, r.pr, 0, 300);           // куски через границу 512: рампа сквозная
+    r.engine.render (r.pl, r.pr, 300, 800);
+    r.engine.render (r.pl, r.pr, 800, kBlock);
+    r.engine.endBlock();
+
+    float prev = 0.0f, maxStep = 0.0f;
+    for (int i = 0; i < kBlock; ++i)
+    {
+        maxStep = std::max (maxStep, r.L[1][(size_t) i] - prev);
+        prev = r.L[1][(size_t) i];
+    }
+    REQUIRE (maxStep <= 1.0f / KitEngine::kMaxRampSamples + 1e-4f);
+    REQUIRE (std::abs (r.L[1][KitEngine::kMaxRampSamples + 10] - 1.0f) < 1e-3f);   // уже на цели, а не на 50%
+    REQUIRE (std::abs (r.L[1][kBlock - 1] - 1.0f) < 1e-3f);
+}
+
+TEST_CASE ("kit: All Sound Off fades all strikes, releaseAll frees them", "[kit]")
+{
+    KitBuilder b;
+    b.mic ("a", 0);
+    const int p = b.piece ("p");
+    b.hit (p, b.layer (p, 1, 127), 60, { 1.0f });
+    const auto kit = b.done();
+
+    Rig r;
+    r.engine.setKit (kit.get());
+    r.engine.noteOn (60, 100);
+    r.engine.noteOn (60, 100);
+    r.render (0, 100);
+    r.engine.fadeAll();
+    r.clear();
+    r.render (0, 512);                              // 10 мс = 480 кадров при 48 кГц
+    CHECK (r.L[0][0] > 0.5f);
+    CHECK (r.L[0][511] == 0.0f);
+    CHECK (r.engine.getNumActiveStrikes() == 0);
+
+    r.engine.noteOn (60, 100);
+    REQUIRE (r.engine.getNumActiveStrikes() == 1);
+    r.engine.releaseAll();
+    CHECK (r.engine.getNumActiveStrikes() == 0);
+}

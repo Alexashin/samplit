@@ -1162,3 +1162,62 @@ TEST_CASE ("pack v2 chord of many cells stays clean with one streamer thread", "
     CHECK (streamer.underruns.load() == 0);
     streamer.shutdown();
 }
+
+TEST_CASE ("offline: the wait budget is per block and a spent budget stops waiting until the export ends", "[stream]")
+{
+    const auto wav = writeWav24 (streamDir().getChildFile ("hang.wav"), std::vector<int32_t> ((size_t) kTotal, 4194304));
+
+    DiskStreamer streamer (false);       // pump() не зовём: диск «завис», хвост не приходит
+    KitEngine engine;
+    engine.setStreamer (&streamer);
+    engine.setOffline (true);
+    engine.prepare (44100.0);
+    engine.setOfflineBudget (300);
+    const auto kit = oneHitKit (streamedClip (wav, 500));       // голова короче куска: рендер ждёт хвост
+    engine.setKit (kit.get());
+
+    std::vector<float> L (2048), R (2048);
+    std::array<float*, kNumOutputs + 1> pl {}, pr {};
+    for (size_t i = 0; i < pl.size(); ++i)
+    {
+        pl[i] = L.data();
+        pr[i] = i == 0 ? R.data() : nullptr;
+    }
+
+    const auto start = juce::Time::getMillisecondCounter();
+    engine.beginBlock (0);
+    REQUIRE (engine.noteOn (60, 100).voices == 1);
+    REQUIRE (engine.noteOn (60, 100).voices == 1);
+    engine.render (pl, pr, 0, 1024);      // два куска одного блока делят один бюджет, а не 300 мс каждый
+    engine.render (pl, pr, 1024, 2048);
+    engine.endBlock();
+    const auto spent = (int) (juce::Time::getMillisecondCounter() - start);
+    CHECK (spent < 550);
+    CHECK (engine.hasGivenUpOffline());
+
+    const auto second = juce::Time::getMillisecondCounter();
+    engine.beginBlock (0);
+    REQUIRE (engine.noteOn (60, 100).voices == 1);
+    engine.render (pl, pr, 0, 2048);
+    engine.endBlock();
+    CHECK (juce::Time::getMillisecondCounter() - second < 150);      // новый блок: уже не ждём
+
+    engine.setOffline (false);
+    CHECK_FALSE (engine.hasGivenUpOffline());
+}
+
+TEST_CASE ("an underrun is counted once per voice even over several chunks", "[stream]")
+{
+    const auto wav = writeWav24 (streamDir().getChildFile ("slow2.wav"), std::vector<int32_t> ((size_t) kTotal, 4194304));
+
+    DiskStreamer streamer (false);
+    KitEngine engine;
+    engine.setStreamer (&streamer);
+    engine.prepare (44100.0);
+    const auto kit = oneHitKit (streamedClip (wav, 4000));
+    engine.setKit (kit.get());
+    REQUIRE (engine.noteOn (60, 100).voices == 1);
+
+    playBlocks (engine, 3, nullptr, 3, 8192);       // по четыре куска на блок
+    CHECK (streamer.underruns.load() == 1);
+}

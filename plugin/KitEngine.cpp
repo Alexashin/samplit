@@ -104,13 +104,26 @@ namespace samplit
         sr = sampleRate;
         fadeLength = std::max (1, (int) (0.005 * sr));  // 5 мс: недогрузка диска
         stealFade = std::max (1, (int) (0.010 * sr));   // 10 мс: choke и вытеснение
-        for (int i = 0; i < kMaxStrikes; ++i)
-            release (i);
+        releaseAll();
+        offlineGaveUp = false;
         lastHit.fill (-1);
         for (auto& c : cyclePos)
             c.fill (0);
         lastKitSerial = 0;
         mixPrimed = false;
+    }
+
+    void KitEngine::releaseAll() noexcept
+    {
+        for (int i = 0; i < kMaxStrikes; ++i)
+            release (i);
+    }
+
+    void KitEngine::fadeAll() noexcept
+    {
+        for (int i = 0; i < kMaxStrikes; ++i)
+            if (strikeKit[(size_t) i].load() != nullptr && ! strikes[(size_t) i].fading)
+                fadeStrike (strikes[(size_t) i], stealFade);
     }
 
     StreamHealth KitEngine::getHealth() const
@@ -202,7 +215,8 @@ namespace samplit
     void KitEngine::beginBlock (int rampSamples) noexcept
     {
         // Рампа микрофонов: шаг на отсчёт постоянен на весь блок, куски (между MIDI-событиями) продолжают его
-        rampLen = std::max (0, rampSamples);
+        rampLen = std::clamp (rampSamples, 0, kMaxRampSamples);
+        offlineBudgetMs = offlineBudgetMax;
         for (int m = 0; m < Kit::kMaxMics; ++m)
         {
             const float tl = micLevel[(size_t) m].load(), tp = micPan[(size_t) m].load();
@@ -350,7 +364,7 @@ namespace samplit
     int KitEngine::waitForStream (MicVoice& v, const Kit* kit, double target) noexcept
     {
         const auto begin = juce::Time::getMillisecondCounter();
-        int limit = std::max (0, std::min (v.stream >= 0 ? 5000 : 250, offlineBudgetMs));
+        int limit = offlineGaveUp ? 0 : std::max (0, std::min (v.stream >= 0 ? 5000 : 250, offlineBudgetMs));
         const auto availableNow = [&]() -> int
         {
             return v.stream >= 0 ? (int) streamer->available (v.stream) : v.clip->headFrames();
@@ -385,6 +399,8 @@ namespace samplit
         offlineBudgetMs = std::max (0, offlineBudgetMs - spent);
         if ((double) available < target && ! failed)
             offlineTimeouts.fetch_add (1, std::memory_order_relaxed);
+        if ((double) available < target && offlineBudgetMs == 0)
+            offlineGaveUp = true;           // бюджет блока исчерпан, а данных нет: диск завис, до конца экспорта не ждём
         return available;
     }
 
@@ -563,6 +579,7 @@ namespace samplit
             v.fadeTotal = fadeLength;
             v.wantStream = false;
             v.stealWait = 0;
+            v.underrunCounted = false;
             if (file.clip->isStreamed() && streamer != nullptr)
             {
                 v.stream = streamer->acquire (*file.clip, kit);
@@ -602,9 +619,16 @@ namespace samplit
     void KitEngine::render (const std::array<float*, kNumOutputs + 1>& outL, const std::array<float*, kNumOutputs + 1>& outR,
                             int start, int end) noexcept
     {
-        offlineBudgetMs = 30000;
-        for (int from = start; from < end; from += kRenderChunk)
-            renderChunk (outL, outR, from, std::min (end, from + kRenderChunk));
+        if (! inBlock)
+            offlineBudgetMs = offlineBudgetMax;        // вне блока (тесты) бюджет на вызов; в блоке его задаёт beginBlock
+        for (int from = start; from < end;)
+        {
+            int to = std::min (end, from + kRenderChunk);
+            if (rampLen > 0 && from < rampLen && to > rampLen)
+                to = rampLen;               // рампа кончается на границе куска: дальше уровень стоит на цели
+            renderChunk (outL, outR, from, to);
+            from = to;
+        }
     }
 
     void KitEngine::renderChunk (const std::array<float*, kNumOutputs + 1>& outL, const std::array<float*, kNumOutputs + 1>& outR,
@@ -612,6 +636,8 @@ namespace samplit
     {
         // Вне блока (тесты, прямой render) рампы нет: берём целевые значения. В блоке: линейно с постоянным шагом на отсчёт
         const float len = (float) (end - start);
+        // start: позиция в блоке. Рампа идёт только первые rampLen отсчётов блока, дальше шаг нулевой
+        const float rampPart = rampLen > 0 ? (float) std::clamp (rampLen - start, 0, end - start) : 0.0f;
         std::array<float, Kit::kMaxMics> lvl0, lvl1, pan0, pan1;
         for (int m = 0; m < Kit::kMaxMics; ++m)
         {
@@ -622,8 +648,8 @@ namespace samplit
             }
             lvl0[(size_t) m] = curLevel[(size_t) m];
             pan0[(size_t) m] = curPan[(size_t) m];
-            lvl1[(size_t) m] = lvl0[(size_t) m] + stepLevel[(size_t) m] * len;
-            pan1[(size_t) m] = pan0[(size_t) m] + stepPan[(size_t) m] * len;
+            lvl1[(size_t) m] = lvl0[(size_t) m] + stepLevel[(size_t) m] * rampPart;
+            pan1[(size_t) m] = pan0[(size_t) m] + stepPan[(size_t) m] * rampPart;
         }
 
         for (int si = 0; si < kMaxStrikes; ++si)
@@ -712,8 +738,9 @@ namespace samplit
                                 v.fadeTotal = fadeLength;
                             }
                             v.wantStream = false;
-                            if (streamer != nullptr)
+                            if (streamer != nullptr && ! v.underrunCounted)
                                 streamer->underruns.fetch_add (1, std::memory_order_relaxed);
+                            v.underrunCounted = true;
                         }
                     }
                 }

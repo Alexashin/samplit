@@ -28,10 +28,12 @@ namespace samplit
         ~SamplitProcessor() override;
 
         void prepareToPlay (double sampleRate, int samplesPerBlock) override;
-        void releaseResources() override {}
+        void releaseResources() override;
         bool isBusesLayoutSupported (const BusesLayout& layouts) const override;
         void processBlock (juce::AudioBuffer<float>&, juce::MidiBuffer&) override;
+        void processBlockBypassed (juce::AudioBuffer<float>&, juce::MidiBuffer&) override;
         using juce::AudioProcessor::processBlock;
+        using juce::AudioProcessor::processBlockBypassed;
 
         juce::AudioProcessorEditor* createEditor() override;
         bool hasEditor() const override { return true; }
@@ -40,7 +42,8 @@ namespace samplit
         bool acceptsMidi() const override { return true; }
         bool producesMidi() const override { return false; }
         bool isMidiEffect() const override { return false; }
-        double getTailLengthSeconds() const override { return 0.0; }
+        // Длина самого длинного клипа текущего кита (считается при публикации кита), хост не обрезает хвост экспорта
+        double getTailLengthSeconds() const override { return tailSeconds.load (std::memory_order_relaxed); }
 
         int getNumPrograms() override { return 1; }
         int getCurrentProgram() override { return 0; }
@@ -117,7 +120,12 @@ namespace samplit
         static MicState defaultMicState (int slot);     // умолчание слота Studio600
         juce::String micIdForSlot (int slot) const;
         MicState getMicState (int mic) const;
-        void setMicState (int mic, const MicState&);
+        // fromUi: правка мышью в микшере, параметр хоста пишется внутри gesture (Cubase Write/Touch записывает автоматизацию).
+        // Без fromUi (таймер, загрузка проекта) параметр пишется без gesture
+        void setMicState (int mic, const MicState&, bool fromUi = false);
+        // Message thread: жест мыши на ползунке (пока он удерживается, параметр хоста не закрывает gesture между тиками)
+        void beginMicGesture (int mic, bool pan);
+        void endMicGesture (int mic, bool pan);
 
         // ---- Режим выходов: false = «Стерео» (все микрофоны в Main с панорамой), true = «Мульти-аут» (каждый микрофон на
         // свой выход, как выбрано в микшере; выключенный в DAW выход играет в Main). Хранится в проекте ----
@@ -181,8 +189,12 @@ namespace samplit
         // (атомики, автоматизация без таймера); остальные: из mixLevelDb/mixPan. Mute/solo из масок
         void pushMicTargets() noexcept;
         std::array<std::atomic<float>, Kit::kMaxMics> mixLevelDb {}, mixPan {};   // пишет message thread (applyMixer)
-        std::atomic<uint32_t> muteMask { 0 }, soloMask { 0 };                     // бит = слот микрофона; пишет message thread
-        void pushParam (int mic);
+        // Маски одним атомиком, чтобы audio thread не увидел mute от одной правки и solo от другой: биты 0..31 mute, 32..63 solo
+        // (бит = слот микрофона, kMaxMics <= 32); пишет message thread (applyMixer)
+        std::atomic<uint64_t> muteSoloMask { 0 };
+        std::atomic<double> tailSeconds { 30.0 };       // getTailLengthSeconds; до первого кита безопасные 30 с
+        void pushParam (int mic, bool fromUi = false);
+        std::array<bool, kAutomatedMics * 2> gestureOpen {};     // только message thread: [mic * 2 + pan]
         void pushAllParams();
         // Может вызываться из audio thread хоста: только флаг (triggerAsyncUpdate берёт мьютекс и аллоцирует).
         // Флаг разбирает timerCallback на message thread

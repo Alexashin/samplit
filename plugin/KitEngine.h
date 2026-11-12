@@ -62,7 +62,23 @@ namespace samplit
         void setStreamer (DiskStreamer* s) noexcept { streamer = s; }
 
         // Audio thread, раз в блок: офлайн-рендер (экспорт в DAW). Тогда голос ждёт недочитанный хвост вместо затухания
-        void setOffline (bool isOffline) noexcept { offline.store (isOffline, std::memory_order_relaxed); }
+        // Выход из офлайна сбрасывает «сдачу» (offlineGaveUp): после исчерпания бюджета диск до конца экспорта не ждём
+        void setOffline (bool isOffline) noexcept
+        {
+            if (! isOffline)
+                offlineGaveUp = false;
+            offline.store (isOffline, std::memory_order_relaxed);
+        }
+        bool hasGivenUpOffline() const noexcept { return offlineGaveUp; }
+        // Для тестов: бюджет ожидания диска на блок в офлайне (по умолчанию 30 с)
+        void setOfflineBudget (int ms) noexcept { offlineBudgetMax = std::max (0, ms); offlineBudgetMs = offlineBudgetMax; }
+
+        // Audio thread (или остановленный движок): все звучащие удары затухают за ~10 мс (MIDI All Sound Off / All Notes Off)
+        void fadeAll() noexcept;
+        // Audio thread (bypass) или остановленный движок (releaseResources): сбросить все удары, освободить ячейки стримера. Без аллокаций
+        void releaseAll() noexcept;
+        // Максимальная длина рампы микрофонов в отсчётах: огромный офлайн-блок не даёт ноте после размьюта атаку в десятки мс
+        static constexpr int kMaxRampSamples = 512;
 
         // Message thread: сводка здоровья (счётчики движка и стримера, последняя ошибка чтения) и её сброс
         StreamHealth getHealth() const;
@@ -134,6 +150,7 @@ namespace samplit
             int fadeTotal = 1;       // длина начатого затухания в кадрах (знаменатель огибающей)
             bool wantStream = false; // потоковый клип ещё без ячейки: повторять acquire на каждом куске
             int stealWait = 0;       // кадров до следующего вытеснения ради этого голоса
+            bool underrunCounted = false;   // обрыв этого голоса уже учтён в underruns (считаем один раз на голос)
         };
 
         struct Strike
@@ -192,7 +209,9 @@ namespace samplit
         double sr = 44100.0;
         int fadeLength = 220;       // 5 мс: недогрузка диска
         int stealFade = 441;        // 10 мс: choke и вытеснение
-        int offlineBudgetMs = 30000;    // общий предел ожидания диска за один вызов render()
+        int offlineBudgetMax = 30000;
+        int offlineBudgetMs = 30000;    // общий предел ожидания диска на блок (сбрасывается в beginBlock)
+        bool offlineGaveUp = false;     // только audio thread: бюджет исчерпан, до конца экспорта диск не ждём
         std::atomic<uint32_t> steals { 0 }, hardSteals { 0 }, offlineTimeouts { 0 };
 
     public:

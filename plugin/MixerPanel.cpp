@@ -73,6 +73,12 @@ namespace samplit
                     edit ([v = (float) level.getValue()] (SamplitProcessor::MicState& s) { s.levelDb = v; });
             };
 
+            // Жест мыши = gesture параметра хоста (Cubase Write/Touch)
+            pan.onDragStart = [this] { processor.beginMicGesture (index, true); };
+            pan.onDragEnd = [this] { processor.endMicGesture (index, true); };
+            level.onDragStart = [this] { processor.beginMicGesture (index, false); };
+            level.onDragEnd = [this] { processor.endMicGesture (index, false); };
+
             for (auto* s : { &pan, &level })
             {
                 s->setColour (juce::Slider::trackColourId, brand::accent);
@@ -185,7 +191,7 @@ namespace samplit
         {
             auto s = processor.getMicState (index);
             change (s);
-            processor.setMicState (index, s);
+            processor.setMicState (index, s, true);
         }
 
         SamplitProcessor& processor;
