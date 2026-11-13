@@ -21,8 +21,7 @@ namespace samplit
 
         juce::String panText (double v)
         {
-            const int amount = juce::roundToInt (std::abs (v) * 100.0);
-            return amount == 0 ? juce::String ("C") : (v < 0.0 ? "L" : "R") + juce::String (amount);
+            return juce::String (studio600PanText (v));
         }
     }
 
@@ -52,6 +51,7 @@ namespace samplit
             pan.setDoubleClickReturnValue (true, 0.0);
             pan.setTextBoxStyle (juce::Slider::TextBoxBelow, false, 54, 18);
             pan.textFromValueFunction = panText;
+            pan.valueFromTextFunction = [] (const juce::String& t) { return studio600ParsePan (t.toStdString()); };
             pan.setTitle (utf8 ("Панорама: ") + micName);
             pan.setTooltip (utf8 ("Панорама в Main. На отдельном выходе микрофон моно. Двойной клик: центр"));
             pan.onValueChange = [this]

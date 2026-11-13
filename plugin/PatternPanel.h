@@ -48,6 +48,8 @@ namespace samplit
         void layoutGrid();
         void edit (std::function<void (Pattern&)>);
         void toggleStep (int row, int step);
+        bool nudgeStep (int row, int step, int steps);     // колесо над ударом: сила ±; false: удара нет
+        bool stepSilent (const Row&, const PatternStep&) const;   // сила удара не звучит (между окнами)
         void placeStep (const Row&, int step, StrengthOption);     // с парой, если у строки «вместе»
         void removeStep (const Row&, int step);
         std::optional<PlacePalette> stepPartner (const Row&, int step) const;

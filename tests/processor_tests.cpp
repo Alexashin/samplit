@@ -662,3 +662,26 @@ TEST_CASE ("processor: window size and keyboard state survive a round trip, old 
     CHECK (d->getUiState().width == 0);
     CHECK (d->getUiState().keyboardOpen);
 }
+
+TEST_CASE ("pan: typed text is parsed as L/R/C percent", "[processor][pan]")
+{
+    REQUIRE (studio600ParsePan ("C") == 0.0);
+    REQUIRE (studio600ParsePan ("") == 0.0);
+    REQUIRE (std::abs (studio600ParsePan ("L50") + 0.5) < 1e-9);
+    REQUIRE (std::abs (studio600ParsePan ("l50") + 0.5) < 1e-9);
+    REQUIRE (std::abs (studio600ParsePan ("50L") + 0.5) < 1e-9);
+    REQUIRE (std::abs (studio600ParsePan ("R25") - 0.25) < 1e-9);
+    REQUIRE (std::abs (studio600ParsePan ("25") - 0.25) < 1e-9);
+    REQUIRE (std::abs (studio600ParsePan ("-30") + 0.3) < 1e-9);
+    REQUIRE (std::abs (studio600ParsePan ("R 7,5") - 0.075) < 1e-9);
+    REQUIRE (studio600ParsePan ("R250") == 1.0);
+    REQUIRE (studio600ParsePan ("\xD0\x9B""40") < 0.0);      // Л40
+    REQUIRE (studio600ParsePan ("\xD0\x9F""40") > 0.0);      // П40
+    REQUIRE (studio600PanText (-0.5) == "L50");
+    REQUIRE (studio600PanText (0.25) == "R25");
+    REQUIRE (studio600PanText (0.0) == "C");
+    REQUIRE (studio600MicPan ("room_2") == -1.0f);
+    REQUIRE (studio600MicPan ("oh_1") == 0.80f);
+    REQUIRE (studio600MicPan ("tom_a4") == -0.50f);
+    REQUIRE (studio600MicPan ("kick_in") == 0.0f);
+}

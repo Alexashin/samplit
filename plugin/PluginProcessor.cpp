@@ -45,7 +45,10 @@ namespace samplit
             levelParams[(size_t) i] = new juce::AudioParameterFloat (juce::ParameterID { "mic_" + id + "_level", 1 }, name + " level",
                                                                      juce::NormalisableRange<float> (-60.0f, 12.0f, 0.1f), 0.0f);
             panParams[(size_t) i] = new juce::AudioParameterFloat (juce::ParameterID { "mic_" + id + "_pan", 1 }, name + " pan",
-                                                                   juce::NormalisableRange<float> (-1.0f, 1.0f, 0.01f), defaultMicState (i).pan);
+                                                                   juce::NormalisableRange<float> (-1.0f, 1.0f, 0.01f), defaultMicState (i).pan,
+                                                                   juce::AudioParameterFloatAttributes()
+                                                                       .withStringFromValueFunction ([] (float v, int) { return juce::String (studio600PanText (v)); })
+                                                                       .withValueFromStringFunction ([] (const juce::String& t) { return (float) studio600ParsePan (t.toStdString()); }));
             addParameter (levelParams[(size_t) i]);
             addParameter (panParams[(size_t) i]);
             levelParams[(size_t) i]->addListener (this);

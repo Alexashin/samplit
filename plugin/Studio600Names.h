@@ -1,5 +1,8 @@
 #pragma once
 
+#include <algorithm>
+#include <cmath>
+#include <string>
 #include <string_view>
 #include <utility>
 
@@ -71,17 +74,57 @@ namespace samplit
         return output >= 1 && output <= 10 ? names[output - 1] : nullptr;
     }
 
-    // Стартовая панорама микрофона на стерео-шине (Over, Room, Toms): слева направо как на схеме. Остальные по центру
+    // Стартовая панорама микрофона на стерео-шине (Over, Room, Toms): значения проверены в Cubase 13.11.2026 (Over Hat R80, Over Ride L80, Room Hat R100, Room Ride L100,
+    // альты R25/L4, том 14 L24, флор L50). Остальные по центру
     inline float studio600MicPan (std::string_view id) noexcept
     {
         using Pair = std::pair<std::string_view, float>;
         static constexpr Pair pans[] = {
-            { "oh_1", -1.0f }, { "oh_2", 1.0f }, { "room_1", -1.0f }, { "room_2", 1.0f },
-            { "tom_a1", -0.7f }, { "tom_a2", -0.25f }, { "tom_a3", 0.25f }, { "tom_a4", 0.7f }
+            { "oh_1", 0.80f }, { "oh_2", -0.80f }, { "room_1", 1.0f }, { "room_2", -1.0f },
+            { "tom_a1", 0.25f }, { "tom_a2", -0.04f }, { "tom_a3", -0.24f }, { "tom_a4", -0.50f }
         };
         for (const auto& [key, pan] : pans)
             if (key == id)
                 return pan;
         return 0.0f;
+    }
+
+    // Текст панорамы: C, L25, R80 (доли -1..1; минус влево)
+    inline std::string studio600PanText (double v)
+    {
+        const int amount = (int) std::lround (std::abs (v) * 100.0);
+        return amount == 0 ? std::string ("C") : (v < 0.0 ? "L" : "R") + std::to_string (amount);
+    }
+
+    // Разбор набранного руками: C/пусто/0, L50, l50, 50L, R25, 25, +25, -50, Л50, П25. Число в процентах, результат обрезается в -1..1.
+    // Нераспознанный текст даёт 0 (центр)
+    inline double studio600ParsePan (std::string text)
+    {
+        double sign = 0.0;      // 0: знак не задан буквой
+        std::string num;
+        for (size_t i = 0; i < text.size(); ++i)
+        {
+            const unsigned char c = (unsigned char) text[i];
+            if (c == 'L' || c == 'l')
+                sign = -1.0;
+            else if (c == 'R' || c == 'r')
+                sign = 1.0;
+            else if (c == 0xD0 && i + 1 < text.size())
+            {
+                const unsigned char d = (unsigned char) text[i + 1];
+                if (d == 0x9B || d == 0xBB)        // Л, л
+                    sign = -1.0;
+                else if (d == 0x9F || d == 0xBF)   // П, п
+                    sign = 1.0;
+                ++i;
+            }
+            else if ((c >= '0' && c <= '9') || c == '.' || c == ',' || ((c == '-' || c == '+') && num.empty()))
+                num += c == ',' ? '.' : (char) c;
+        }
+        double value = 0.0;
+        try { value = num.empty() ? 0.0 : std::stod (num); } catch (...) { value = 0.0; }
+        if (sign != 0.0)
+            value = sign * std::abs (value);
+        return std::clamp (value / 100.0, -1.0, 1.0);
     }
 }

@@ -129,7 +129,9 @@ namespace samplit
                     if (const auto* st = owner.pattern.findStep (s, r.slot))
                     {
                         // Сила удара читается по насыщенности одного акцента, а не по цвету барабана
-                        const auto colour = juce::Colour (0xff2a3d8f).interpolatedWith (brand::accentHover, juce::jlimit (0.0f, 1.0f, (float) st->velocity / 127.0f));
+                        const bool mute = owner.stepSilent (r, *st);     // между окнами силы: звука не будет
+                        const auto colour = mute ? brand::surface.brighter (0.25f)
+                                                 : juce::Colour (0xff2a3d8f).interpolatedWith (brand::accentHover, juce::jlimit (0.0f, 1.0f, (float) st->velocity / 127.0f));
                         g.setColour (colour);
                         g.fillRoundedRectangle (cell, 2.0f);
                         g.setColour (textOn (colour));
@@ -184,6 +186,22 @@ namespace samplit
                 owner.toggleStep (row, step);
         }
 
+        // Колесо над ударом: сила ±1 (Shift ±10). Над пустой клеткой колесо прокручивает сетку
+        void mouseWheelMove (const juce::MouseEvent& e, const juce::MouseWheelDetails& w) override
+        {
+            int row = 0, step = 0;
+            float delta = w.deltaY != 0.0f ? w.deltaY : w.deltaX;
+            if (w.isReversed)
+                delta = -delta;
+            if (delta != 0.0f && cellAt (e.getPosition(), row, step) && owner.pattern.findStep (step, owner.rows[(size_t) row].slot) != nullptr)
+            {
+                const int n = std::max (1, (int) std::lround (std::abs (delta) * 10.0f)) * (e.mods.isShiftDown() ? 10 : 1);
+                owner.nudgeStep (row, step, delta > 0.0f ? n : -n);
+                return;
+            }
+            juce::Component::mouseWheelMove (e, w);
+        }
+
         void mouseMove (const juce::MouseEvent& e) override
         {
             int row = -1, step = -1;
@@ -219,7 +237,8 @@ namespace samplit
             {
                 const int opt = owner.optionFor (r, *st);
                 const auto what = opt >= 0 ? describe (r.options[(size_t) opt]) : utf8 ("velocity ") + juce::String (st->velocity);
-                return what + utf8 (". Клик снимает удар, правый клик меняет силу");
+                const auto silent = owner.stepSilent (r, *st) ? utf8 (" Эта сила между окнами записи: звука не будет, покрутите колесо.") : juce::String();
+                return what + utf8 (". Колесо: сила ±1 (Shift ±10). Клик снимает удар, правый клик меняет силу.") + silent;
             }
             return utf8 ("Клик ставит удар: ") + describe (r.options[(size_t) r.current]) + utf8 (". Правый клик: выбрать силу");
         }
@@ -640,6 +659,44 @@ namespace samplit
             removeStep (r, step);
         else
             placeStep (r, step, r.options[(size_t) r.current]);
+    }
+
+    bool PatternPanel::stepSilent (const Row&, const PatternStep& st) const
+    {
+        return lastKit != nullptr && ! velocityAudible (*lastKit, st.key, st.velocity);
+    }
+
+    bool PatternPanel::nudgeStep (int row, int step, int steps)
+    {
+        if (row < 0 || row >= (int) rows.size() || lastKit == nullptr)
+            return false;
+        const auto& r = rows[(size_t) row];
+        const auto* st = pattern.findStep (step, r.slot);
+        if (st == nullptr)
+            return false;
+
+        const int key = st->key, slot = r.slot, old = st->velocity;
+        int v = stepAudibleVelocity (*lastKit, key, old, steps);
+        // Пара «вместе»: партнёр получает то же число, если оно у него звучит; иначе пара не двигается
+        int partnerSlot = -1, partnerKey = -1;
+        if (const auto partner = stepPartner (r, step))
+            if (const auto* ps = pattern.findStep (step, partner->slot))
+            {
+                partnerSlot = partner->slot;
+                partnerKey = ps->key;
+                if (v != old && ! velocityAudible (*lastKit, partnerKey, v))
+                    return true;
+            }
+        if (v == old)
+            return true;
+        edit ([=] (Pattern& p)
+        {
+            p.setStep (step, slot, key, v);
+            if (partnerSlot >= 0)
+                p.setStep (step, partnerSlot, partnerKey, v);
+        });
+        processor.triggerNote (key, v);
+        return true;
     }
 
     // Партнёр, которому достанется (или с которого снимется) пара для удара, стоящего на шаге строки; копия, потому что

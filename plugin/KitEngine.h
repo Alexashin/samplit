@@ -181,9 +181,6 @@ namespace samplit
         void renderChunk (const std::array<float*, kNumOutputs + 1>& outL, const std::array<float*, kNumOutputs + 1>& outR,
                           int start, int end) noexcept;
 
-        // Live-режим: сила вне записанных окон клавиши сдвигается к ближайшему окну; ниже самого нижнего окна
-        // файл прежний, а уровень снижается (quietGain, не больше -18 дБ). Kontakt-режим силу не меняет
-        int fitVelocity (const Kit&, const NoteMap&, int velocity, float& quietGain) const noexcept;
         int selectHit (const Kit&, const NoteMap&, int note, int velocity) noexcept;
         void fadeStrike (Strike&, int frames) noexcept;
         // Глушит старейшие не затухающие удары с ячейками стримера, пока не освободится не меньше needed ячеек.
@@ -206,7 +203,7 @@ namespace samplit
         std::atomic<bool> repeatable { true };
         int64_t strikePos = 0;              // только audio thread
         bool strikePosValid = false;
-        bool kontaktNow = false;            // режим на время одного удара: читается один раз в noteOn, чтобы fitVelocity и selectHit не разошлись
+        bool kontaktNow = false;            // режим на время одного удара: читается один раз в noteOn, чтобы вызовы в одном ударе не разошлись
         int64_t lastStrikePos = -1;         // для разведения одинаковых нот в одном сэмпле
         uint32_t samePosCount = 0;
         bool isKontakt() const noexcept { return kontaktNow; }

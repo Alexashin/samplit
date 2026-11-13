@@ -332,7 +332,7 @@ TEST_CASE ("kit: the layer follows velocity", "[kit]")
     REQUIRE (r.hitOnce (60, 64).layer == 1);
 }
 
-TEST_CASE ("kit: velocity between layers plays the nearest layer", "[kit]")
+TEST_CASE ("kit: velocity between layers is silent", "[kit]")
 {
     KitBuilder b;
     b.mic ("m", 1);
@@ -343,10 +343,8 @@ TEST_CASE ("kit: velocity between layers plays the nearest layer", "[kit]")
 
     Rig r;
     r.engine.setKit (kit.get());
-    for (int v : { 41, 50 })
-        REQUIRE (r.hitOnce (60, v).layer == 0);
-    for (int v : { 60, 75, 79 })               // 60 равноудалено от окон: берётся более сильное
-        REQUIRE (r.hitOnce (60, v).layer == 1);
+    for (int v : { 41, 50, 60, 75, 79 })       // щель 41-79: тишина, ближайший слой не подбирается
+        REQUIRE (r.hitOnce (60, v).voices == 0);
     REQUIRE (r.hitOnce (60, 1).layer == 0);
     REQUIRE (r.hitOnce (60, 40).layer == 0);
     REQUIRE (r.hitOnce (60, 80).layer == 1);
@@ -375,7 +373,7 @@ TEST_CASE ("kit: Kontakt mode needs the exact velocity", "[kit]")
     REQUIRE (r.level (1) == 0.0f);
 }
 
-TEST_CASE ("kit: Live mode plays the nearest recorded layer when velocity is outside every window", "[kit]")
+TEST_CASE ("kit: Live mode is silent outside every velocity window", "[kit]")
 {
     KitBuilder b;
     b.mic ("m", 1);
@@ -388,12 +386,14 @@ TEST_CASE ("kit: Live mode plays the nearest recorded layer when velocity is out
 
     Rig r;
     r.engine.setKit (kit.get());
-    REQUIRE (r.hitOnce (60, 70).layer == low);      // щель 62-79: 70 ближе к 61
-    REQUIRE (r.hitOnce (60, 71).layer == high);     // 71 ближе к 80
-    REQUIRE (r.hitOnce (60, 100).layer == high);    // внутри окна ничего не меняется
+    REQUIRE (r.hitOnce (60, 70).voices == 0);       // щель 62-79
+    REQUIRE (r.hitOnce (60, 71).voices == 0);
+    REQUIRE (r.hitOnce (60, 30).voices == 0);       // ниже самого нижнего окна
+    REQUIRE (r.hitOnce (60, 50).layer == low);
+    REQUIRE (r.hitOnce (60, 100).layer == high);
 }
 
-TEST_CASE ("kit: Live mode plays a one-layer cymbal at any velocity, quieter below the recorded range", "[kit]")
+TEST_CASE ("kit: a one-layer cymbal is silent below the recorded range", "[kit]")
 {
     KitBuilder b;
     b.mic ("m", 1);
@@ -407,13 +407,11 @@ TEST_CASE ("kit: Live mode plays a one-layer cymbal at any velocity, quieter bel
     r.engine.setKit (kit.get());
     REQUIRE (r.hitOnce (60, 120).voices == 1);
     REQUIRE (std::abs (r.level (1) - 1.0f) < 1e-4f);
-    REQUIRE (r.hitOnce (60, 56).voices == 1);       // вдвое ниже окна: вдвое тише по уровню
-    REQUIRE (std::abs (r.level (1) - 0.5f) < 1e-4f);
-    REQUIRE (r.hitOnce (60, 1).voices == 1);        // не тише -18 дБ
-    REQUIRE (std::abs (r.level (1) - 0.125f) < 1e-4f);
+    REQUIRE (r.hitOnce (60, 56).voices == 0);
+    REQUIRE (r.hitOnce (60, 1).voices == 0);
 }
 
-TEST_CASE ("kit: Live mode with velocity 100 cycles through the recorded hits", "[kit]")
+TEST_CASE ("kit: Live mode inside a layer never repeats the previous hit", "[kit]")
 {
     KitBuilder b;
     b.mic ("m", 1);
@@ -425,8 +423,8 @@ TEST_CASE ("kit: Live mode with velocity 100 cycles through the recorded hits", 
 
     Rig r;
     r.engine.setKit (kit.get());
-    int a = r.hitOnce (60, 100).hit;
-    int c = r.hitOnce (60, 100).hit;
+    int a = r.hitOnce (60, 115).hit;
+    int c = r.hitOnce (60, 115).hit;
     REQUIRE (a != c);                               // без повтора подряд
 }
 
@@ -733,7 +731,7 @@ TEST_CASE ("kit: exact selection plays only its assigned hit", "[kit]")
         REQUIRE (info.hit == 1 + (123 - 120));   // всегда один и тот же, повтор подряд разрешён
     }
 
-    REQUIRE (r.engine.noteOn (60, 112).layer == soft);   // вне окон «точного» слоя берётся обычный, не чужой удар
+    REQUIRE (r.engine.noteOn (60, 112).piece < 0);       // щель 101-119: тишина, чужой удар не подбирается
     REQUIRE (r.engine.noteOn (60, 50).layer == soft);
 }
 

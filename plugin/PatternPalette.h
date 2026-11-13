@@ -35,6 +35,13 @@ namespace samplit
     // Вариант палитры по клавише и числу: точное совпадение, иначе ближайшее число на той же клавише; -1 если клавиши нет
     int findOption (const std::vector<StrengthOption>&, int key, int velocity);
 
+    // Звучит ли сила velocity на клавише key (есть слой и удар с таким окном). Вне окон в Studio600 тишина, как в Kontakt
+    bool velocityAudible (const Kit&, int key, int velocity);
+
+    // Сдвиг силы колёсиком: steps шагов вверх (steps > 0) или вниз по числам 1..127, пропуская тишину между окнами.
+    // Если выше или ниже звучащего числа больше нет, остаётся на последнем звучащем
+    int stepAudibleVelocity (const Kit&, int key, int velocity, int steps);
+
     // ---- Парные удары (docs/phrase-editor-spec.md): малый «Крещендо» и томы «Крещендо» с одинаковыми числами ----
 
     // Палитра одного места установки

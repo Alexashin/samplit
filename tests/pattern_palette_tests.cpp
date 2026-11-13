@@ -175,3 +175,24 @@ TEST_CASE ("pairs: no partner when the place type differs or its pack has no pai
     odd.velocity = 50;
     CHECK (pairOption (tomPlace (8, "tom_16l", 96).options, odd) == 1);
 }
+
+TEST_CASE ("palette: velocity audibility and wheel steps skip silent gaps", "[palette]")
+{
+    KitBuilder b;
+    b.mic ("m", 1);
+    const int p = b.piece ("p");
+    b.hit (p, b.layer (p, 1, 40), 60, { 0.1f });
+    b.hit (p, b.layer (p, 80, 127), 60, { 0.4f });
+    const auto kit = b.done();
+
+    REQUIRE (velocityAudible (*kit, 60, 40));
+    REQUIRE (! velocityAudible (*kit, 60, 41));
+    REQUIRE (! velocityAudible (*kit, 60, 79));
+    REQUIRE (velocityAudible (*kit, 60, 80));
+    REQUIRE (! velocityAudible (*kit, 61, 100));
+    REQUIRE (stepAudibleVelocity (*kit, 60, 39, 1) == 40);
+    REQUIRE (stepAudibleVelocity (*kit, 60, 40, 1) == 80);       // перепрыгнули паузу
+    REQUIRE (stepAudibleVelocity (*kit, 60, 80, -1) == 40);
+    REQUIRE (stepAudibleVelocity (*kit, 60, 126, 10) == 127);    // упёрлись в край
+    REQUIRE (stepAudibleVelocity (*kit, 60, 1, -3) == 1);
+}

@@ -99,6 +99,38 @@ namespace samplit
         return out;
     }
 
+    bool velocityAudible (const Kit& kit, int key, int velocity)
+    {
+        if (key < 0 || key > 127)
+            return false;
+        const auto& map = kit.notes[(size_t) key];
+        if (map.piece < 0)
+            return false;
+        const auto& piece = kit.pieces[(size_t) map.piece];
+        for (const auto& l : map.layers)
+            if (velocity >= l.velLo && velocity <= l.velHi)
+                for (int h : l.hits)
+                    if (velocity >= piece.hits[(size_t) h].velLo && velocity <= piece.hits[(size_t) h].velHi)
+                        return true;
+        return false;
+    }
+
+    int stepAudibleVelocity (const Kit& kit, int key, int velocity, int steps)
+    {
+        const int dir = steps > 0 ? 1 : -1;
+        int v = velocity;
+        for (int n = std::abs (steps); n > 0; --n)
+        {
+            int next = v + dir;
+            while (next >= 1 && next <= 127 && ! velocityAudible (kit, key, next))
+                next += dir;
+            if (next < 1 || next > 127)
+                break;
+            v = next;
+        }
+        return v;
+    }
+
     bool findPieceMeta (const std::vector<CatalogPack>& catalog, const PlaceDef& def, const PlaceSetup& ps, pack::Piece& out)
     {
         for (const auto& pk : catalog)
