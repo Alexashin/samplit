@@ -145,7 +145,11 @@ namespace samplit
             if (safe == nullptr)
                 return;
             auto& lic = safe->processor.getLicense();
-            const auto dir = fc.getResult();
+            auto dir = fc.getResult();
+            // Выбрали папку выше (например, «Библиотеки»): спускаемся в 00-Studio600ru-Drum-LIB, если она внутри
+            if (dir != juce::File() && ! dir.getChildFile ("HAT").isDirectory())
+                if (const auto inner = dir.getChildFile ("00-Studio600ru-Drum-LIB"); inner.getChildFile ("HAT").isDirectory())
+                    dir = inner;
             if (dir == juce::File())
             {
                 lic.setLibraryRoot ({});
@@ -158,9 +162,11 @@ namespace samplit
             {
                 lic.setLibraryRoot (dir);
                 const int manifests = lic.getManifestDir().findChildFiles (juce::File::findFiles, false, "*.json").size();
+                const bool looksRight = dir.getChildFile ("HAT").isDirectory();
                 safe->say (manifests == 0 ? utf8 ("Нет манифестов в ") + lic.getManifestDir().getFullPathName()
+                           : ! looksRight ? utf8 ("В папке нет подпапки HAT: выберите 00-Studio600ru-Drum-LIB")
                                           : utf8 ("Звук из папки ") + dir.getFullPathName(),
-                           manifests == 0);
+                           manifests == 0 || ! looksRight);
             }
             safe->processor.rescanCatalog();
         });
