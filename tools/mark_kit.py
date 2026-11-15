@@ -370,6 +370,33 @@ def build_packs(kit, mappings, library_root=None):
             'requires': list(meta.get('requires', [])), 'title': meta['title'],
             'mics': mics, 'pieces': pieces,
         }
+
+    # Пакеты не из .nki (SUB KICK): один удар на весь диапазон velocity
+    mic_by_id = {m['id']: m for m in kit['mics']}
+    for ex in kit.get('extraPacks', []):
+        meta = pack_meta.get(ex['pack'])
+        mic = mic_by_id.get(ex['mic'])
+        if meta is None or mic is None:
+            report['problems'].append(f"extraPacks {ex['pack']}: нет пакета или микрофона в разметке")
+            continue
+        pc, key = ex['piece'], ex['piece']['key']
+        lid = f"k{key}_{ex['velLo']}_{ex['velHi']}"
+        entry, probs = file_entry({'file': ex['file']}, library_root, frames_cache)
+        report['problems'].extend(f"{ex['pack']}: {pr}" for pr in probs)
+        manifests[ex['pack']] = {
+            'format': 1, 'id': ex['pack'], 'version': 1, 'tier': meta['tier'],
+            'requires': list(meta.get('requires', [])), 'title': meta['title'],
+            'mics': [{'id': mic['id'], 'name': mic['name'], 'role': mic['role'], 'out': mic['out']}],
+            'pieces': [{
+                'id': pc['id'], 'name': pc['name'], 'type': pc['type'], 'keys': [key], 'choke': None,
+                'layers': [{'id': lid, 'key': key, 'artic': pc['type'], 'label': 'sub',
+                            'velLo': ex['velLo'], 'velHi': ex['velHi']}],
+                'groups': [{'id': 'main', 'name': 'SUB KICK', 'hint': 'Один низкий удар на любой силе', 'role': 'main',
+                            'layers': [lid], 'pick': 'random'}],
+                'hits': [{'id': f"{pc['id']}_{key}_sub", 'layer': lid, 'key': key,
+                          'velLo': ex['velLo'], 'velHi': ex['velHi'], 'files': {mic['id']: entry}}],
+            }],
+        }
     return manifests, report
 
 

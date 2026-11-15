@@ -1,3 +1,4 @@
+#include "Studio600Names.h"
 #include "KitEngine.h"
 #include "KitLoader.h"
 #include "PackCatalog.h"
@@ -197,15 +198,15 @@ TEST_CASE ("loadKit builds a playable kit from a pack", "[loader]")
     CHECK (lastProgress == 1.0f);
 
     const auto& kit = *res.kit;
-    REQUIRE (kit.mics.size() == 16);        // kick_in: слот 0; "oh" не из Studio600: первый свободный слот 15
+    REQUIRE (kit.mics.size() == 17);        // kick_in: слот 0; "oh" не из Studio600: первый свободный слот kStudio600MicCount (16)
     CHECK (kit.mics[0].out == 1);
-    CHECK (kit.mics[15].out == 2);
+    CHECK (kit.mics[kStudio600MicCount].out == 2);
     CHECK (kit.mics[1].id.empty());
 
     REQUIRE (kit.pieces.size() == 1);
     REQUIRE (kit.pieces[0].hits.size() == 2);
     const auto& h0 = kit.pieces[0].hits[0];
-    REQUIRE (h0.files.size() == 16);
+    REQUIRE (h0.files.size() == 17);
     REQUIRE (h0.files[0].clip != nullptr);
     CHECK (h0.files[0].gainDb == -3.0f);
     CHECK (h0.files[0].clip->frames() == 1000);
@@ -213,7 +214,7 @@ TEST_CASE ("loadKit builds a playable kit from a pack", "[loader]")
     CHECK (res.memoryBytes == 3 * 1000 * 4);
 
     // Блок 1 (oh) общий у двух ударов: декодируется один раз
-    CHECK (kit.pieces[0].hits[0].files[15].clip == kit.pieces[0].hits[1].files[15].clip);
+    CHECK (kit.pieces[0].hits[0].files[kStudio600MicCount].clip == kit.pieces[0].hits[1].files[kStudio600MicCount].clip);
 
     // Кит играет: удар на двух микрофонах
     KitEngine engine;
@@ -260,7 +261,7 @@ TEST_CASE ("loadKit leaves unlicensed packs silent", "[loader]")
     res = loadKit (spec, optionsFor (dir, { { "pk-a", a.key }, { "pk-b", b.key } }));
     REQUIRE (res.ok());
     CHECK (res.kit->pieces.size() == 2);
-    CHECK (res.kit->mics.size() == 16);
+    CHECK (res.kit->mics.size() == 17);
     CHECK (res.kit->notes[36].piece == 0);
     CHECK (res.kit->notes[38].piece == 1);
 }
@@ -829,17 +830,17 @@ TEST_CASE ("loadKit: mic index is a fixed slot, independent of pack order and of
     // Известный id (Studio600) всегда в своём слоте
     for (const auto* r : { &both, &onlyB, &onlyA })
     {
-        REQUIRE (r->kit->mics.size() >= 16);
+        REQUIRE (r->kit->mics.size() >= 17);
         CHECK (r->kit->mics[0].id == "kick_in");
         CHECK (r->kit->mics[1].id.empty());     // слот без микрофона: заглушка
     }
 
-    // Незнакомый id получает свободный слот после 15 и в этом ките не пересекается с другими
+    // Незнакомый id получает свободный слот после слотов Studio600 и в этом ките не пересекается с другими
     const auto& m = both.kit->mics;
-    REQUIRE (m.size() == 18);
-    CHECK (m[15].id == "oh");
-    CHECK (m[16].id == "x1");
-    CHECK (m[17].id == "x2");
+    REQUIRE (m.size() == 19);
+    CHECK (m[kStudio600MicCount].id == "oh");
+    CHECK (m[kStudio600MicCount + 1].id == "x1");
+    CHECK (m[kStudio600MicCount + 2].id == "x2");
     CHECK (both.kit->pieces[0].hits[0].files.size() == m.size());
     CHECK (both.kit->pieces[0].hits[0].files[0].clip != nullptr);
 }
@@ -853,4 +854,14 @@ TEST_CASE ("loadKit: more unknown mics than spare slots is an error", "[loader][
     const auto a = writePack (dir, "pk-a", "kick", 36, false, {}, false, extra);
     const auto res = loadKit (specOf ({ { "pk-a", "kick", 36 } }), optionsFor (dir, { { "pk-a", a.key } }));
     CHECK_FALSE (res.ok());
+}
+
+TEST_CASE ("sub kick occupies the 16th Studio600 slot after the old 15, out 1", "[studio600]")
+{
+    using namespace samplit;
+    REQUIRE (kStudio600MicCount == 16);
+    CHECK (studio600MicSlot ("room_2") == 14);      // старые слоты не сдвинулись (идентификаторы параметров привязаны к id)
+    CHECK (studio600MicSlot ("sub_kick") == 15);
+    CHECK (kStudio600Mics[15].defaultOut == 1);
+    CHECK (std::string (studio600MicName ("sub_kick")) == "Sub Kick");
 }

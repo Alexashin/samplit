@@ -167,7 +167,7 @@ namespace samplit
 
         // ---- Автоматизация в DAW: уровень и панорама 15 слотов Studio600 (параметры "mic_<id>_level", "mic_<id>_pan", например "mic_kick_in_level").
         // Хост двигает параметр, микшер следует за ним, и наоборот. Mute, Solo и выход не автоматизируются ----
-        static constexpr int kAutomatedMics = 15;     // = kStudio600MicCount
+        static constexpr int kAutomatedMics = 16;     // = kStudio600MicCount
 
         // ---- Выбор удара (message thread): переключатели Kit::choices, сохраняются в проекте по id ----
         Pick getPickChoice (int choice) const;

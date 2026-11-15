@@ -209,7 +209,7 @@ namespace samplit
     struct Kit
     {
         KitSerial serial;               // идентичность кита для движка (lastKit), см. KitSerial
-        static constexpr int kMaxMics = 24;     // 15 слотов Studio600 (kStudio600Mics) + запас для незнакомых id
+        static constexpr int kMaxMics = 24;     // 16 слотов Studio600 (kStudio600Mics) + запас для незнакомых id
         static constexpr int kMaxChoices = 128;
 
         std::string id, title;

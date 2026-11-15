@@ -119,6 +119,13 @@
       "name": "Флор том 16",
       "role": "tom",
       "out": 8
+    },
+    {
+      "id": "sub_kick",
+      "source": "SUB-KICK",
+      "name": "Sub Kick",
+      "role": "close",
+      "out": 1
     }
   ],
   "packs": [
@@ -237,10 +244,27 @@
       "requires": []
     },
     {
+      "id": "studio600-kick-sub",
+      "title": "Studio600 Drum LIB: бочка, SUB KICK",
+      "tier": "base",
+      "requires": []
+    },
+    {
       "id": "studio600-unverified",
       "title": "Studio600 Drum LIB: непроверенное (группы -D, клавиши без описания)",
       "tier": "unverified",
       "requires": []
+    }
+  ],
+  "extraPacks": [
+    {
+      "pack": "studio600-kick-sub",
+      "note": "SUB KICK не из .nki: один моно-WAV на весь диапазон velocity 1-127 (стерео-оригинал сведён в моно, A2/A3), играет вариацией бочки на C0 (24)",
+      "piece": { "id": "kick", "name": "Бас-барабан, SUB KICK", "type": "kick", "key": 24 },
+      "mic": "sub_kick",
+      "file": "SUB-KICK/SUB-KICK.wav",
+      "velLo": 1,
+      "velHi": 127
     }
   ],
   "pieces": [

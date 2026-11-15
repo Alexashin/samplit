@@ -17,11 +17,12 @@ namespace samplit
         int defaultOut;     // выход по умолчанию в режиме «Мульти-аут» (1..10, как в манифестах)
     };
 
-    inline constexpr int kStudio600MicCount = 15;
+    inline constexpr int kStudio600MicCount = 16;
     inline constexpr Studio600MicSlot kStudio600Mics[kStudio600MicCount] = {
         { "kick_in", 1 }, { "kick_out", 2 }, { "sn_top", 3 }, { "sn_bot", 4 }, { "hat", 5 }, { "ride", 6 },
         { "tom_a1", 8 }, { "tom_a2", 8 }, { "tom_a3", 8 }, { "tom_a4", 8 },
-        { "oh_1", 9 }, { "oh_2", 9 }, { "room_mid", 7 }, { "room_1", 10 }, { "room_2", 10 }
+        { "oh_1", 9 }, { "oh_2", 9 }, { "room_mid", 7 }, { "room_1", 10 }, { "room_2", 10 },
+        { "sub_kick", 1 }
     };
 
     // Слот микрофона по id, -1: id не из Studio600
@@ -42,7 +43,7 @@ namespace samplit
             { "sn_top", "Snare Top" }, { "sn_bot", "Snare Bottom" },
             { "oh_1", "Over Hat" }, { "oh_2", "Over Ride" },
             { "room_1", "Room Hat" }, { "room_2", "Room Ride" },
-            { "room_mid", "Room Mid" }, { "hat", "Hi-Hat" }, { "ride", "Ride" },
+            { "room_mid", "Room Mid" }, { "hat", "Hi-Hat" }, { "ride", "Ride" }, { "sub_kick", "Sub Kick" },
             { "tom_a1", "Альт 10" }, { "tom_a2", "Альт 12" },
             { "tom_a3", "Том 14" }, { "tom_a4", "Флор том 16" }
         };

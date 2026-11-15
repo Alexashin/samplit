@@ -1,3 +1,4 @@
+#include "Studio600Names.h"
 #include "KitLoader.h"
 #include "LicenseManager.h"
 #include "PluginProcessor.h"
@@ -280,27 +281,27 @@ TEST_CASE ("mixer: solo and mute are saved with the project", "[licmgr]")
 
         // Значения микрофонов из манифеста пака
         CHECK (a.getMicState (0).out == 1);
-        CHECK (a.getMicState (15).out == 2);
-        CHECK (a.getMicState (15).levelDb == 0.0f);
+        CHECK (a.getMicState (kStudio600MicCount).out == 2);
+        CHECK (a.getMicState (kStudio600MicCount).levelDb == 0.0f);
 
         auto m = a.getMicState (0);
         m.solo = true;
         m.mono = true;
         m.out = 3;
         a.setMicState (0, m);
-        m = a.getMicState (15);
+        m = a.getMicState (kStudio600MicCount);
         m.levelDb = -10.0f;
         m.mute = true;
-        a.setMicState (15, m);
+        a.setMicState (kStudio600MicCount, m);
 
         // Пределы
-        auto wild = a.getMicState (15);
+        auto wild = a.getMicState (kStudio600MicCount);
         wild.levelDb = 100.0f;
         wild.out = 99;
-        a.setMicState (15, wild);
-        CHECK (a.getMicState (15).levelDb == 12.0f);
-        CHECK (a.getMicState (15).out == kNumOutputs);
-        a.setMicState (15, m);
+        a.setMicState (kStudio600MicCount, wild);
+        CHECK (a.getMicState (kStudio600MicCount).levelDb == 12.0f);
+        CHECK (a.getMicState (kStudio600MicCount).out == kNumOutputs);
+        a.setMicState (kStudio600MicCount, m);
 
         a.getStateInformation (saved);
     }
@@ -313,10 +314,10 @@ TEST_CASE ("mixer: solo and mute are saved with the project", "[licmgr]")
     REQUIRE (pumpUntil ([&] { return b.getKit() != nullptr && ! b.isKitLoading(); }));
     CHECK (b.getMicState (0).solo);
     CHECK (b.getMicState (0).mono);
-    CHECK_FALSE (b.getMicState (15).mono);
+    CHECK_FALSE (b.getMicState (kStudio600MicCount).mono);
     CHECK (b.getMicState (0).out == 3);
-    CHECK (b.getMicState (15).mute);
-    CHECK (b.getMicState (15).levelDb == -10.0f);
+    CHECK (b.getMicState (kStudio600MicCount).mute);
+    CHECK (b.getMicState (kStudio600MicCount).levelDb == -10.0f);
     CHECK (b.getSetup().find ("kick")->packId == "kick");
 }
 
