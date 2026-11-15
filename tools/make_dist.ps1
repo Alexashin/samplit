@@ -32,7 +32,8 @@ Copy-Item (Join-Path $artefacts 'Standalone\Samplit.exe') (Join-Path $out 'Plugi
 if (-not $Lite) { Get-ChildItem (Join-Path $packs '*.splpack') -Exclude 'studio600-unverified*' | Copy-Item -Destination (Join-Path $out 'Data\packs') }
 # Исходные манифесты (раскладка ударов без звука): нужны режиму «Моя библиотека…»
 New-Item -ItemType Directory -Force (Join-Path $out 'Data\manifests') | Out-Null
-Get-ChildItem (Join-Path $root 'sample_library\packs-src\*.json') -Exclude 'studio600-unverified*' | Copy-Item -Destination (Join-Path $out 'Data\manifests')
+$mfDir = if (Test-Path (Join-Path $root 'sample_library\packs-src-v2')) { 'packs-src-v2' } else { 'packs-src' }  # манифесты v2 (библиотека Studio600-v2), иначе v1
+Get-ChildItem (Join-Path $root "sample_library\$mfDir\*.json") -Exclude 'studio600-unverified*' | Copy-Item -Destination (Join-Path $out 'Data\manifests')
 Copy-Item (Join-Path $root 'tools\dist\install.ps1'), (Join-Path $root 'tools\dist\uninstall.ps1') $setup
 Copy-Item (Join-Path $root 'tools\dist\img') $setup -Recurse
 # Карты ударных Cubase (python tools/gen_drum_map.py)
