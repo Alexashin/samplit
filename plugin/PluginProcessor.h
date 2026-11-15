@@ -121,6 +121,7 @@ namespace samplit
             bool mute = false;
             bool solo = false;
             int out = 0;            // 0 = Main, 1..kNumOutputs = выход плагина (в режиме «Мульти-аут»)
+            bool mono = false;      // true = канал строго по центру (панорама не действует), false = «Стерео» с панорамой
         };
 
         static MicState defaultMicState (int slot);     // умолчание слота Studio600
@@ -230,6 +231,7 @@ namespace samplit
         // Маски одним атомиком, чтобы audio thread не увидел mute от одной правки и solo от другой: биты 0..31 mute, 32..63 solo
         // (бит = слот микрофона, kMaxMics <= 32); пишет message thread (applyMixer)
         std::atomic<uint64_t> muteSoloMask { 0 };
+        std::atomic<uint32_t> monoMask { 0 };         // бит микрофона = «Моно» (панорама игнорируется)
         std::atomic<double> tailSeconds { 30.0 };       // getTailLengthSeconds; до первого кита безопасные 30 с
         void pushParam (int mic, bool fromUi = false);
         std::array<bool, kAutomatedMics * 2> gestureOpen {};     // только message thread: [mic * 2 + pan]

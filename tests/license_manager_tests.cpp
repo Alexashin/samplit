@@ -285,6 +285,7 @@ TEST_CASE ("mixer: solo and mute are saved with the project", "[licmgr]")
 
         auto m = a.getMicState (0);
         m.solo = true;
+        m.mono = true;
         m.out = 3;
         a.setMicState (0, m);
         m = a.getMicState (15);
@@ -311,6 +312,8 @@ TEST_CASE ("mixer: solo and mute are saved with the project", "[licmgr]")
     b.setStateInformation (saved.getData(), (int) saved.getSize());
     REQUIRE (pumpUntil ([&] { return b.getKit() != nullptr && ! b.isKitLoading(); }));
     CHECK (b.getMicState (0).solo);
+    CHECK (b.getMicState (0).mono);
+    CHECK_FALSE (b.getMicState (15).mono);
     CHECK (b.getMicState (0).out == 3);
     CHECK (b.getMicState (15).mute);
     CHECK (b.getMicState (15).levelDb == -10.0f);

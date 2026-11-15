@@ -290,12 +290,13 @@ namespace samplit
         const auto masks = muteSoloMask.load (std::memory_order_relaxed);      // одна загрузка: mute и solo согласованы
         const auto mute = (uint32_t) (masks & 0xffffffffu);
         const auto solo = (uint32_t) (masks >> 32);
+        const auto monoBits = monoMask.load (std::memory_order_relaxed);
         for (int i = 0; i < Kit::kMaxMics; ++i)
         {
             const bool silent = ((mute >> i) & 1u) != 0 || (solo != 0 && ((solo >> i) & 1u) == 0);
             const float level = i < kAutomatedMics ? levelParams[(size_t) i]->get() : mixLevelDb[(size_t) i].load (std::memory_order_relaxed);
             const float pan = i < kAutomatedMics ? panParams[(size_t) i]->get() : mixPan[(size_t) i].load (std::memory_order_relaxed);
-            kitEngine.setMicMix (i, silent ? -100.0f : level, pan);
+            kitEngine.setMicMix (i, silent ? -100.0f : level, ((monoBits >> i) & 1u) != 0 ? 0.0f : pan);
         }
     }
 
@@ -496,7 +497,7 @@ namespace samplit
                     }
                     const auto sameMix = [] (const MicState& a, const MicState& b)
                     {
-                        return a.levelDb == b.levelDb && a.pan == b.pan && a.mute == b.mute && a.solo == b.solo && a.out == b.out;
+                        return a.levelDb == b.levelDb && a.pan == b.pan && a.mute == b.mute && a.solo == b.solo && a.out == b.out && a.mono == b.mono;
                     };
                     bool mixChanged = fresh.size() != mixer.size();
                     for (size_t i = 0; ! mixChanged && i < fresh.size(); ++i)
@@ -795,6 +796,7 @@ namespace samplit
             o->setProperty ("mute", m.mute);
             o->setProperty ("solo", m.solo);
             o->setProperty ("out", m.out);
+            o->setProperty ("mono", m.mono);
             mix.add (juce::var (o));
         }
         if (auto* obj = root.getDynamicObject())
@@ -825,6 +827,7 @@ namespace samplit
                         m.mute = (bool) item.getProperty ("mute", m.mute);
                         m.solo = (bool) item.getProperty ("solo", m.solo);
                         m.out = (int) item.getProperty ("out", m.out);
+                        m.mono = (bool) item.getProperty ("mono", m.mono);
                         setMicState (i, m);
                     }
             }
@@ -938,7 +941,7 @@ namespace samplit
     // (pushMicTargets), здесь только выходы микрофонов и публикация состояния микшера
     void SamplitProcessor::applyMixer()
     {
-        uint32_t mute = 0, solo = 0;
+        uint32_t mute = 0, solo = 0, mono = 0;
         for (int i = 0; i < Kit::kMaxMics; ++i)
         {
             if (i < (int) mixer.size())
@@ -946,6 +949,7 @@ namespace samplit
                 const auto& m = mixer[(size_t) i];
                 mute |= m.mute ? 1u << i : 0u;
                 solo |= m.solo ? 1u << i : 0u;
+                mono |= m.mono ? 1u << i : 0u;
                 mixLevelDb[(size_t) i].store (m.levelDb);
                 mixPan[(size_t) i].store (m.pan);
                 kitEngine.setMicOutput (i, multiOut.load() ? m.out : 0);
@@ -958,6 +962,7 @@ namespace samplit
             }
         }
         muteSoloMask.store ((uint64_t) mute | ((uint64_t) solo << 32));
+        monoMask.store (mono, std::memory_order_relaxed);
     }
 
     void SamplitProcessor::setMultiOut (bool multi)
@@ -1039,6 +1044,7 @@ namespace samplit
                 v.setProperty ("mute", m.mute, nullptr);
                 v.setProperty ("solo", m.solo, nullptr);
                 v.setProperty ("out", m.out, nullptr);
+                v.setProperty ("mono", m.mono, nullptr);
                 state.appendChild (v, nullptr);
             }
         }
@@ -1098,6 +1104,7 @@ namespace samplit
             m.solo = (bool) v.getProperty ("solo", false);
             m.out = version < 4 ? -1        // -1: выход по умолчанию из манифеста пака
                                 : juce::jlimit (-1, kNumOutputs, (int) v.getProperty ("out", 0));
+            m.mono = (bool) v.getProperty ("mono", false);
             mix[v.getProperty ("id").toString()] = m;
         }
 

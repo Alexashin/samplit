@@ -104,13 +104,24 @@ namespace samplit
             solo.setTooltip (utf8 ("Слушать только микрофоны с Solo"));
             solo.onClick = [this] { edit ([v = solo.getToggleState()] (SamplitProcessor::MicState& s) { s.solo = v; }); };
 
+            monoBtn.setClickingTogglesState (true);
+            monoBtn.setButtonText (utf8 ("Стерео"));
+            monoBtn.setTitle (utf8 ("Моно/Стерео: ") + micName);
+            monoBtn.setTooltip (utf8 ("Стерео: канал с панорамой. Моно: строго по центру, панорама не действует"));
+            monoBtn.setColour (juce::TextButton::buttonOnColourId, brand::accent);
+            monoBtn.onClick = [this]
+            {
+                monoBtn.setButtonText (utf8 (monoBtn.getToggleState() ? "Моно" : "Стерео"));
+                edit ([v = monoBtn.getToggleState()] (SamplitProcessor::MicState& s) { s.mono = v; });
+            };
+
             routeNote.setFont (fonts::text (11.5f));
             routeNote.setJustificationType (juce::Justification::centred);
             routeNote.setColour (juce::Label::textColourId, brand::warn);
             routeNote.setText (utf8 ("→ Main"), juce::dontSendNotification);
             routeNote.setTooltip (utf8 ("Этот выход не включён в DAW. Включите его в настройках выходов инструмента"));
 
-            for (auto* c : std::initializer_list<juce::Component*> { &name, &output, &pan, &level, &mute, &solo, &routeNote })
+            for (auto* c : std::initializer_list<juce::Component*> { &name, &output, &pan, &level, &mute, &solo, &routeNote, &monoBtn })
                 addAndMakeVisible (c);
 
             // Текст полей посчитан до того, как заданы функции форматирования
@@ -161,6 +172,9 @@ namespace samplit
                 pan.setValue (s.pan, juce::dontSendNotification);
             if (! level.isMouseButtonDown())
                 level.setValue (s.levelDb, juce::dontSendNotification);
+            monoBtn.setToggleState (s.mono, juce::dontSendNotification);
+            monoBtn.setButtonText (utf8 (s.mono ? "Моно" : "Стерео"));
+            pan.setEnabled (! s.mono);
             mute.setToggleState (s.mute, juce::dontSendNotification);
             solo.setToggleState (s.solo, juce::dontSendNotification);
         }
@@ -183,6 +197,8 @@ namespace samplit
             routeNote.setBounds (area.removeFromTop (16));
             area.removeFromTop (2);
             pan.setBounds (area.removeFromTop (70));
+            area.removeFromTop (4);
+            monoBtn.setBounds (area.removeFromTop (22).reduced (2, 0));
             area.removeFromTop (6);
 
             auto buttons = area.removeFromBottom (26);
@@ -210,7 +226,7 @@ namespace samplit
         juce::Label name, routeNote;
         juce::ComboBox output;
         juce::Slider pan, level;
-        juce::TextButton mute, solo;
+        juce::TextButton mute, solo, monoBtn;
     };
 
     MixerPanel::MixerPanel (SamplitProcessor& p) : processor (p)
