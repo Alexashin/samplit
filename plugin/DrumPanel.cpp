@@ -438,7 +438,8 @@ namespace samplit
 
         const auto currentMode = [&] (const pack::Group& g)
         {
-            const auto it = ps.picks.find ((juce::String (def.id) + ":" + g.id).toStdString());
+            // ключ в установке: id группы без места (так пишет setGroupPick и читает KitLoader)
+            const auto it = ps.picks.find (g.id.toStdString());
             if (it != ps.picks.end())
                 return it->second;
             Pick p = Pick::Random;
