@@ -290,7 +290,9 @@
               "lo": 29,
               "hi": 44,
               "label": "softest",
-              "verified": false
+              "group": "main",
+              "peerOk": true,
+              "note": "окно 29-44 в .nki только в группе -D; принято как самые тихие удары (A3, 15.11)"
             }
           ]
         }
@@ -342,7 +344,9 @@
               "lo": 29,
               "hi": 44,
               "label": "softest",
-              "verified": false
+              "group": "main",
+              "peerOk": true,
+              "note": "окно 29-44 в .nki только в группе -D; принято как самые тихие удары (A3, 15.11)"
             }
           ]
         }
@@ -394,7 +398,9 @@
               "lo": 29,
               "hi": 44,
               "label": "softest",
-              "verified": false
+              "group": "main",
+              "peerOk": true,
+              "note": "окно 29-44 в .nki только в группе -D; принято как самые тихие удары (A3, 15.11)"
             }
           ]
         }
@@ -446,7 +452,9 @@
               "lo": 29,
               "hi": 44,
               "label": "softest",
-              "verified": false
+              "group": "main",
+              "peerOk": true,
+              "note": "окно 29-44 в .nki только в группе -D; принято как самые тихие удары (A3, 15.11)"
             }
           ]
         }
@@ -649,6 +657,14 @@
               "hi": 127,
               "group": "closed_top",
               "label": "main"
+            },
+            {
+              "lo": 111,
+              "hi": 111,
+              "group": "closed_top",
+              "label": "main",
+              "peerOk": true,
+              "note": "одиночный удар velocity 111 в группе -D (A3, 15.11)"
             }
           ]
         },
@@ -662,6 +678,14 @@
               "hi": 127,
               "group": "closed_top",
               "label": "soft"
+            },
+            {
+              "lo": 111,
+              "hi": 111,
+              "group": "closed_top",
+              "label": "soft",
+              "peerOk": true,
+              "note": "одиночный удар velocity 111 в группе -D (A3, 15.11)"
             }
           ]
         },
@@ -675,6 +699,14 @@
               "hi": 127,
               "group": "closed_top",
               "label": "mid1"
+            },
+            {
+              "lo": 111,
+              "hi": 111,
+              "group": "closed_top",
+              "label": "mid1",
+              "peerOk": true,
+              "note": "одиночный удар velocity 111 в группе -D (A3, 15.11)"
             }
           ]
         },
@@ -688,6 +720,14 @@
               "hi": 127,
               "group": "closed_top",
               "label": "mid2"
+            },
+            {
+              "lo": 111,
+              "hi": 111,
+              "group": "closed_top",
+              "label": "mid2",
+              "peerOk": true,
+              "note": "одиночный удар velocity 111 в группе -D (A3, 15.11)"
             }
           ]
         },
@@ -701,6 +741,14 @@
               "hi": 127,
               "group": "closed_edge",
               "label": "main"
+            },
+            {
+              "lo": 111,
+              "hi": 111,
+              "group": "closed_edge",
+              "label": "main",
+              "peerOk": true,
+              "note": "одиночный удар velocity 111 в группе -D (A3, 15.11)"
             }
           ]
         },
@@ -714,6 +762,14 @@
               "hi": 127,
               "group": "closed_edge",
               "label": "soft"
+            },
+            {
+              "lo": 111,
+              "hi": 111,
+              "group": "closed_edge",
+              "label": "soft",
+              "peerOk": true,
+              "note": "одиночный удар velocity 111 в группе -D (A3, 15.11)"
             }
           ]
         },
@@ -727,6 +783,14 @@
               "hi": 127,
               "group": "closed_edge",
               "label": "mid1"
+            },
+            {
+              "lo": 111,
+              "hi": 111,
+              "group": "closed_edge",
+              "label": "mid1",
+              "peerOk": true,
+              "note": "одиночный удар velocity 111 в группе -D (A3, 15.11)"
             }
           ]
         },
@@ -740,6 +804,14 @@
               "hi": 127,
               "group": "closed_edge",
               "label": "mid2"
+            },
+            {
+              "lo": 111,
+              "hi": 111,
+              "group": "closed_edge",
+              "label": "mid2",
+              "peerOk": true,
+              "note": "одиночный удар velocity 111 в группе -D (A3, 15.11)"
             }
           ]
         },
@@ -753,6 +825,14 @@
               "hi": 127,
               "group": "ajar1",
               "label": "main"
+            },
+            {
+              "lo": 111,
+              "hi": 111,
+              "group": "ajar1",
+              "label": "main",
+              "peerOk": true,
+              "note": "одиночный удар velocity 111 в группе -D (A3, 15.11)"
             }
           ]
         },
@@ -766,6 +846,14 @@
               "hi": 127,
               "group": "ajar1",
               "label": "soft"
+            },
+            {
+              "lo": 111,
+              "hi": 111,
+              "group": "ajar1",
+              "label": "soft",
+              "peerOk": true,
+              "note": "одиночный удар velocity 111 в группе -D (A3, 15.11)"
             }
           ]
         },
@@ -779,6 +867,14 @@
               "hi": 127,
               "group": "ajar1",
               "label": "mid1"
+            },
+            {
+              "lo": 111,
+              "hi": 111,
+              "group": "ajar1",
+              "label": "mid1",
+              "peerOk": true,
+              "note": "одиночный удар velocity 111 в группе -D (A3, 15.11)"
             }
           ]
         },
@@ -792,6 +888,14 @@
               "hi": 127,
               "group": "ajar1",
               "label": "mid2"
+            },
+            {
+              "lo": 111,
+              "hi": 111,
+              "group": "ajar1",
+              "label": "mid2",
+              "peerOk": true,
+              "note": "одиночный удар velocity 111 в группе -D (A3, 15.11)"
             }
           ]
         },
@@ -806,6 +910,14 @@
               "hi": 127,
               "group": "ajar2",
               "label": "main"
+            },
+            {
+              "lo": 111,
+              "hi": 111,
+              "group": "ajar2",
+              "label": "main",
+              "peerOk": true,
+              "note": "одиночный удар velocity 111 в группе -D (A3, 15.11)"
             }
           ]
         },
@@ -819,6 +931,14 @@
               "hi": 127,
               "group": "ajar2",
               "label": "soft"
+            },
+            {
+              "lo": 111,
+              "hi": 111,
+              "group": "ajar2",
+              "label": "soft",
+              "peerOk": true,
+              "note": "одиночный удар velocity 111 в группе -D (A3, 15.11)"
             }
           ]
         },
@@ -832,6 +952,14 @@
               "hi": 127,
               "group": "ajar2",
               "label": "mid1"
+            },
+            {
+              "lo": 111,
+              "hi": 111,
+              "group": "ajar2",
+              "label": "mid1",
+              "peerOk": true,
+              "note": "одиночный удар velocity 111 в группе -D (A3, 15.11)"
             }
           ]
         },
@@ -845,6 +973,14 @@
               "hi": 127,
               "group": "ajar2",
               "label": "mid2"
+            },
+            {
+              "lo": 111,
+              "hi": 111,
+              "group": "ajar2",
+              "label": "mid2",
+              "peerOk": true,
+              "note": "одиночный удар velocity 111 в группе -D (A3, 15.11)"
             }
           ]
         },
@@ -858,6 +994,14 @@
               "hi": 127,
               "group": "open1",
               "label": "main"
+            },
+            {
+              "lo": 111,
+              "hi": 111,
+              "group": "open1",
+              "label": "main",
+              "peerOk": true,
+              "note": "одиночный удар velocity 111 в группе -D (A3, 15.11)"
             }
           ]
         },
@@ -871,6 +1015,14 @@
               "hi": 127,
               "group": "open1",
               "label": "soft"
+            },
+            {
+              "lo": 111,
+              "hi": 111,
+              "group": "open1",
+              "label": "soft",
+              "peerOk": true,
+              "note": "одиночный удар velocity 111 в группе -D (A3, 15.11)"
             }
           ]
         },
@@ -884,6 +1036,14 @@
               "hi": 127,
               "group": "open1",
               "label": "mid1"
+            },
+            {
+              "lo": 111,
+              "hi": 111,
+              "group": "open1",
+              "label": "mid1",
+              "peerOk": true,
+              "note": "одиночный удар velocity 111 в группе -D (A3, 15.11)"
             }
           ]
         },
@@ -897,6 +1057,14 @@
               "hi": 127,
               "group": "open1",
               "label": "mid2"
+            },
+            {
+              "lo": 111,
+              "hi": 111,
+              "group": "open1",
+              "label": "mid2",
+              "peerOk": true,
+              "note": "одиночный удар velocity 111 в группе -D (A3, 15.11)"
             }
           ]
         },
@@ -910,6 +1078,14 @@
               "hi": 127,
               "group": "open2",
               "label": "main"
+            },
+            {
+              "lo": 111,
+              "hi": 111,
+              "group": "open2",
+              "label": "main",
+              "peerOk": true,
+              "note": "одиночный удар velocity 111 в группе -D (A3, 15.11)"
             }
           ]
         },
@@ -923,6 +1099,14 @@
               "hi": 127,
               "group": "open2",
               "label": "soft"
+            },
+            {
+              "lo": 111,
+              "hi": 111,
+              "group": "open2",
+              "label": "soft",
+              "peerOk": true,
+              "note": "одиночный удар velocity 111 в группе -D (A3, 15.11)"
             }
           ]
         },
@@ -936,6 +1120,14 @@
               "hi": 127,
               "group": "open2",
               "label": "mid1"
+            },
+            {
+              "lo": 111,
+              "hi": 111,
+              "group": "open2",
+              "label": "mid1",
+              "peerOk": true,
+              "note": "одиночный удар velocity 111 в группе -D (A3, 15.11)"
             }
           ]
         },
@@ -949,6 +1141,14 @@
               "hi": 127,
               "group": "open2",
               "label": "mid2"
+            },
+            {
+              "lo": 111,
+              "hi": 111,
+              "group": "open2",
+              "label": "mid2",
+              "peerOk": true,
+              "note": "одиночный удар velocity 111 в группе -D (A3, 15.11)"
             }
           ]
         },
@@ -962,6 +1162,14 @@
               "hi": 127,
               "group": "wide",
               "label": "main"
+            },
+            {
+              "lo": 111,
+              "hi": 111,
+              "group": "wide",
+              "label": "main",
+              "peerOk": true,
+              "note": "одиночный удар velocity 111 в группе -D (A3, 15.11)"
             }
           ]
         },
@@ -975,6 +1183,14 @@
               "hi": 127,
               "group": "wide",
               "label": "soft"
+            },
+            {
+              "lo": 111,
+              "hi": 111,
+              "group": "wide",
+              "label": "soft",
+              "peerOk": true,
+              "note": "одиночный удар velocity 111 в группе -D (A3, 15.11)"
             }
           ]
         },
@@ -988,6 +1204,14 @@
               "hi": 127,
               "group": "wide",
               "label": "mid1"
+            },
+            {
+              "lo": 111,
+              "hi": 111,
+              "group": "wide",
+              "label": "mid1",
+              "peerOk": true,
+              "note": "одиночный удар velocity 111 в группе -D (A3, 15.11)"
             }
           ]
         },
@@ -1001,6 +1225,14 @@
               "hi": 127,
               "group": "wide",
               "label": "mid2"
+            },
+            {
+              "lo": 111,
+              "hi": 111,
+              "group": "wide",
+              "label": "mid2",
+              "peerOk": true,
+              "note": "одиночный удар velocity 111 в группе -D (A3, 15.11)"
             }
           ]
         },
@@ -1245,7 +1477,8 @@
               "lo": 108,
               "hi": 114,
               "label": "dome-shank-low",
-              "verified": false
+              "group": "dome_shank",
+              "peerOk": true
             }
           ]
         },
@@ -1296,6 +1529,12 @@
           "hint": "Три слоя раскачанной тарелки",
           "role": "main",
           "pick": "cycle"
+        },
+        "extra": {
+          "name": "Дополнительные удары",
+          "hint": "Записи на верхних клавишах, в руководстве не описаны",
+          "role": "main",
+          "pick": "cycle"
         }
       },
       "note": "в руководстве Crash 18\" на C1-D#1; первая клавиша набора это спокойное состояние, три следующие это три слоя раскачанной тарелки",
@@ -1311,6 +1550,14 @@
               "group": "calm",
               "label": "calm",
               "note": "по руководству 118-127, в .nki 120-127"
+            },
+            {
+              "lo": 112,
+              "hi": 119,
+              "group": "calm",
+              "label": "calm-long",
+              "peerOk": true,
+              "note": "112-119 в группе -D, по ТЗ Дениса играет до Note Off (A3, 15.11)"
             }
           ]
         },
@@ -1354,8 +1601,38 @@
             {
               "lo": 95,
               "hi": 110,
-              "label": "unknown",
-              "verified": false
+              "label": "soft-low",
+              "group": "swing",
+              "peerOk": true,
+              "note": "95-110 в .nki, в руководстве не описано; принято как продолжение слоя 3 (A3, 15.11)"
+            }
+          ]
+        },
+        {
+          "key": 108,
+          "artic": "extra-c7",
+          "name": "Дополнительные удары (C7)",
+          "note": "файлы из Crash/ED-18; в руководстве клавиша не описана, отнесено по файлам (A3, 15.11)",
+          "windows": [
+            {
+              "lo": 112,
+              "hi": 127,
+              "group": "extra",
+              "label": "extra-c7"
+            }
+          ]
+        },
+        {
+          "key": 109,
+          "artic": "extra-c#7",
+          "name": "Дополнительные удары (C#7)",
+          "note": "файлы из Crash/ED-18; в руководстве клавиша не описана, отнесено по файлам (A3, 15.11)",
+          "windows": [
+            {
+              "lo": 120,
+              "hi": 127,
+              "group": "extra",
+              "label": "extra-c#7"
             }
           ]
         }
@@ -1380,6 +1657,12 @@
           "hint": "Три слоя раскачанной тарелки",
           "role": "main",
           "pick": "cycle"
+        },
+        "extra": {
+          "name": "Дополнительные удары",
+          "hint": "Записи на верхних клавишах, в руководстве не описаны",
+          "role": "main",
+          "pick": "cycle"
         }
       },
       "note": "в руководстве Crash 16\" на E1-G1; папка называется ED-17",
@@ -1395,6 +1678,14 @@
               "group": "calm",
               "label": "calm",
               "note": "по руководству 118-127, в .nki 120-127"
+            },
+            {
+              "lo": 112,
+              "hi": 119,
+              "group": "calm",
+              "label": "calm-long",
+              "peerOk": true,
+              "note": "112-119 в группе -D, по ТЗ Дениса играет до Note Off (A3, 15.11)"
             }
           ]
         },
@@ -1438,8 +1729,24 @@
             {
               "lo": 95,
               "hi": 110,
-              "label": "unknown",
-              "verified": false
+              "label": "soft-low",
+              "group": "swing",
+              "peerOk": true,
+              "note": "95-110 в .nki, в руководстве не описано; принято как продолжение слоя 3 (A3, 15.11)"
+            }
+          ]
+        },
+        {
+          "key": 112,
+          "artic": "extra-e7",
+          "name": "Дополнительные удары (E7)",
+          "note": "файлы из Crash/ED-17; в руководстве клавиша не описана, отнесено по файлам (A3, 15.11)",
+          "windows": [
+            {
+              "lo": 112,
+              "hi": 127,
+              "group": "extra",
+              "label": "extra-e7"
             }
           ]
         }
@@ -1462,6 +1769,12 @@
           "name": "Раскачанная тарелка",
           "role": "main",
           "pick": "exact"
+        },
+        "extra": {
+          "name": "Дополнительные удары",
+          "hint": "Записи на верхних клавишах, в руководстве не описаны",
+          "role": "main",
+          "pick": "cycle"
         }
       },
       "note": "в руководстве Meinl Byzance China 16\", папка называется Woohan-18; громкость зон разная в трёх .nki (-5,02, 0, -4,01 дБ), берётся из ED-Ahead-LIVE",
@@ -1477,6 +1790,14 @@
               "group": "calm",
               "label": "calm",
               "note": "по руководству 118-127, в .nki 120-127"
+            },
+            {
+              "lo": 112,
+              "hi": 119,
+              "group": "calm",
+              "label": "calm-long",
+              "peerOk": true,
+              "note": "112-119 в группе -D, по ТЗ Дениса играет до Note Off (A3, 15.11)"
             }
           ]
         },
@@ -1503,6 +1824,20 @@
               "hi": 127,
               "group": "swing",
               "label": "medium"
+            }
+          ]
+        },
+        {
+          "key": 116,
+          "artic": "extra-g#7",
+          "name": "Дополнительные удары (G#7)",
+          "note": "файлы из CHINA/Woohan-18; в руководстве клавиша не описана, отнесено по файлам (A3, 15.11)",
+          "windows": [
+            {
+              "lo": 120,
+              "hi": 127,
+              "group": "extra",
+              "label": "extra-g#7"
             }
           ]
         }
@@ -1541,67 +1876,15 @@
     {
       "id": "cymbals_x",
       "type": "other",
-      "name": "Тарелки на C7-G#7 (в руководстве не описаны)",
+      "name": "Клавиша F7 (в .nki смесь ED-18 и ED-17, в руководстве не описана)",
       "pack": "studio600-unverified",
       "source": "base",
       "choke": null,
       "keys": [
         {
-          "key": 108,
-          "artic": "unknown",
-          "name": "C7 (в .nki Crash ED-18)",
-          "windows": [
-            {
-              "lo": 112,
-              "hi": 127,
-              "label": "unknown",
-              "verified": false
-            }
-          ]
-        },
-        {
-          "key": 109,
-          "artic": "unknown",
-          "name": "C#7 (в .nki Crash ED-18)",
-          "windows": [
-            {
-              "lo": 120,
-              "hi": 127,
-              "label": "unknown",
-              "verified": false
-            }
-          ]
-        },
-        {
-          "key": 112,
-          "artic": "unknown",
-          "name": "E7 (в .nki Crash ED-17)",
-          "windows": [
-            {
-              "lo": 112,
-              "hi": 127,
-              "label": "unknown",
-              "verified": false
-            }
-          ]
-        },
-        {
           "key": 113,
           "artic": "unknown",
           "name": "F7 (в .nki смесь ED-18 и ED-17)",
-          "windows": [
-            {
-              "lo": 120,
-              "hi": 127,
-              "label": "unknown",
-              "verified": false
-            }
-          ]
-        },
-        {
-          "key": 116,
-          "artic": "unknown",
-          "name": "G#7 (в .nki China)",
           "windows": [
             {
               "lo": 120,
@@ -2087,9 +2370,10 @@
             {
               "lo": 75,
               "hi": 82,
-              "label": "unknown",
-              "verified": false,
-              "note": "по руководству римшоты на нечётных клавишах"
+              "label": "rimshot",
+              "note": "на чётных клавишах окно 75-82 только в группе -D; принято как римшот левой руки (A3, 15.11); в руководстве римшоты на нечётных",
+              "group": "rimshot",
+              "peerOk": true
             },
             {
               "lo": 42,
