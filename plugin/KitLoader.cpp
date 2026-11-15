@@ -559,6 +559,7 @@ namespace samplit
         kit->title = "Studio600";
         kit->mode = spec.mode;
         kit->velocityGain = VelocityGain::None;
+        kit->metalChokeKey = 12;        // C-1 в нумерации Cubase (C3 = 60)
         if (! L.collectMics())
             return res;
 
@@ -606,6 +607,7 @@ namespace samplit
             const auto pname = pk.id.startsWith ("studio600-") ? studio600PieceName (piece.id) : nullptr;
             piece.name = pname != nullptr ? pname : mp->name.toStdString();
             piece.slot = place.slot;
+            piece.metal = mp->type == "crash" || mp->type == "china" || mp->type == "splash" || mp->type == "hat" || mp->type == "ride";
             if (mp->choke.isNotEmpty())
             {
                 const int id = (int) L.chokeIds.size();
@@ -674,6 +676,7 @@ namespace samplit
                 h.velLo = mh.velLo;
                 h.velHi = mh.velHi;
                 h.peerGroup = mh.peerGroup.toStdString();
+                h.gate = (bool) mh.extra.getWithDefault ("peerGroup", false);   // разметка ставит peerGroup: true на ударах группы -D
                 h.unverified = unverified;
                 h.files.resize (kit->mics.size());
                 firstKey.emplace (mh.layer, h.key);

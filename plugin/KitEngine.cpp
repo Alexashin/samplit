@@ -104,6 +104,7 @@ namespace samplit
         sr = sampleRate;
         fadeLength = std::max (1, (int) (0.005 * sr));  // 5 мс: недогрузка диска
         stealFade = std::max (1, (int) (0.010 * sr));   // 10 мс: choke и вытеснение
+        gateFade = std::max (1, (int) (0.005 * sr));    // 5 мс: Note Off удара группы -D
         releaseAll();
         lastStrikePos = -1;
         samePosCount = 0;
@@ -511,12 +512,45 @@ namespace samplit
         return -1;
     }
 
-    KitEngine::StrikeInfo KitEngine::noteOn (int note, int velocity) noexcept
+    void KitEngine::noteOff (int note, int channel) noexcept
+    {
+        int oldest = -1;
+        for (int i = 0; i < kMaxStrikes; ++i)
+        {
+            const auto& s = strikes[(size_t) i];
+            if (strikeKit[(size_t) i].load() != nullptr && s.gated && s.held && ! s.fading && s.note == note && s.channel == channel
+                && (oldest < 0 || s.age < strikes[(size_t) oldest].age))
+                oldest = i;
+        }
+        if (oldest >= 0)
+        {
+            strikes[(size_t) oldest].held = false;
+            fadeStrike (strikes[(size_t) oldest], gateFade);
+        }
+    }
+
+    void KitEngine::chokeMetal() noexcept
+    {
+        for (int i = 0; i < kMaxStrikes; ++i)
+        {
+            const Kit* other = strikeKit[(size_t) i].load();
+            if (other != nullptr && ! strikes[(size_t) i].fading && other->pieces[(size_t) strikes[(size_t) i].piece].metal)
+                fadeStrike (strikes[(size_t) i], stealFade);
+        }
+    }
+
+    KitEngine::StrikeInfo KitEngine::noteOn (int note, int velocity, int channel) noexcept
     {
         StrikeInfo info;
         const Kit* kit = inBlock ? blockKit : current.load();   // в блоке только защищённый кит
         if (kit == nullptr || note < 0 || note > 127)
             return info;
+
+        if (note == kit->metalChokeKey)
+        {
+            chokeMetal();       // управляющая нота: звука нет
+            return info;
+        }
 
         kontaktNow = partMode.load() || selectMode.load() == (int) HitSelect::Kontakt;
         if (strikePosValid && strikePos == lastStrikePos)
@@ -642,6 +676,9 @@ namespace samplit
 
         s.piece = map.piece;
         s.note = note;
+        s.channel = channel;
+        s.gated = hit.gate;
+        s.held = hit.gate;
         s.numActive = started;
         s.fading = false;
         s.age = ++ageCounter;

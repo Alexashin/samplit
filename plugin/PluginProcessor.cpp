@@ -255,6 +255,16 @@ namespace samplit
                 kitEngine.fadeAll();
                 continue;
             }
+            if (msg.isNoteOff())
+            {
+                // Удары группы -D звучат, пока держится нота: на Note Off затухают с этой позиции блока
+                const int at = juce::jlimit (pos, numSamples, meta.samplePosition);
+                if (at > pos)
+                    renderRange (pos, at);
+                pos = at;
+                kitEngine.noteOff (msg.getNoteNumber(), msg.getChannel());
+                continue;
+            }
             if (! msg.isNoteOn())
                 continue;
 
@@ -263,7 +273,7 @@ namespace samplit
                 renderRange (pos, at);
             pos = at;
             kitEngine.setStrikePosition (transportStart + meta.samplePosition, transportValid);
-            noteOn (msg.getNoteNumber(), msg.getVelocity());
+            kitEngine.noteOn (msg.getNoteNumber(), msg.getVelocity(), msg.getChannel());
         }
         playHitsBefore (numSamples);
         if (numSamples > pos)

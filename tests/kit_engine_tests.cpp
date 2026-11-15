@@ -4,6 +4,7 @@
 #include "kit_fixture.h"
 #include "Studio600Names.h"
 
+#include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
 #include <cmath>
@@ -1165,4 +1166,156 @@ TEST_CASE ("kit: All Sound Off fades all strikes, releaseAll frees them", "[kit]
     REQUIRE (r.engine.getNumActiveStrikes() == 1);
     r.engine.releaseAll();
     CHECK (r.engine.getNumActiveStrikes() == 0);
+}
+
+// ---------------------------------------------------------------- длина по Note Off (группа -D) и C-1
+
+namespace
+{
+    // Кит: бочка (36, one-shot), тарелка (40, удар группы -D: gate), тарелка (41, one-shot), хэт (42, gate). Клипы по 1 с
+    std::shared_ptr<const Kit> gateKit()
+    {
+        KitBuilder b;
+        b.mic ("main", 0);
+        const int kick = b.piece ("kick");
+        b.hit (kick, b.layer (kick, 1, 127), 36, { 0.2f });
+        const int crash = b.piece ("crash");
+        const int cl = b.layer (crash, 1, 127);
+        b.hit (crash, cl, 40, { 0.3f });
+        b.hit (crash, cl, 41, { 0.3f });
+        b.kit->pieces[(size_t) crash].metal = true;
+        b.kit->pieces[(size_t) crash].hits[0].gate = true;
+        const int hat = b.piece ("hat");
+        b.hit (hat, b.layer (hat, 1, 127), 42, { 0.1f });
+        b.kit->pieces[(size_t) hat].metal = true;
+        b.kit->pieces[(size_t) hat].hits[0].gate = true;
+        b.kit->metalChokeKey = 12;
+        return b.done();
+    }
+
+    // Рендер нескольких блоков подряд; возвращает пик последнего блока Main
+    float renderBlocks (Rig& r, int n)
+    {
+        float peak = 0.0f;
+        for (int i = 0; i < n; ++i)
+        {
+            r.clear();
+            r.render();
+            peak = 0.0f;
+            for (float v : r.L[0])
+                peak = std::max (peak, std::abs (v));
+        }
+        return peak;
+    }
+}
+
+TEST_CASE ("gate: a -D hit plays while the note is held and stops shortly after Note Off", "[kit][gate]")
+{
+    const auto kit = gateKit();
+    Rig r;
+    r.engine.setKit (kit.get());
+    REQUIRE (r.engine.noteOn (40, 120).voices == 1);
+    CHECK (renderBlocks (r, 10) == Catch::Approx (0.3f));       // ~213 мс, ноты не отпущена: звук идёт
+
+    r.engine.noteOff (40);
+    r.clear();
+    r.render();                                                 // затухание ~5 мс внутри этого блока
+    CHECK (r.L[0][0] > 0.2f);
+    CHECK (r.L[0][kBlock - 1] == 0.0f);
+    CHECK (r.engine.getNumActiveStrikes() == 0);
+}
+
+TEST_CASE ("gate: one-shot hits ignore Note Off", "[kit][gate]")
+{
+    const auto kit = gateKit();
+    Rig r;
+    r.engine.setKit (kit.get());
+    r.engine.noteOn (41, 120);
+    r.engine.noteOn (36, 100);
+    r.engine.noteOff (41);
+    r.engine.noteOff (36);
+    CHECK (renderBlocks (r, 3) == Catch::Approx (0.5f));
+    CHECK (r.engine.getNumActiveStrikes() == 2);
+}
+
+TEST_CASE ("gate: Note Off closes the oldest held hit of that note and channel only", "[kit][gate]")
+{
+    const auto kit = gateKit();
+    Rig r;
+    r.engine.setKit (kit.get());
+    r.engine.noteOn (40, 120, 1);
+    r.engine.noteOn (40, 120, 1);
+    r.engine.noteOn (40, 120, 2);
+    CHECK (r.engine.getNumActiveStrikes() == 3);
+
+    r.engine.noteOff (40, 3);                                   // другой канал: ничего
+    r.engine.noteOff (41, 1);                                   // другая нота: ничего
+    renderBlocks (r, 1);
+    CHECK (r.engine.getNumActiveStrikes() == 3);
+
+    r.engine.noteOff (40, 1);
+    renderBlocks (r, 1);
+    CHECK (r.engine.getNumActiveStrikes() == 2);
+    r.engine.noteOff (40, 1);
+    renderBlocks (r, 1);
+    CHECK (r.engine.getNumActiveStrikes() == 1);
+    r.engine.noteOff (40, 1);                                   // лишний Note Off безопасен
+    renderBlocks (r, 1);
+    CHECK (r.engine.getNumActiveStrikes() == 1);
+    r.engine.noteOff (40, 2);
+    renderBlocks (r, 1);
+    CHECK (r.engine.getNumActiveStrikes() == 0);
+}
+
+TEST_CASE ("gate: a clip shorter than the note ends by itself, without looping", "[kit][gate]")
+{
+    KitBuilder b;
+    b.mic ("main", 0);
+    const int p = b.piece ("crash");
+    b.hit (p, b.layer (p, 1, 127), 40, { 0.3f });
+    b.kit->pieces[(size_t) p].hits[0].gate = true;
+    b.kit->pieces[(size_t) p].hits[0].files[0].clip = constClip (0.3f, 2000);
+    const auto kit = b.done();
+    Rig r;
+    r.engine.setKit (kit.get());
+    r.engine.noteOn (40, 120);
+    CHECK (renderBlocks (r, 1) == Catch::Approx (0.3f));
+    CHECK (renderBlocks (r, 1) == Catch::Approx (0.3f));        // кадры 1024..1999
+    CHECK (renderBlocks (r, 1) == 0.0f);                        // файл кончился, нота ещё держится: тишина, без цикла
+    CHECK (r.engine.getNumActiveStrikes() == 0);
+}
+
+TEST_CASE ("choke: C-1 fades all metal, leaves drums, plays no sound itself", "[kit][gate]")
+{
+    const auto kit = gateKit();
+    Rig r;
+    r.engine.setKit (kit.get());
+    r.engine.noteOn (36, 100);          // бочка 0,2
+    r.engine.noteOn (40, 120);          // тарелка (gate) 0,3
+    r.engine.noteOn (41, 120);          // тарелка (one-shot) 0,3
+    r.engine.noteOn (42, 120);          // хэт (gate) 0,1
+    renderBlocks (r, 1);
+
+    const auto info = r.engine.noteOn (12, 100);
+    CHECK (info.voices == 0);
+    r.clear();
+    r.render();                         // 10 мс затухания
+    CHECK (r.L[0][kBlock - 1] == Catch::Approx (0.2f));     // осталась одна бочка
+    CHECK (r.engine.getNumActiveStrikes() == 1);
+    CHECK (renderBlocks (r, 2) == Catch::Approx (0.2f));
+}
+
+TEST_CASE ("choke: C-1 without voices is harmless and a cleared strike can be replayed", "[kit][gate]")
+{
+    const auto kit = gateKit();
+    Rig r;
+    r.engine.setKit (kit.get());
+    CHECK (r.engine.noteOn (12, 127).voices == 0);
+    CHECK (r.engine.getNumActiveStrikes() == 0);
+    r.engine.noteOn (40, 120);
+    r.engine.noteOn (12, 1);
+    renderBlocks (r, 1);
+    CHECK (r.engine.getNumActiveStrikes() == 0);
+    CHECK (r.engine.noteOn (40, 120).voices == 1);
+    CHECK (renderBlocks (r, 1) == Catch::Approx (0.3f));
 }

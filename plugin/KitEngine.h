@@ -131,8 +131,16 @@ namespace samplit
         // Для тестов: serial кита, с которым связаны lastHit и cyclePos (0: ещё ни с каким)
         uint64_t getLastKitSerial() const noexcept { return lastKitSerial; }
 
-        // velocity 1..127
-        StrikeInfo noteOn (int note, int velocity) noexcept;
+        // velocity 1..127. channel: канал MIDI 1..16 (нужен, чтобы Note Off закрыл удар той же ноты и канала).
+        // Нота Kit::metalChokeKey звука не даёт: глушит всё «железо»
+        StrikeInfo noteOn (int note, int velocity, int channel = 1) noexcept;
+
+        // Note Off: самый старый ещё удерживаемый удар группы -D на этой ноте и канале затухает за ~5 мс. Прочие удары
+        // (one-shot) игнорируют Note Off. VST3 noteId JUCE наружу не отдаёт, поэтому одинаковые ноты закрываются по очереди (FIFO)
+        void noteOff (int note, int channel = 1) noexcept;
+
+        // Затухание всех ударов «железа» за ~10 мс (нота C-1); мембраны не трогает
+        void chokeMetal() noexcept;
 
         // Дописывает все голоса в [start, end) блока. outL/outR индексируются выходом микрофона (0 = Main).
         // outR[i] == nullptr означает моно-выход: панорама не применяется. Указатели выходов, которых нет у хоста,
@@ -170,6 +178,9 @@ namespace samplit
             int numActive = 0;
             uint64_t age = 0;
             bool fading = false;     // удар уже глушится (choke, вытеснение): повторно не трогать
+            bool gated = false;      // удар группы -D: Note Off его закрывает
+            bool held = false;       // gated и нота ещё не отпущена
+            int channel = 0;
             std::array<MicVoice, Kit::kMaxMics> voices {};
         };
 
@@ -227,6 +238,7 @@ namespace samplit
         double sr = 44100.0;
         int fadeLength = 220;       // 5 мс: недогрузка диска
         int stealFade = 441;        // 10 мс: choke и вытеснение
+        int gateFade = 220;         // 5 мс: Note Off удара группы -D
         int offlineBudgetMax = 30000;
         int offlineBudgetMs = 30000;    // общий предел ожидания диска на блок (сбрасывается в beginBlock)
         bool offlineGaveUp = false;     // только audio thread: бюджет исчерпан, до конца экспорта диск не ждём

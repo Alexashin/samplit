@@ -138,6 +138,7 @@ namespace samplit
         int velLo = 1, velHi = 127;
         std::string peerGroup;          // признак группы -D из .nki, пока без смысла для движка
         bool unverified = false;        // разметка этого удара не подтверждена
+        bool gate = false;              // удар из группы -D (Kontakt): звучит, пока держится нота, на Note Off затухает за ~5 мс
         std::vector<HitFile> files;     // по индексу микрофона в Kit::mics; clip == nullptr: на этом микрофоне нет файла
     };
 
@@ -148,6 +149,7 @@ namespace samplit
         int slot = -1;                  // место установки (Setup), -1: слот не задан (тестовые киты)
         std::vector<int> keys;
         int choke = -1;
+        bool metal = false;             // «железо» (crash, china, splash, hat, ride): его глушит управляющая нота Kit::metalChokeKey
         std::vector<Layer> layers;
         std::vector<Hit> hits;
     };
@@ -216,6 +218,8 @@ namespace samplit
         VelocityGain velocityGain = VelocityGain::None;
         HitSelect mode = HitSelect::Live;
         std::vector<PickChoice> choices;    // не больше kMaxChoices
+        // Управляющая нота: Note On на ней не играет звук, а глушит всё «железо» (Piece::metal). -1: нет. Studio600: C-1 (Cubase C3 = 60)
+        int metalChokeKey = -1;
         std::array<NoteMap, 128> notes {};
 
         // Проверяет связность и строит индекс клавиш. Вызывается один раз перед публикацией кита.
