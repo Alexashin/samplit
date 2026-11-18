@@ -27,6 +27,16 @@ using namespace samplit;
 
 namespace
 {
+    // Каталог манифестов для проверок на настоящей библиотеке: SAMPLIT_REAL_MANIFESTS (путь от корня репозитория
+    // или абсолютный), по умолчанию sample_library/packs-src (v1). Для библиотеки v2: sample_library/packs-src-v2
+    juce::File realManifestDir (const juce::File& repo)
+    {
+        const char* dir = std::getenv ("SAMPLIT_REAL_MANIFESTS");
+        if (dir == nullptr || *dir == 0)
+            return repo.getChildFile ("sample_library/packs-src");
+        return juce::File::isAbsolutePath (dir) ? juce::File (dir) : repo.getChildFile (dir);
+    }
+
     // Заводская установка Studio600 на локальной библиотеке: каталог из манифестов, состав кита из Setup::factory()
     KitSpec factorySpec (const KitLoadOptions& opts)
     {
@@ -61,7 +71,7 @@ TEST_CASE ("real library: factory setup loads with heads only and streams like t
     const auto repo = juce::File (SAMPLIT_TEST_FIXTURES).getParentDirectory().getParentDirectory();
     KitLoadOptions opts;
     opts.libraryRoot = juce::File (libPath);
-    opts.manifestDir = repo.getChildFile ("sample_library/packs-src");
+    opts.manifestDir = realManifestDir (repo);
     const auto spec = factorySpec (opts);
     REQUIRE (spec.places.size() == 12);
 
@@ -156,7 +166,7 @@ TEST_CASE ("real library: dense playing in real time without underruns", "[.real
     const auto repo = juce::File (SAMPLIT_TEST_FIXTURES).getParentDirectory().getParentDirectory();
     KitLoadOptions opts;
     opts.libraryRoot = juce::File (libPath);
-    opts.manifestDir = repo.getChildFile ("sample_library/packs-src");
+    opts.manifestDir = realManifestDir (repo);
     const auto res = loadKit (factorySpec (opts), opts);
     REQUIRE (res.ok());
 
@@ -264,7 +274,7 @@ namespace
         auto dataDir = juce::File::getSpecialLocation (juce::File::tempDirectory).getChildFile ("samplit-tests").getChildFile ("host");
         dataDir.deleteRecursively();
         dataDir.getChildFile ("manifests").createDirectory();
-        for (const auto& f : repo.getChildFile ("sample_library/packs-src").findChildFiles (juce::File::findFiles, false, "*.json"))
+        for (const auto& f : realManifestDir (repo).findChildFiles (juce::File::findFiles, false, "*.json"))
             f.copyFileTo (dataDir.getChildFile ("manifests").getChildFile (f.getFileName()));
 
         auto config = LicenseManager::defaultConfig();
@@ -561,7 +571,7 @@ TEST_CASE ("real library: strength palette of every place is not empty", "[.real
     const auto repo = juce::File (SAMPLIT_TEST_FIXTURES).getParentDirectory().getParentDirectory();
     KitLoadOptions opts;
     opts.libraryRoot = juce::File (libPath);
-    opts.manifestDir = repo.getChildFile ("sample_library/packs-src");
+    opts.manifestDir = realManifestDir (repo);
     const auto res = loadKit (factorySpec (opts), opts);
     REQUIRE (res.ok());
 
@@ -590,7 +600,7 @@ TEST_CASE ("real library: snare crescendo pairs with every tom at the same veloc
     const auto repo = juce::File (SAMPLIT_TEST_FIXTURES).getParentDirectory().getParentDirectory();
     KitLoadOptions opts;
     opts.libraryRoot = juce::File (libPath);
-    opts.manifestDir = repo.getChildFile ("sample_library/packs-src");
+    opts.manifestDir = realManifestDir (repo);
     const auto res = loadKit (factorySpec (opts), opts);
     REQUIRE (res.ok());
     const auto catalog = scanPackCatalog (opts, false);
@@ -633,3 +643,56 @@ TEST_CASE ("real library: snare crescendo pairs with every tom at the same veloc
     }
 }
 
+
+// SUB KICK (библиотека v2): как в .nki, файл SUB-KICK/SUB-KICK.wav звучит своим микрофоном с каждым ударом бочки.
+// У владельца библиотеки файл стерео: загрузчик сводит его в моно. Запуск:
+//   $env:SAMPLIT_REAL_LIB='...\Studio600-v2'; $env:SAMPLIT_REAL_MANIFESTS='sample_library/packs-src-v2'; SamplitTests.exe "[.reallib-subkick]"
+TEST_CASE ("real library v2: SUB KICK sounds with every kick hit on its own mic", "[.reallib-subkick]")
+{
+    const char* libPath = std::getenv ("SAMPLIT_REAL_LIB");
+    if (libPath == nullptr)
+        SKIP ("SAMPLIT_REAL_LIB не задана");
+
+    const auto repo = juce::File (SAMPLIT_TEST_FIXTURES).getParentDirectory().getParentDirectory();
+    KitLoadOptions opts;
+    opts.libraryRoot = juce::File (libPath);
+    opts.manifestDir = realManifestDir (repo);
+    const auto res = loadKit (factorySpec (opts), opts);
+    REQUIRE (res.ok());
+    // Предупреждения про другие места (пустые слои тарелок) к SUB KICK не относятся
+    for (const auto& w : res.warnings)
+        if (w.containsIgnoreCase ("kick") || w.containsIgnoreCase ("sub") || w.contains (juce::String::fromUTF8 ("Бочка")))
+            FAIL_CHECK (w.toStdString());
+
+    const auto& kit = *res.kit;
+    int sub = -1;
+    for (int m = 0; m < (int) kit.mics.size(); ++m)
+        if (kit.mics[(size_t) m].id == "sub_kick")
+            sub = m;
+    REQUIRE (sub >= 0);
+
+    int kickHits = 0, otherWithSub = 0;
+    const DecodedClip* first = nullptr;
+    for (const auto& p : kit.pieces)
+        for (const auto& h : p.hits)
+        {
+            const bool has = (int) h.files.size() > sub && h.files[(size_t) sub].clip != nullptr;
+            if (p.slot == 0)
+            {
+                ++kickHits;
+                REQUIRE (has);
+                const auto* clip = h.files[(size_t) sub].clip.get();
+                // Один клип на все удары (общий реестр), длина файла 1,85 с при 44,1 кГц
+                if (first == nullptr)
+                    first = clip;
+                CHECK (clip == first);
+                CHECK (clip->frames() > 80000);
+                CHECK (clip->frames() < 82000);
+            }
+            else if (has)
+                ++otherWithSub;
+        }
+    std::cout << "[subkick] ударов бочки " << kickHits << ", с SUB KICK вне бочки " << otherWithSub << std::endl;
+    CHECK (kickHits == 96);
+    CHECK (otherWithSub == 0);
+}

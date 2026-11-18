@@ -187,12 +187,14 @@ namespace samplit::pack
     }
 
     bool readAudioFile (juce::AudioFormatManager& fm, const juce::File& file, int start, int end,
-                        DecodedAudio& out, juce::String& error)
+                        DecodedAudio& out, juce::String& error, bool downmixStereo)
     {
         std::unique_ptr<juce::AudioFormatReader> reader (fm.createReaderFor (file));
         if (reader == nullptr || reader->sampleRate <= 0.0)
             return fail (error, "не удалось открыть "_s + file.getFullPathName());
-        if (reader->numChannels != 1)
+        // Стерео допускается только по запросу (локальная библиотека: SUB-KICK.wav у владельца стерео)
+        const bool stereo = downmixStereo && reader->numChannels == 2;
+        if (reader->numChannels != 1 && ! stereo)
             return fail (error, file.getFullPathName() + ": ожидалось моно, каналов "_s + juce::String ((int) reader->numChannels));
 
         const auto length = reader->lengthInSamples;
@@ -200,25 +202,31 @@ namespace samplit::pack
         if (start < 0 || start >= last)
             return fail (error, file.getFullPathName() + ": пустая область после обрезки"_s);
         const int n = (int) (last - start);
+        const int channels = stereo ? 2 : 1;
 
         out.samples.resize ((size_t) n);
         if (reader->usesFloatingPointData)
         {
-            std::vector<float> tmp ((size_t) n);
-            float* dest[1] = { tmp.data() };
-            if (! reader->read (dest, 1, start, n))
+            std::vector<float> left ((size_t) n), right (stereo ? (size_t) n : 0);
+            float* dest[2] = { left.data(), stereo ? right.data() : nullptr };
+            if (! reader->read (dest, channels, start, n))
                 return fail (error, "ошибка чтения "_s + file.getFullPathName());
-            for (size_t i = 0; i < tmp.size(); ++i)
-                out.samples[i] = std::clamp ((int32_t) std::lround (tmp[i] * 8388608.0f), -8388608, 8388607);
+            for (size_t i = 0; i < left.size(); ++i)
+            {
+                const float v = stereo ? 0.5f * (left[i] + right[i]) : left[i];
+                out.samples[i] = std::clamp ((int32_t) std::lround (v * 8388608.0f), -8388608, 8388607);
+            }
         }
         else
         {
-            std::vector<int32_t> tmp ((size_t) n);
-            int* dest[1] = { tmp.data() };
-            if (! reader->read (dest, 1, start, n, false))
+            std::vector<int32_t> left ((size_t) n), right (stereo ? (size_t) n : 0);
+            int* dest[2] = { left.data(), stereo ? right.data() : nullptr };
+            if (! reader->read (dest, channels, start, n, false))
                 return fail (error, "ошибка чтения "_s + file.getFullPathName());
-            for (size_t i = 0; i < tmp.size(); ++i)
-                out.samples[i] = tmp[i] >> 8;
+            // Моно: как раньше, бит в бит. Стерео: (L+R)/2 в 24 битах, без переполнения (сумма в int64)
+            for (size_t i = 0; i < left.size(); ++i)
+                out.samples[i] = stereo ? (int32_t) (((int64_t) (left[i] >> 8) + (int64_t) (right[i] >> 8)) / 2)
+                                        : left[i] >> 8;
         }
 
         out.sampleRate = reader->sampleRate;

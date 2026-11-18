@@ -163,7 +163,7 @@ namespace samplit
 
                 juce::AudioFormatManager formats;
                 formats.registerBasicFormats();
-                if (! pack::readAudioFile (formats, file, std::get<2> (key), std::get<3> (key), audio, error))
+                if (! pack::readAudioFile (formats, file, std::get<2> (key), std::get<3> (key), audio, error, true))
                     return nullptr;
                 return DecodedClip::fromFloat (pack::toFloat24 (audio), audio.sampleRate, std::move (sourceKey));
             }

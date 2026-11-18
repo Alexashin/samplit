@@ -244,27 +244,19 @@
       "requires": []
     },
     {
-      "id": "studio600-kick-sub",
-      "title": "Studio600 Drum LIB: бочка, SUB KICK",
-      "tier": "base",
-      "requires": []
-    },
-    {
       "id": "studio600-unverified",
       "title": "Studio600 Drum LIB: непроверенное (группы -D, клавиши без описания)",
       "tier": "unverified",
       "requires": []
     }
   ],
-  "extraPacks": [
+  "extraPacks": [],
+  "layerMics": [
     {
-      "pack": "studio600-kick-sub",
-      "note": "SUB KICK не из .nki: один моно-WAV на весь диапазон velocity 1-127 (стерео-оригинал сведён в моно, A2/A3), играет вариацией бочки на C0 (24)",
-      "piece": { "id": "kick", "name": "Бас-барабан, SUB KICK", "type": "kick", "key": 24 },
       "mic": "sub_kick",
       "file": "SUB-KICK/SUB-KICK.wav",
-      "velLo": 1,
-      "velHi": 127
+      "packs": ["studio600-kick-u87", "studio600-kick-rode", "studio600-kick-d6", "studio600-kick-d12"],
+      "note": "Как в новых .nki (ED-Ahead-LIVE/TONE, ED-FAT-MID, 13.11): микрофон SUB KICK, один файл в каждом ударе бочки (клавиши 21-24). В .nki он же звучит один на velocity без окна бочки (1-28 и пропуски); у нас там тишина, как у всей бочки (решение 13.11). Стерео-файл библиотеки плагин сводит в моно при чтении."
     }
   ],
   "pieces": [

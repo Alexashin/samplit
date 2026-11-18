@@ -569,6 +569,20 @@ TEST_CASE ("readAudioFile reads 24-bit mono WAV exactly and trims", "[pack]")
         const auto stereo = writeWav ("stereo.wav", makeAudio (200), 2);
         REQUIRE_FALSE (readAudioFile (fm, stereo, 0, 0, back, error));
     }
+    SECTION ("stereo downmix on request (library SUB-KICK.wav is stereo)")
+    {
+        const auto src = makeAudio (200);
+        const auto stereo = writeWav ("stereo-dm.wav", src, 2);
+        REQUIRE (readAudioFile (fm, stereo, 0, 0, back, error, true));
+        REQUIRE (back.channels == 1);
+        REQUIRE (back.frames == 200);
+        // writeWav кладёт один и тот же сигнал в оба канала, поэтому (L+R)/2 совпадает с моно-исходником
+        const auto mono = writeWav ("mono-dm.wav", src, 1);
+        DecodedAudio ref;
+        REQUIRE (readAudioFile (fm, mono, 0, 0, ref, error));
+        REQUIRE (back.samples == ref.samples);
+        REQUIRE_FALSE (readAudioFile (fm, writeWav ("six.wav", src, 6), 0, 0, back, error, true));
+    }
 }
 
 TEST_CASE ("wav through flac through pack is bit exact", "[pack]")

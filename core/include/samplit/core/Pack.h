@@ -45,9 +45,10 @@ namespace samplit::pack
     bool encodeFlac (const DecodedAudio&, juce::MemoryBlock& out, juce::String& error);
     bool decodeFlac (const void* data, size_t size, DecodedAudio& out, juce::String& error);
 
-    // Читает звуковой файл (WAV, AIFF, FLAC…), только моно. start и end: обрезка в отсчётах как в HitFile
+    // Читает звуковой файл (WAV, AIFF, FLAC…), только моно (при downmixStereo стерео сводится в моно как (L+R)/2).
+    // start и end: обрезка в отсчётах как в HitFile
     bool readAudioFile (juce::AudioFormatManager&, const juce::File&, int start, int end,
-                        DecodedAudio& out, juce::String& error);
+                        DecodedAudio& out, juce::String& error, bool downmixStereo = false);
 
     // Запись пакета. Блоки шифруются и сразу уходят во временный файл рядом с результатом, в памяти их нет,
     // поэтому большие пакеты собираются без большого расхода памяти. Из нескольких потоков вызывать нельзя

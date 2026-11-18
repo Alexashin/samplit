@@ -92,6 +92,24 @@ class MarkKitTest(unittest.TestCase):
     def hits_of(self, manifest):
         return {h['id']: h for p in manifest['pieces'] for h in p['hits']}
 
+    def test_layer_mic_is_added_to_every_hit_of_listed_packs_only(self):
+        # SUB KICK: один файл в каждом ударе пакетов бочки, своим микрофоном; другие пакеты не трогаются
+        kit = synthetic_kit()
+        kit['mics'].append({'id': 'sub_kick', 'source': 'SUB-KICK', 'name': 'Sub Kick', 'role': 'close', 'out': 1})
+        kit['layerMics'] = [{'mic': 'sub_kick', 'file': 'SUB-KICK/SUB-KICK.wav', 'packs': ['core']}]
+        packs, report = mark_kit.build_packs(kit, {'FAKE': synthetic_mapping()})
+        self.assertEqual(report['problems'], [])
+        core = self.hits_of(packs['core'])
+        self.assertTrue(all(h['files']['sub_kick']['path'] == 'SUB-KICK/SUB-KICK.wav' for h in core.values()))
+        self.assertIn('sub_kick', [m['id'] for m in packs['core']['mics']])
+        self.assertTrue(all('sub_kick' not in h['files'] for h in self.hits_of(packs['cym']).values()))
+        self.assertNotIn('sub_kick', [m['id'] for m in packs['cym']['mics']])
+        # Без описания микрофона: ошибка в отчёте, файл не добавлен
+        kit['mics'].pop()
+        packs, report = mark_kit.build_packs(kit, {'FAKE': synthetic_mapping()})
+        self.assertTrue(any('sub_kick' in p for p in report['problems']))
+        self.assertTrue(all('sub_kick' not in h['files'] for h in self.hits_of(packs['core']).values()))
+
     def test_verified_and_unverified_go_to_their_packs(self):
         packs, report = self.build()
         self.assertEqual(report['problems'], [])

@@ -348,9 +348,19 @@ def build_packs(kit, mappings, library_root=None):
             continue
         used_mics = set()
         pieces = []
+        # Микрофоны-слои (SUB KICK): в .nki один и тот же файл звучит с каждым ударом барабана, своим каналом
+        layer_mics = [lm for lm in kit.get('layerMics', []) if pack_id in lm['packs']]
         for pid in sorted(store[pack_id], key=lambda p: piece_order[store[pack_id][p]['piece']['id']]):
             entry = store[pack_id][pid]
             piece = entry['piece']
+            for lm in layer_mics:
+                rec, probs = file_entry({'file': lm['file']}, library_root, frames_cache)
+                report['problems'].extend(f"{pack_id} {lm['mic']}: {pr}" for pr in probs)
+                if lm['mic'] not in {m['id'] for m in kit['mics']}:
+                    report['problems'].append(f"layerMics: микрофон {lm['mic']} не описан в разметке")
+                    continue
+                for h in entry['hits']:
+                    h['files'].setdefault(lm['mic'], dict(rec))
             hits = sorted(entry['hits'], key=lambda h: (h['key'], h['velLo'], h['id']))
             for h in hits:
                 used_mics.update(h['files'])
