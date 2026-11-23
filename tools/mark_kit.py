@@ -26,7 +26,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_KIT = ROOT / 'tools' / 'kit-studio600.json'
 DEFAULT_MAPPING = ROOT / 'sample_library' / 'mapping'
-DEFAULT_LIBRARY = ROOT / 'sample_library' / '00-Studio600ru-Drum-LIB'
+DEFAULT_LIBRARY = ROOT / 'sample_library' / 'Studio600-v2'
 DEFAULT_OUT = ROOT / 'sample_library' / 'packs-src'
 
 # Итоги из docs/library-structure.md для одного .nki

@@ -16,7 +16,7 @@
 #   3. make_token.py: токен на этот компьютер на все установленные пакеты, в %APPDATA%\Samplit\license.token.
 #
 # Нужно: собранный Release (.\tools\build.ps1 -Config Release), каталог секретов (admin.py init), venv сервера
-# лицензий (tools\license_server\.venv). Сэмплы библиотеки в sample_library\00-Studio600ru-Drum-LIB.
+# лицензий (tools\license_server\.venv). Сэмплы библиотеки в sample_library\Studio600-v2.
 param(
     [string[]]$Packs = @(),
     [int]$Days = 0,         # 0: бессрочный токен
@@ -35,8 +35,8 @@ $Packs = @($Packs | ForEach-Object { $_ -split ',' } | Where-Object { $_ })
 
 $packer = Join-Path $root 'build\Release\tools\packer\samplit-packer_artefacts\Release\samplit-packer.exe'
 $python = Join-Path $root 'tools\license_server\.venv\Scripts\python.exe'
-$library = Join-Path $root 'sample_library\00-Studio600ru-Drum-LIB'
-$sources = Join-Path $root 'sample_library\packs-src'
+$library = Join-Path $root 'sample_library\Studio600-v2'
+$sources = Join-Path $root 'sample_library\packs-src-v2'
 $secrets = if ($env:SAMPLIT_LICENSE_DIR) { $env:SAMPLIT_LICENSE_DIR } else { Join-Path $HOME '.samplit-license' }
 $data = Join-Path $env:APPDATA 'Samplit'
 $packsDir = if ($OutDir) { $OutDir } else { Join-Path $data 'packs' }

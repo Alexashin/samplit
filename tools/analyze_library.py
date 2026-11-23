@@ -10,7 +10,7 @@
 Размеры и длительности считаются по всем файлам, затухание по случайной выборке
 (--per-category файлов на категорию, --seed фиксирует выборку, вывод воспроизводим).
 
-    python tools/analyze_library.py [--root sample_library/00-Studio600ru-Drum-LIB]
+    python tools/analyze_library.py [--root sample_library/Studio600-v2]
         [--mapping sample_library/mapping] [--per-category 60] [--seed 1] [--json out.json]
 """
 import argparse
@@ -136,7 +136,7 @@ def mb(x):
 def main():
     sys.stdout.reconfigure(encoding='utf-8')
     ap = argparse.ArgumentParser()
-    ap.add_argument('--root', default='sample_library/00-Studio600ru-Drum-LIB')
+    ap.add_argument('--root', default='sample_library/Studio600-v2')
     ap.add_argument('--mapping', default='sample_library/mapping')
     ap.add_argument('--per-category', type=int, default=60)
     ap.add_argument('--seed', type=int, default=1)

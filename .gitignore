@@ -49,3 +49,9 @@ sample_library/
 
 # graphify: граф и отчёт собираются локально, в git не идут
 graphify-out/
+
+# архивы и готовые пакеты: храним в GitHub Releases / вне git
+*.zip
+*.rar
+*.splpack
+.pytest_cache/
