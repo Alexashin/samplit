@@ -34,7 +34,7 @@ target_include_directories(SamplitTests PRIVATE ${CMAKE_SOURCE_DIR}/plugin)
 target_compile_options(SamplitTests PRIVATE $<$<CXX_COMPILER_ID:MSVC>:/utf-8>)
 
 target_compile_definitions(SamplitTests PRIVATE
-    JucePlugin_Name="Samplit"
+    JucePlugin_Name="Samplit Drummer"
     JUCE_WEB_BROWSER=0
     JUCE_MODAL_LOOPS_PERMITTED=1
     SAMPLIT_LICENSE_ENABLED=${SAMPLIT_LICENSE_ENABLED_VALUE}

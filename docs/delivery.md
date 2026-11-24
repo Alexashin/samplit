@@ -8,7 +8,7 @@
 
 ```powershell
 .\tools\build.ps1 -Config Release          # плагин, приложение, packer
-.\tools\make_dist.ps1 -Lite                # dist\Samplit-<версия>\ и .zip без пакетов, несколько МБ
+.\tools\make_dist.ps1 -Lite                # dist\Samplit-Drummer-<версия>\ и .zip без пакетов, несколько МБ
 ```
 
 В архив попадают плагин VST3, Standalone, данные установки (Setup из 12 мест, пресетов и миксов нет), манифесты `Data\manifests` (раскладка ударов без звука) и `Инструкция.html` / `Инструкция.pdf`. Полный вариант `make_dist.ps1` без `-Lite` дополнительно кладёт пакеты `.splpack` (около 1 ГБ), но при выключенной лицензии плагин их не читает; он нужен только для сборки с `SAMPLIT_LICENSE=ON`.
@@ -43,3 +43,14 @@
 ## Когда лицензию вернут
 
 Вернуть можно пакеты `.splpack` с лицензионным токеном: сборка с `-DSAMPLIT_LICENSE=ON`, выпуск токена `.\tools\issue_license.ps1 -User "…" [-Code "win:…:…"]` (токен привязывается к компьютеру; служебного токена «для любого компьютера» больше нет), пакеты и ключи — `install_packs.ps1`. Лицензия по сети (`SAMPLIT_LICENSE_URL`, `core/src/License*.cpp`, `tools/license_server`) заменит `issue_license.ps1`. Формат токена и пакетов не менялся.
+
+## Хранение релизов (с 23.11.2026)
+
+Готовые дистрибутивы на диске не копим: каждый zip выкладывается в GitHub Releases (репозиторий приватный) и после проверки загрузки удаляется из `dist/`.
+
+```bash
+git tag vX.Y.Z && git push origin main --tags
+gh release create vX.Y.Z dist/Samplit-Drummer-X.Y.Z.zip -R Alexashin/samplit -t "Samplit Drummer X.Y.Z" -n "что нового"
+gh release view vX.Y.Z -R Alexashin/samplit --json assets    # сверить размер
+```
+Лимит GitHub: 2 ГБ на файл. Старые версии (до 0.3.2) называются `Samplit-X.Y.Z.zip`.

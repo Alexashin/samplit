@@ -21,7 +21,7 @@ target_include_directories(samplit-snapshot PRIVATE ${SAMPLIT_PLUGIN_DIR})
 target_compile_options(samplit-snapshot PRIVATE $<$<CXX_COMPILER_ID:MSVC>:/utf-8>)
 
 target_compile_definitions(samplit-snapshot PRIVATE
-    JucePlugin_Name="Samplit"
+    JucePlugin_Name="Samplit Drummer"
     SAMPLIT_LICENSE_ENABLED=1
     JUCE_MODAL_LOOPS_PERMITTED=1
     JUCE_WEB_BROWSER=0

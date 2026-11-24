@@ -10,10 +10,10 @@
 #                                                   одноразовые ключи в OutDir\keys (для проверки пересборки)
 #
 # Что делает:
-#   1. samplit-packer build: пакет .splpack в %APPDATA%\Samplit\packs. Ключ пакета создаётся при первой сборке
+#   1. samplit-packer build: пакет .splpack в %APPDATA%\Samplit Drummer\packs. Ключ пакета создаётся при первой сборке
 #      и лежит в каталоге секретов сервера лицензий (~\.samplit-license\packs), дальше переиспользуется.
 #   2. admin.py add-pack-key: ключ регистрируется на сервере лицензий (сервер выдаёт его в токенах).
-#   3. make_token.py: токен на этот компьютер на все установленные пакеты, в %APPDATA%\Samplit\license.token.
+#   3. make_token.py: токен на этот компьютер на все установленные пакеты, в %APPDATA%\Samplit Drummer\license.token.
 #
 # Нужно: собранный Release (.\tools\build.ps1 -Config Release), каталог секретов (admin.py init), venv сервера
 # лицензий (tools\license_server\.venv). Сэмплы библиотеки в sample_library\Studio600-v2.
@@ -23,7 +23,7 @@ param(
     [switch]$All,
     [switch]$SkipBuild,
     [switch]$NoRegister,    # только сборка и проверка: ключи одноразовые, без регистрации и токена
-    [string]$OutDir = '',   # куда писать .splpack (по умолчанию %APPDATA%\Samplit\packs)
+    [string]$OutDir = '',   # куда писать .splpack (по умолчанию %APPDATA%\Samplit Drummer\packs)
     [string]$User = $env:USERNAME   # имя владельца токена
 )
 
@@ -38,7 +38,7 @@ $python = Join-Path $root 'tools\license_server\.venv\Scripts\python.exe'
 $library = Join-Path $root 'sample_library\Studio600-v2'
 $sources = Join-Path $root 'sample_library\packs-src-v2'
 $secrets = if ($env:SAMPLIT_LICENSE_DIR) { $env:SAMPLIT_LICENSE_DIR } else { Join-Path $HOME '.samplit-license' }
-$data = Join-Path $env:APPDATA 'Samplit'
+$data = Join-Path $env:APPDATA 'Samplit Drummer'
 $packsDir = if ($OutDir) { $OutDir } else { Join-Path $data 'packs' }
 if ($NoRegister -and -not $OutDir) { throw '-NoRegister требует -OutDir (в установленную папку собирать без регистрации нельзя)' }
 # Ключи: в режиме -NoRegister одноразовые рядом с пакетами, иначе в каталоге секретов

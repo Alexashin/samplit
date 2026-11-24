@@ -20,9 +20,9 @@ set_target_properties(SamplitAssets PROPERTIES POSITION_INDEPENDENT_CODE ON)
 juce_add_plugin(Samplit
     COMPANY_NAME                "Samplit"
     PLUGIN_MANUFACTURER_CODE    Smpl
-    PLUGIN_CODE                 Spl1
+    PLUGIN_CODE                 SpDr
     FORMATS                     ${SAMPLIT_FORMATS}
-    PRODUCT_NAME                "Samplit"
+    PRODUCT_NAME                "Samplit Drummer"
     IS_SYNTH                    TRUE
     NEEDS_MIDI_INPUT            TRUE
     NEEDS_MIDI_OUTPUT           FALSE

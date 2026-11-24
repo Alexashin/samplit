@@ -9,7 +9,7 @@ namespace samplit
     LicenseManager::Config LicenseManager::defaultConfig()
     {
         Config c;
-        c.dataDir = juce::File::getSpecialLocation (juce::File::userApplicationDataDirectory).getChildFile ("Samplit");
+        c.dataDir = juce::File::getSpecialLocation (juce::File::userApplicationDataDirectory).getChildFile ("Samplit Drummer");   // отдельно от прежнего плагина «Samplit» (библиотека сэмплов)
         c.publicKey = license::embeddedPublicKey();
         c.fingerprint = license::machineFingerprint();
        #ifdef SAMPLIT_LICENSE_URL

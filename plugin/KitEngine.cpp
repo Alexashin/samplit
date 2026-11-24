@@ -26,7 +26,7 @@ namespace samplit
         };
 
         template <bool Mono>
-        bool renderVoice (const ClipView& clip, double& position, double step, int& fadeLeft, int fadeLength,
+        bool renderVoice (const ClipView& clip, double& position, double step, int& fadeLeft, int fadeLength, bool soft,
                           float* left, float* right, float gainL, float gainR, float dL, float dR, int start, int end) noexcept
         {
             const int frames = clip.frames;
@@ -52,6 +52,8 @@ namespace samplit
                     if (fadeLeft == 0)
                         return false;
                     fade = (float) fadeLeft / (float) fadeLength;
+                    if (soft)
+                        fade *= fade;       // мягкое глушение рукой: быстрый спад сначала, плавный конец
                     --fadeLeft;
                 }
 
@@ -105,6 +107,8 @@ namespace samplit
         fadeLength = std::max (1, (int) (0.005 * sr));  // 5 мс: недогрузка диска
         stealFade = std::max (1, (int) (0.010 * sr));   // 10 мс: choke и вытеснение
         gateFade = std::max (1, (int) (0.005 * sr));    // 5 мс: Note Off удара группы -D
+        softFadeMin = std::max (1, (int) (0.030 * sr)); // 30 мс: самое короткое мягкое глушение (C-1)
+        softFadeMax = std::max (1, (int) (0.250 * sr)); // 250 мс: самое длинное
         releaseAll();
         lastStrikePos = -1;
         samePosCount = 0;
@@ -302,13 +306,14 @@ namespace samplit
         v.clip = nullptr;
     }
 
-    void KitEngine::fadeStrike (Strike& s, int frames) noexcept
+    void KitEngine::fadeStrike (Strike& s, int frames, bool soft) noexcept
     {
         for (auto& v : s.voices)
             if (v.clip != nullptr && v.fadeLeft < 0)
             {
                 v.fadeLeft = frames;
                 v.fadeTotal = frames;
+                v.softFade = soft;
                 v.wantStream = false;       // голос затихает: хвост ему уже не нужен
             }
         s.fading = true;
@@ -535,7 +540,15 @@ namespace samplit
         {
             const Kit* other = strikeKit[(size_t) i].load();
             if (other != nullptr && ! strikes[(size_t) i].fading && other->pieces[(size_t) strikes[(size_t) i].piece].metal)
-                fadeStrike (strikes[(size_t) i], stealFade);
+            {
+                // Длина глушения растёт с длиной звука: короткий хэт затихает за ~30 мс, долгий крэш за ~250 мс
+                double seconds = 0.0;
+                for (const auto& v : strikes[(size_t) i].voices)
+                    if (v.clip != nullptr)
+                        seconds = std::max (seconds, v.clip->frames() / std::max (1.0, v.clip->sampleRate));
+                const int frames = std::clamp ((int) (0.05 * seconds * sr), softFadeMin, softFadeMax);
+                fadeStrike (strikes[(size_t) i], frames, true);
+            }
         }
     }
 
@@ -644,6 +657,7 @@ namespace samplit
             }
             v.fadeLeft = -1;
             v.fadeTotal = fadeLength;
+            v.softFade = false;
             v.wantStream = false;
             v.stealWait = 0;
             v.underrunCounted = false;
@@ -815,8 +829,8 @@ namespace samplit
                 }
 
                 bool alive;
-                alive = mono ? renderVoice<true> (view, v.position, v.step, v.fadeLeft, v.fadeTotal, left, right, gainL, gainR, dL, dR, start, end)
-                             : renderVoice<false> (view, v.position, v.step, v.fadeLeft, v.fadeTotal, left, right, gainL, gainR, dL, dR, start, end);
+                alive = mono ? renderVoice<true> (view, v.position, v.step, v.fadeLeft, v.fadeTotal, v.softFade, left, right, gainL, gainR, dL, dR, start, end)
+                             : renderVoice<false> (view, v.position, v.step, v.fadeLeft, v.fadeTotal, v.softFade, left, right, gainL, gainR, dL, dR, start, end);
 
                 if (alive && v.stream >= 0)
                     streamer->setConsumed (v.stream, std::max<int64_t> (0, (int64_t) v.position - 2));

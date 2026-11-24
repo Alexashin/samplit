@@ -166,6 +166,7 @@ namespace samplit
             int fadeLeft = -1;       // -1: не затухает
             int stream = -1;         // ячейка DiskStreamer с хвостом клипа, -1: хвоста нет
             int fadeTotal = 1;       // длина начатого затухания в кадрах (знаменатель огибающей)
+            bool softFade = false;   // затухание по квадратичной кривой (мягкое глушение C-1)
             bool wantStream = false; // потоковый клип ещё без ячейки: повторять acquire на каждом куске
             int stealWait = 0;       // кадров до следующего вытеснения ради этого голоса
             bool underrunCounted = false;   // обрыв этого голоса уже учтён в underruns (считаем один раз на голос)
@@ -193,7 +194,7 @@ namespace samplit
                           int start, int end) noexcept;
 
         int selectHit (const Kit&, const NoteMap&, int note, int velocity) noexcept;
-        void fadeStrike (Strike&, int frames) noexcept;
+        void fadeStrike (Strike&, int frames, bool soft = false) noexcept;
         // Глушит старейшие не затухающие удары с ячейками стримера, пока не освободится не меньше needed ячеек.
         // exclude: индекс удара, который не трогать. Возвращает, сколько ячеек освободится
         int stealStreams (int needed, int exclude) noexcept;
@@ -239,6 +240,8 @@ namespace samplit
         int fadeLength = 220;       // 5 мс: недогрузка диска
         int stealFade = 441;        // 10 мс: choke и вытеснение
         int gateFade = 220;         // 5 мс: Note Off удара группы -D
+        int softFadeMin = 1323;     // 30 мс: мягкое глушение C-1, короткий звук
+        int softFadeMax = 11025;    // 250 мс: мягкое глушение C-1, длинный звук
         int offlineBudgetMax = 30000;
         int offlineBudgetMs = 30000;    // общий предел ожидания диска на блок (сбрасывается в beginBlock)
         bool offlineGaveUp = false;     // только audio thread: бюджет исчерпан, до конца экспорта диск не ждём

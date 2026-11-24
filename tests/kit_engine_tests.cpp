@@ -1298,8 +1298,7 @@ TEST_CASE ("choke: C-1 fades all metal, leaves drums, plays no sound itself", "[
 
     const auto info = r.engine.noteOn (12, 100);
     CHECK (info.voices == 0);
-    r.clear();
-    r.render();                         // 10 мс затухания
+    renderBlocks (r, 3);                // мягкое глушение клипов по 1 с: 50 мс (~2400 кадров), три блока хватает
     CHECK (r.L[0][kBlock - 1] == Catch::Approx (0.2f));     // осталась одна бочка
     CHECK (r.engine.getNumActiveStrikes() == 1);
     CHECK (renderBlocks (r, 2) == Catch::Approx (0.2f));
@@ -1314,8 +1313,75 @@ TEST_CASE ("choke: C-1 without voices is harmless and a cleared strike can be re
     CHECK (r.engine.getNumActiveStrikes() == 0);
     r.engine.noteOn (40, 120);
     r.engine.noteOn (12, 1);
-    renderBlocks (r, 1);
+    renderBlocks (r, 4);
     CHECK (r.engine.getNumActiveStrikes() == 0);
     CHECK (r.engine.noteOn (40, 120).voices == 1);
     CHECK (renderBlocks (r, 1) == Catch::Approx (0.3f));
+}
+
+namespace
+{
+    // Играет клип постоянной громкости, на следующем блоке нажимает C-1 и возвращает огибающую Main с момента C-1 до тишины
+    std::vector<float> chokeEnvelope (int clipFrames)
+    {
+        KitBuilder b;
+        b.mic ("main", 0);
+        const int p = b.piece ("crash");
+        b.hit (p, b.layer (p, 1, 127), 40, { 1.0f });
+        b.kit->pieces[(size_t) p].metal = true;
+        b.kit->pieces[(size_t) p].hits[0].files[0].clip = constClip (1.0f, clipFrames);
+        b.kit->metalChokeKey = 12;
+        const auto kit = b.done();
+        Rig r;
+        r.engine.setKit (kit.get());
+        r.engine.noteOn (40, 127);
+        renderBlocks (r, 1);
+        r.engine.noteOn (12, 100);
+        std::vector<float> env;
+        for (int blocks = 0; blocks < 64; ++blocks)
+        {
+            r.clear();
+            r.render();
+            env.insert (env.end(), r.L[0].begin(), r.L[0].end());
+            if (r.L[0].back() == 0.0f)
+                break;
+        }
+        return env;
+    }
+
+    int tailFrames (const std::vector<float>& env)
+    {
+        int last = 0;
+        for (size_t i = 0; i < env.size(); ++i)
+            if (env[i] != 0.0f)
+                last = (int) i + 1;
+        return last;
+    }
+}
+
+TEST_CASE ("choke: C-1 fade length follows the sound length and is smooth", "[kit][gate]")
+{
+    const auto shortEnv = chokeEnvelope ((int) (0.1 * kRate));     // короткий звук: 30 мс (нижний предел)
+    const auto midEnv = chokeEnvelope ((int) (1.0 * kRate));       // 1 с: 50 мс
+    const auto longEnv = chokeEnvelope ((int) (10.0 * kRate));     // длинный звук: 250 мс (верхний предел)
+    const int s = tailFrames (shortEnv), m = tailFrames (midEnv), l = tailFrames (longEnv);
+
+    CHECK (s >= (int) (0.025 * kRate));         // не обрыв за 10 мс
+    CHECK (s <= (int) (0.035 * kRate));
+    CHECK (s < m);
+    CHECK (m < l);
+    CHECK (l <= (int) (0.26 * kRate));          // но всё равно быстро
+    CHECK (l >= (int) (0.24 * kRate));
+
+    // Без щелчков: огибающая не возрастает и спадает без скачков
+    for (const auto* env : { &shortEnv, &midEnv, &longEnv })
+    {
+        float prev = 1.0f;
+        for (size_t i = 0; i < env->size(); ++i)
+        {
+            CHECK ((*env)[i] <= prev + 1e-6f);
+            CHECK (prev - (*env)[i] < 0.02f);
+            prev = (*env)[i];
+        }
+    }
 }

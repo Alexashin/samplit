@@ -34,5 +34,5 @@ jobs:
         run: |
           Invoke-WebRequest https://github.com/Tracktion/pluginval/releases/latest/download/pluginval_Windows.zip -OutFile pluginval.zip
           Expand-Archive pluginval.zip -DestinationPath pluginval
-          $vst3 = Get-ChildItem build -Recurse -Filter Samplit.vst3 -Directory | Select-Object -First 1
+          $vst3 = Get-ChildItem build -Recurse -Filter "Samplit Drummer.vst3" -Directory | Select-Object -First 1
           .\pluginval\pluginval.exe --strictness-level 5 --skip-gui-tests $vst3.FullName

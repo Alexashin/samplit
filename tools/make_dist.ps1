@@ -1,6 +1,6 @@
 ﻿# Дистрибутив Samplit для передачи: плагин VST3, отдельное приложение, пакеты, установщик, инструкция.
 #
-#   .\tools\make_dist.ps1                          dist\Samplit-<версия>\ и dist\Samplit-<версия>.zip
+#   .\tools\make_dist.ps1                          dist\Samplit-Drummer-<версия>\ и dist\Samplit-Drummer-<версия>.zip
 #   .\tools\make_dist.ps1 -NoZip
 #
 # Берёт Release-сборку (.\tools\build.ps1 -Config Release) и пакеты, установленные на этом компьютере
@@ -15,10 +15,10 @@ $root = Resolve-Path (Join-Path $PSScriptRoot '..')
 
 $version = ([regex]::Match((Get-Content (Join-Path $root 'CMakeLists.txt') -Raw), 'project\(Samplit VERSION ([0-9.]+)')).Groups[1].Value
 $artefacts = Join-Path $root 'build\Release\plugin\Samplit_artefacts\Release'
-$packs = Join-Path $env:APPDATA 'Samplit\packs'
-$out = Join-Path $root "dist\Samplit-$version"
+$packs = Join-Path $env:APPDATA 'Samplit Drummer\packs'
+$out = Join-Path $root "dist\Samplit-Drummer-$version"
 
-foreach ($need in @((Join-Path $artefacts 'VST3\Samplit.vst3'), (Join-Path $artefacts 'Standalone\Samplit.exe')) + $(if (-not $Lite) { $packs }) + (Join-Path $root 'sample_library\packs-src')) {
+foreach ($need in @((Join-Path $artefacts 'VST3\Samplit Drummer.vst3'), (Join-Path $artefacts 'Standalone\Samplit Drummer.exe')) + $(if (-not $Lite) { $packs }) + (Join-Path $root 'sample_library\packs-src')) {
     if (-not (Test-Path $need)) { throw "не найдено: $need" }
 }
 
@@ -26,8 +26,8 @@ if (Test-Path $out) { Remove-Item $out -Recurse -Force }
 $setup = Join-Path $out 'setup'
 New-Item -ItemType Directory -Force (Join-Path $out 'Plugin'), (Join-Path $out 'Data\packs'), $setup | Out-Null
 
-Copy-Item (Join-Path $artefacts 'VST3\Samplit.vst3') (Join-Path $out 'Plugin') -Recurse
-Copy-Item (Join-Path $artefacts 'Standalone\Samplit.exe') (Join-Path $out 'Plugin')
+Copy-Item (Join-Path $artefacts 'VST3\Samplit Drummer.vst3') (Join-Path $out 'Plugin') -Recurse
+Copy-Item (Join-Path $artefacts 'Standalone\Samplit Drummer.exe') (Join-Path $out 'Plugin')
 # Пакет studio600-unverified нужен только служебному режиму (SAMPLIT_SERVICE), в архив не идёт
 if (-not $Lite) { Get-ChildItem (Join-Path $packs '*.splpack') -Exclude 'studio600-unverified*' | Copy-Item -Destination (Join-Path $out 'Data\packs') }
 # Исходные манифесты (раскладка ударов без звука): нужны режиму «Моя библиотека…»

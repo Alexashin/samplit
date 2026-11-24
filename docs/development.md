@@ -29,8 +29,8 @@ git submodule update --init --recursive
 
 | Что | Где |
 |---|---|
-| VST3 | `plugin\Samplit_artefacts\<Config>\VST3\Samplit.vst3` (копируется в `%LOCALAPPDATA%\Programs\Common\VST3`) |
-| Отдельное приложение | `plugin\Samplit_artefacts\<Config>\Standalone\Samplit.exe` |
+| VST3 | `plugin\Samplit_artefacts\<Config>\VST3\Samplit Drummer.vst3` (копируется в `%LOCALAPPDATA%\Programs\Common\VST3`) |
+| Отдельное приложение | `plugin\Samplit_artefacts\<Config>\Standalone\Samplit Drummer.exe` |
 | Тесты | `tests\SamplitTests_artefacts\<Config>\SamplitTests.exe` |
 | Снимки окна | `tools\snapshot\samplit-snapshot_artefacts\<Config>\samplit-snapshot.exe` |
 
@@ -70,7 +70,7 @@ python tools\license_server\admin.py init     # один раз: каталог 
 
 Чтобы не копировать плагин в системную папку, добавьте `-DSAMPLIT_COPY_PLUGIN=OFF` к вызову CMake.
 
-Если сборка падает с «файл занят», закройте Samplit.exe и DAW с загруженным плагином: Windows не даёт перезаписать загруженную DLL.
+Если сборка падает с «файл занят», закройте Samplit Drummer.exe и DAW с загруженным плагином: Windows не даёт перезаписать загруженную DLL.
 
 ## Установка всех пакетов и выдача лицензии
 
@@ -80,7 +80,7 @@ python tools\license_server\admin.py init     # один раз: каталог 
 
 1. File → Open → Folder… → папка репозитория. VS сам найдёт `CMakeLists.txt` и `CMakePresets.json`.
 2. В панели сверху выбрать конфигурацию **Debug** (сборка идёт в тот же `build\Debug`, что и у `tools\build.ps1`).
-3. Рядом с зелёной стрелкой выбрать, что запускать: `Samplit.exe` (отдельное приложение) или `SamplitTests.exe` (тесты).
+3. Рядом с зелёной стрелкой выбрать, что запускать: `Samplit Drummer.exe` (отдельное приложение) или `SamplitTests.exe` (тесты).
 4. F5 запускает с отладчиком, Ctrl+F5 без. Тесты также видны в Test → Test Explorer.
 
 Отладка плагина внутри Reaper: собрать Debug, открыть Reaper, в VS Debug → Attach to Process… → `reaper.exe`. Точки останова в `plugin/` сработают, когда Reaper вызовет код плагина.
@@ -111,7 +111,7 @@ Catch2 скачивается при первой конфигурации че�
 ## Валидация
 
 ```powershell
-pluginval.exe --strictness-level 5 --skip-gui-tests --validate build\Debug\plugin\Samplit_artefacts\Debug\VST3\Samplit.vst3
+pluginval.exe --strictness-level 5 --skip-gui-tests --validate build\Debug\plugin\Samplit_artefacts\Debug\VST3\Samplit Drummer.vst3
 ```
 
 Ожидаем `SUCCESS`. Проверка на уровне 5 прогоняет разные частоты и размеры блока, включение и выключение шин.
